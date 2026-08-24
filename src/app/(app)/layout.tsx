@@ -6,19 +6,8 @@ import { MobileTopBar } from "@/components/shell/mobile-top-bar";
 import { DesktopTopHeader } from "@/components/shell/desktop-top-header";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  // TEMPORARY: timing instrumentation to find the real production
-  // bottleneck behind reported slow navigation — remove once diagnosed.
-  // eslint-disable-next-line react-hooks/purity -- diagnostic only, value never reaches rendering
-  const layoutStart = performance.now();
   const { businessId, businessName, ownerName } = await requireBusiness();
-  // eslint-disable-next-line react-hooks/purity -- diagnostic only, value never reaches rendering
-  const afterAuth = performance.now();
   const alerts = await getAlerts(businessId);
-  // eslint-disable-next-line react-hooks/purity -- diagnostic only, value never reaches rendering
-  const afterAlerts = performance.now();
-  console.log(
-    `[perf] layout: requireBusiness=${(afterAuth - layoutStart).toFixed(0)}ms getAlerts=${(afterAlerts - afterAuth).toFixed(0)}ms total=${(afterAlerts - layoutStart).toFixed(0)}ms`,
-  );
 
   return (
     <div className="flex min-h-screen">

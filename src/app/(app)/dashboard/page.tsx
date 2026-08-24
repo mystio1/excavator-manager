@@ -41,13 +41,7 @@ function greeting() {
 }
 
 export default async function DashboardPage() {
-  // TEMPORARY: timing instrumentation to find the real production
-  // bottleneck behind reported slow navigation — remove once diagnosed.
-  // eslint-disable-next-line react-hooks/purity -- diagnostic only, value never reaches rendering
-  const pageStart = performance.now();
   const { businessId } = await requireBusiness();
-  // eslint-disable-next-line react-hooks/purity -- diagnostic only, value never reaches rendering
-  const afterAuth = performance.now();
   const [
     { cards, alerts, ownerName },
     hoursTrend,
@@ -67,11 +61,6 @@ export default async function DashboardPage() {
     getProfitOverview(businessId),
     getTopCustomersByRevenue(businessId),
   ]);
-  // eslint-disable-next-line react-hooks/purity -- diagnostic only, value never reaches rendering
-  const afterData = performance.now();
-  console.log(
-    `[perf] dashboard page: requireBusiness=${(afterAuth - pageStart).toFixed(0)}ms dataBatch=${(afterData - afterAuth).toFixed(0)}ms total=${(afterData - pageStart).toFixed(0)}ms`,
-  );
 
   const firstName = ownerName.split(" ")[0];
 
