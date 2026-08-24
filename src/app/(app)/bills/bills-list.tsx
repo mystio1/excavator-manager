@@ -2,13 +2,24 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { preload } from "swr";
 import { Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/dates";
+import { swrFetcher } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+
+/** Starts the detail fetch as soon as a tap/click begins, not after the page
+ * navigation finishes — by the time BillDetailPage mounts and calls
+ * useSWR("/api/bills/{id}", ...) with the same key, SWR reuses this
+ * in-flight/cached request instead of firing a second one, cutting the
+ * round-trip the user otherwise waits through after tapping a bill. */
+function prefetchBill(id: string) {
+  preload(`/api/bills/${id}`, swrFetcher);
+}
 
 const STATUS_LABEL: Record<string, { label: string; className: string }> = {
   PAID: { label: "Paid", className: "bg-working text-working-foreground" },
@@ -73,7 +84,12 @@ export function BillsList({ bills }: { bills: BillListItem[] }) {
         const status = STATUS_LABEL[bill.status] ?? STATUS_LABEL.UNPAID;
         const pending = bill.totalAmount - bill.paidAmount;
         return (
-          <Link key={bill.id} href={`/bills/detail?id=${bill.id}`}>
+          <Link
+            key={bill.id}
+            href={`/bills/detail?id=${bill.id}`}
+            onPointerDown={() => prefetchBill(bill.id)}
+            onMouseEnter={() => prefetchBill(bill.id)}
+          >
             <Card className="card-hover animate-fade-in-up">
               <CardContent className="flex flex-col gap-2">
                 <div className="flex items-start justify-between gap-2">

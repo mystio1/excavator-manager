@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
@@ -30,12 +31,20 @@ export default function BillsPage() {
   const filterParam = searchParams.get("filter");
   const activeFilter = FILTERS.find((f) => f.id === filterParam) ?? FILTERS[0];
 
-  const query = new URLSearchParams();
-  if (customerId) query.set("customerId", customerId);
-  if (activeFilter.id !== "all") query.set("filter", activeFilter.id);
-  const apiPath = `/api/bills${query.toString() ? `?${query.toString()}` : ""}`;
-
+  // The filter tabs (All / By App / Self Made) split the exact same rows by
+  // `isDirect` — every bill returned here already carries that field — so
+  // fetching once and filtering client-side makes switching tabs instant
+  // instead of a fresh network round-trip per tab (that used to key the
+  // SWR cache by filter too, so every tab not yet visited re-fetched).
+  const apiPath = `/api/bills${customerId ? `?customerId=${customerId}` : ""}`;
   const { data } = useSWR<BillsData>(apiPath, swrFetcher, { dedupingInterval: 15_000 });
+
+  const bills = useMemo(() => {
+    if (!data) return undefined;
+    if (activeFilter.id === "all") return data.bills;
+    const wantDirect = activeFilter.id === "self";
+    return data.bills.filter((bill) => bill.isDirect === wantDirect);
+  }, [data, activeFilter.id]);
 
   const filterHref = (filterId: string) => {
     const params = new URLSearchParams();
@@ -45,8 +54,8 @@ export default function BillsPage() {
     return `/bills${qs ? `?${qs}` : ""}`;
   };
 
-  if (!data) return <Loading />;
-  const { bills, counts } = data;
+  if (!data || !bills) return <Loading />;
+  const { counts } = data;
 
   return (
     <div>
