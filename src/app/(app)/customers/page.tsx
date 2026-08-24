@@ -1,7 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import useSWR from "swr";
 import { ArrowRight, Banknote, Plus, Search, UserX, Users } from "lucide-react";
-import { requireBusiness } from "@/lib/session";
-import { listCustomers } from "@/lib/services/customers";
+import type { listCustomers } from "@/lib/services/customers";
+import { swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,15 +15,24 @@ import { EmptyState } from "@/components/empty-state";
 import { formatCurrency } from "@/lib/utils/currency";
 import { WhatsAppButton } from "./whatsapp-button";
 import { ArchiveCustomerButton } from "./archive-customer-button";
+import Loading from "../loading";
 
-export default async function CustomersPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string; tripDate?: string }>;
-}) {
-  const { businessId } = await requireBusiness();
-  const { q, tripDate } = await searchParams;
-  const customers = await listCustomers(businessId, q, tripDate);
+type CustomersData = { customers: Awaited<ReturnType<typeof listCustomers>> };
+
+export default function CustomersPage() {
+  const searchParams = useSearchParams();
+  const q = searchParams.get("q") ?? undefined;
+  const tripDate = searchParams.get("tripDate") ?? undefined;
+
+  const query = new URLSearchParams();
+  if (q) query.set("q", q);
+  if (tripDate) query.set("tripDate", tripDate);
+  const apiPath = `/api/customers${query.toString() ? `?${query.toString()}` : ""}`;
+
+  const { data } = useSWR<CustomersData>(apiPath, swrFetcher, { dedupingInterval: 15_000 });
+
+  if (!data) return <Loading />;
+  const { customers } = data;
 
   const withPendingDues = customers.filter((c) => c.pending > 0.01).length;
   const totalRevenue = Math.round(customers.reduce((sum, c) => sum + c.totalRevenue, 0) * 100) / 100;
