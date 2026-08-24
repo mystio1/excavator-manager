@@ -1,15 +1,32 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { updateOperatorLanguageAction } from "./actions";
+import { useState } from "react";
+import { useSWRConfig } from "swr";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OPERATOR_LANGUAGES, type OperatorLang } from "@/lib/i18n/operator";
 import { cn } from "@/lib/utils";
 
 export function OperatorLanguageForm({ operatorLanguage }: { operatorLanguage: string }) {
-  const [state, formAction, isPending] = useActionState(updateOperatorLanguageAction, undefined);
+  const { mutate } = useSWRConfig();
   const [lang, setLang] = useState<OperatorLang>((operatorLanguage as OperatorLang) || "en");
+  const [success, setSuccess] = useState(false);
+  const { error, pending, run } = useApiForm(async (operatorLang: OperatorLang) => {
+    await apiFetch("/api/settings/operator-language", {
+      method: "PATCH",
+      body: JSON.stringify({ operatorLanguage: operatorLang }),
+    });
+    await mutate("/api/settings");
+    setSuccess(true);
+  });
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSuccess(false);
+    await run(lang);
+  }
 
   return (
     <Card>
@@ -21,7 +38,7 @@ export function OperatorLanguageForm({ operatorLanguage }: { operatorLanguage: s
           Controls the language operators see once logged into their portal — job dialogs, readings, everything.
           Takes effect immediately for everyone.
         </p>
-        <form action={formAction} className="flex flex-col gap-4">
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="grid grid-cols-3 gap-2 rounded-lg bg-muted p-1">
             {OPERATOR_LANGUAGES.map((l) => (
               <button
@@ -37,11 +54,10 @@ export function OperatorLanguageForm({ operatorLanguage }: { operatorLanguage: s
               </button>
             ))}
           </div>
-          <input type="hidden" name="operatorLanguage" value={lang} />
-          {state?.error && <p className="text-sm font-medium text-destructive">{state.error}</p>}
-          {state?.success && <p className="text-sm font-medium text-working">Saved.</p>}
-          <Button type="submit" size="lg" className="h-11 self-start" disabled={isPending}>
-            {isPending ? "Saving..." : "Save Language"}
+          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {success && !error && <p className="text-sm font-medium text-working">Saved.</p>}
+          <Button type="submit" size="lg" className="h-11 self-start" disabled={pending}>
+            {pending ? "Saving..." : "Save Language"}
           </Button>
         </form>
       </CardContent>

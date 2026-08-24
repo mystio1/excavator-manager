@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { useSWRConfig } from "swr";
 import { Plus, Trash2 } from "lucide-react";
-import { addBankAccountAction, archiveBankAccountAction } from "./actions";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,17 +23,56 @@ type BankAccount = {
   isDefaultForNonGst: boolean;
 };
 
-export function BankAccountsSection({ accounts }: { accounts: BankAccount[] }) {
-  const [showForm, setShowForm] = useState(accounts.length === 0);
-  const [state, formAction, isPending] = useActionState(addBankAccountAction, undefined);
-  const wasPending = useRef(false);
+function RemoveAccountButton({ id }: { id: string }) {
+  const { mutate } = useSWRConfig();
+  const [pending, setPending] = useState(false);
 
-  useEffect(() => {
-    if (wasPending.current && !isPending && !state?.error) {
-      setShowForm(false);
+  async function handleRemove() {
+    setPending(true);
+    try {
+      await apiFetch(`/api/settings/bank-accounts/${id}`, { method: "DELETE" });
+      await mutate("/api/settings");
+    } finally {
+      setPending(false);
     }
-    wasPending.current = isPending;
-  }, [isPending, state]);
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={handleRemove}
+      className="p-2 text-muted-foreground hover:text-destructive disabled:opacity-60"
+      aria-label="Remove"
+    >
+      <Trash2 className="size-4" />
+    </button>
+  );
+}
+
+export function BankAccountsSection({ accounts }: { accounts: BankAccount[] }) {
+  const { mutate } = useSWRConfig();
+  const [showForm, setShowForm] = useState(accounts.length === 0);
+  const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
+    await apiFetch("/api/settings/bank-accounts", { method: "POST", body: JSON.stringify(body) });
+    await mutate("/api/settings");
+  });
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const ok = await run({
+      label: fd.get("label"),
+      accountHolderName: fd.get("accountHolderName"),
+      accountNumber: fd.get("accountNumber"),
+      ifsc: fd.get("ifsc"),
+      bankName: fd.get("bankName"),
+      branch: fd.get("branch"),
+      isDefaultForGst: fd.get("isDefaultForGst") === "on",
+      isDefaultForNonGst: fd.get("isDefaultForNonGst") === "on",
+    });
+    if (ok) setShowForm(false);
+  }
 
   return (
     <Card>
@@ -64,17 +105,12 @@ export function BankAccountsSection({ accounts }: { accounts: BankAccount[] }) {
                 {acc.isDefaultForNonGst && <Badge variant="secondary">Default for Non-GST</Badge>}
               </div>
             </div>
-            <form action={archiveBankAccountAction}>
-              <input type="hidden" name="id" value={acc.id} />
-              <button type="submit" className="p-2 text-muted-foreground hover:text-destructive" aria-label="Remove">
-                <Trash2 className="size-4" />
-              </button>
-            </form>
+            <RemoveAccountButton id={acc.id} />
           </div>
         ))}
 
         {showForm && (
-          <form action={formAction} className="flex flex-col gap-3 rounded-lg border border-dashed p-3">
+          <form onSubmit={onSubmit} className="flex flex-col gap-3 rounded-lg border border-dashed p-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="label" className="text-sm">
@@ -123,10 +159,10 @@ export function BankAccountsSection({ accounts }: { accounts: BankAccount[] }) {
                 Default for Non-GST bills
               </label>
             </div>
-            {state?.error && <p className="text-sm font-medium text-destructive">{state.error}</p>}
+            {error && <p className="text-sm font-medium text-destructive">{error}</p>}
             <div className="flex gap-2">
-              <Button type="submit" disabled={isPending}>
-                {isPending ? "Saving..." : "Save Account"}
+              <Button type="submit" disabled={pending}>
+                {pending ? "Saving..." : "Save Account"}
               </Button>
               {accounts.length > 0 && (
                 <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>

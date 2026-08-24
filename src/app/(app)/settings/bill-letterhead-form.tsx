@@ -1,7 +1,9 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { updateBillLetterheadAction } from "./actions";
+import { useState } from "react";
+import { useSWRConfig } from "swr";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,8 +24,27 @@ export function BillLetterheadForm({
     billAccentColor: string;
   };
 }) {
-  const [state, formAction, isPending] = useActionState(updateBillLetterheadAction, undefined);
+  const { mutate } = useSWRConfig();
   const [accent, setAccent] = useState(business.billAccentColor);
+  const [success, setSuccess] = useState(false);
+  const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
+    await apiFetch("/api/settings/letterhead", { method: "PATCH", body: JSON.stringify(body) });
+    await mutate("/api/settings");
+    setSuccess(true);
+  });
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSuccess(false);
+    const fd = new FormData(e.currentTarget);
+    await run({
+      logoLeftUrl: fd.get("logoLeftUrl") ?? "",
+      logoRightUrl: fd.get("logoRightUrl") ?? "",
+      signatureUrl: fd.get("signatureUrl") ?? "",
+      billTagline: fd.get("billTagline") || undefined,
+      billAccentColor: accent,
+    });
+  }
 
   return (
     <Card>
@@ -31,7 +52,7 @@ export function BillLetterheadForm({
         <CardTitle className="text-base">Bill Letterhead</CardTitle>
       </CardHeader>
       <CardContent>
-        <form action={formAction} className="flex flex-col gap-5">
+        <form onSubmit={onSubmit} className="flex flex-col gap-5">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
             <ImageUploadField name="logoLeftUrl" label="Logo (Left)" defaultValue={business.logoLeftUrl} />
             <ImageUploadField name="logoRightUrl" label="Logo (Right)" defaultValue={business.logoRightUrl} />
@@ -75,13 +96,12 @@ export function BillLetterheadForm({
                 className="h-9 w-10 cursor-pointer rounded-lg border border-border"
               />
             </div>
-            <input type="hidden" name="billAccentColor" value={accent} />
           </div>
 
-          {state?.error && <p className="text-sm font-medium text-destructive">{state.error}</p>}
-          {state?.success && <p className="text-sm font-medium text-working">Saved.</p>}
-          <Button type="submit" size="lg" className="h-11 self-start" disabled={isPending}>
-            {isPending ? "Saving..." : "Save Letterhead"}
+          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {success && !error && <p className="text-sm font-medium text-working">Saved.</p>}
+          <Button type="submit" size="lg" className="h-11 self-start" disabled={pending}>
+            {pending ? "Saving..." : "Save Letterhead"}
           </Button>
         </form>
       </CardContent>

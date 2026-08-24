@@ -1,7 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
-import { updateBusinessProfileAction } from "./actions";
+import { useState } from "react";
+import { useSWRConfig } from "swr";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +22,28 @@ export function BusinessProfileForm({
     maintenanceAlertThresholdHrs: number;
   };
 }) {
-  const [state, formAction, isPending] = useActionState(updateBusinessProfileAction, undefined);
+  const { mutate } = useSWRConfig();
+  const [success, setSuccess] = useState(false);
+  const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
+    await apiFetch("/api/settings/profile", { method: "PATCH", body: JSON.stringify(body) });
+    await mutate("/api/settings");
+    setSuccess(true);
+  });
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSuccess(false);
+    const fd = new FormData(e.currentTarget);
+    await run({
+      name: fd.get("name"),
+      ownerName: fd.get("ownerName"),
+      phone: fd.get("phone"),
+      address: fd.get("address"),
+      gstNumber: fd.get("gstNumber"),
+      defaultServiceIntervalHrs: Number(fd.get("defaultServiceIntervalHrs")),
+      maintenanceAlertThresholdHrs: Number(fd.get("maintenanceAlertThresholdHrs")),
+    });
+  }
 
   return (
     <Card>
@@ -28,7 +51,7 @@ export function BusinessProfileForm({
         <CardTitle className="text-base">Business Profile</CardTitle>
       </CardHeader>
       <CardContent>
-        <form action={formAction} className="flex flex-col gap-4">
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="name" className="text-base">
@@ -93,10 +116,10 @@ export function BusinessProfileForm({
               />
             </div>
           </div>
-          {state?.error && <p className="text-sm font-medium text-destructive">{state.error}</p>}
-          {state?.success && <p className="text-sm font-medium text-working">Saved.</p>}
-          <Button type="submit" size="lg" className="h-11 self-start" disabled={isPending}>
-            {isPending ? "Saving..." : "Save Business Profile"}
+          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {success && !error && <p className="text-sm font-medium text-working">Saved.</p>}
+          <Button type="submit" size="lg" className="h-11 self-start" disabled={pending}>
+            {pending ? "Saving..." : "Save Business Profile"}
           </Button>
         </form>
       </CardContent>

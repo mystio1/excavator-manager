@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { useSWRConfig } from "swr";
 import { Check, Copy, RefreshCw } from "lucide-react";
-import { regenerateBusinessCodeAction } from "./actions";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,17 +19,16 @@ import {
 } from "@/components/ui/dialog";
 
 export function BusinessCodeCard({ code }: { code: string }) {
+  const { mutate } = useSWRConfig();
   const [copied, setCopied] = useState(false);
-  const [state, formAction, isPending] = useActionState(regenerateBusinessCodeAction, undefined);
   const [open, setOpen] = useState(false);
-  const wasPending = useRef(false);
-
-  useEffect(() => {
-    if (wasPending.current && !isPending && !state?.error) {
-      setOpen(false);
-    }
-    wasPending.current = isPending;
-  }, [isPending, state]);
+  const { error, pending, run } = useApiForm(async (customCode: string | undefined) => {
+    await apiFetch("/api/settings/business-code/regenerate", {
+      method: "POST",
+      body: JSON.stringify({ customCode }),
+    });
+    await mutate("/api/settings");
+  });
 
   async function handleCopy() {
     try {
@@ -38,6 +39,13 @@ export function BusinessCodeCard({ code }: { code: string }) {
       // Clipboard access can fail (permissions, non-secure context) — the
       // code is still visible on screen to copy by hand.
     }
+  }
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const customCode = (new FormData(e.currentTarget).get("customCode") as string) || undefined;
+    const ok = await run(customCode);
+    if (ok) setOpen(false);
   }
 
   return (
@@ -71,7 +79,7 @@ export function BusinessCodeCard({ code }: { code: string }) {
             <p className="text-sm text-muted-foreground">
               The current code stops working immediately. Anyone mid-signup with the old code will need the new one.
             </p>
-            <form action={formAction} className="flex flex-col gap-3">
+            <form onSubmit={onSubmit} className="flex flex-col gap-3">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="customCode" className="text-sm">
                   New Code (Optional)
@@ -84,10 +92,10 @@ export function BusinessCodeCard({ code }: { code: string }) {
                   className="h-11 uppercase"
                 />
               </div>
-              {state?.error && <p className="text-sm font-medium text-destructive">{state.error}</p>}
+              {error && <p className="text-sm font-medium text-destructive">{error}</p>}
               <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-                <Button type="submit" variant="destructive" size="lg" className="h-11 w-full" disabled={isPending}>
-                  {isPending ? "Regenerating..." : "Yes, Regenerate"}
+                <Button type="submit" variant="destructive" size="lg" className="h-11 w-full" disabled={pending}>
+                  {pending ? "Regenerating..." : "Yes, Regenerate"}
                 </Button>
               </DialogFooter>
             </form>

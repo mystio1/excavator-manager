@@ -1,19 +1,27 @@
-import { requireBusiness } from "@/lib/session";
-import { listSiteAnalysisReadings } from "@/lib/services/operatorWorkRequests";
-import { listSiteOptions } from "@/lib/services/sites";
-import { listCustomerOptions } from "@/lib/services/customers";
+"use client";
+
+import useSWR from "swr";
+import { MapPin } from "lucide-react";
+import type { listSiteAnalysisReadings } from "@/lib/services/operatorWorkRequests";
+import type { listSiteOptions } from "@/lib/services/sites";
+import type { listCustomerOptions } from "@/lib/services/customers";
+import { swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
-import { MapPin } from "lucide-react";
 import { SiteAnalysisExplorer } from "./site-analysis-explorer";
+import Loading from "../loading";
 
-export default async function SiteAnalysisPage() {
-  const { businessId } = await requireBusiness();
-  const [readings, siteOptions, customerOptions] = await Promise.all([
-    listSiteAnalysisReadings(businessId),
-    listSiteOptions(businessId),
-    listCustomerOptions(businessId),
-  ]);
+type SiteAnalysisData = {
+  readings: Awaited<ReturnType<typeof listSiteAnalysisReadings>>;
+  siteOptions: Awaited<ReturnType<typeof listSiteOptions>>;
+  customerOptions: Awaited<ReturnType<typeof listCustomerOptions>>;
+};
+
+export default function SiteAnalysisPage() {
+  const { data } = useSWR<SiteAnalysisData>("/api/site-analysis", swrFetcher, { dedupingInterval: 15_000 });
+
+  if (!data) return <Loading />;
+  const { readings, siteOptions, customerOptions } = data;
 
   return (
     <div>
