@@ -17,7 +17,7 @@ export function TopCustomers({ customers }: { customers: CustomerRow[] }) {
       {customers.map((c, i) => (
         <Link
           key={c.customerId}
-          href={`/customers/${c.customerId}`}
+          href={`/customers/detail?id=${c.customerId}`}
           className="card-hover flex items-center justify-between gap-2 rounded-xl border border-transparent p-3 hover:border-border hover:bg-accent/40"
         >
           <div className="flex min-w-0 items-center gap-3">

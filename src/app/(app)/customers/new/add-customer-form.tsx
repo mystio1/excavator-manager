@@ -1,19 +1,42 @@
 "use client";
 
-import { useActionState } from "react";
-import { addCustomerAction } from "../actions";
+import { useRouter } from "next/navigation";
+import { useSWRConfig } from "swr";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 
 export function AddCustomerForm() {
-  const [state, formAction, isPending] = useActionState(addCustomerAction, undefined);
+  const router = useRouter();
+  const { mutate } = useSWRConfig();
+  const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
+    const { customer } = await apiFetch<{ customer: { id: string } }>("/api/customers", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    await mutate((key) => typeof key === "string" && key.startsWith("/api/customers"));
+    router.push(`/customers/detail?id=${customer.id}`);
+  });
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    await run({
+      name: fd.get("name"),
+      mobile: fd.get("mobile"),
+      companyName: fd.get("companyName"),
+      address: fd.get("address"),
+      gstNumber: fd.get("gstNumber"),
+    });
+  }
 
   return (
     <Card>
       <CardContent>
-        <form action={formAction} className="flex flex-col gap-4">
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="name" className="text-base">
               Customer Name
@@ -44,9 +67,9 @@ export function AddCustomerForm() {
             </Label>
             <Input id="gstNumber" name="gstNumber" className="h-12 text-base" />
           </div>
-          {state?.error && <p className="text-sm font-medium text-destructive">{state.error}</p>}
-          <Button type="submit" size="lg" className="h-12 text-base" disabled={isPending}>
-            {isPending ? "Saving..." : "Save Customer"}
+          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          <Button type="submit" size="lg" className="h-12 text-base" disabled={pending}>
+            {pending ? "Saving..." : "Save Customer"}
           </Button>
         </form>
       </CardContent>

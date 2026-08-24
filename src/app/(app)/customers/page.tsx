@@ -87,7 +87,7 @@ export default function CustomersPage() {
           <div className="flex flex-col gap-3">
             <p className="text-sm font-semibold text-muted-foreground">All Customers ({customers.length})</p>
             {customers.map((customer) => (
-              <Link key={customer.id} href={`/customers/${customer.id}`}>
+              <Link key={customer.id} href={`/customers/detail?id=${customer.id}`}>
                 <Card className="card-hover animate-fade-in-up">
                   <CardContent className="flex items-center justify-between gap-3">
                     <div className="min-w-0">

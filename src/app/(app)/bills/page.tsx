@@ -52,7 +52,7 @@ export default function BillsPage() {
     <div>
       <PageHeader
         title="Saved Bills"
-        backHref={customerId ? `/customers/${customerId}` : undefined}
+        backHref={customerId ? `/customers/detail?id=${customerId}` : undefined}
         action={
           <div className="flex shrink-0 gap-2">
             <Button

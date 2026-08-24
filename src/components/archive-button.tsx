@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,16 +13,27 @@ import {
 } from "@/components/ui/dialog";
 
 export function ArchiveButton({
-  action,
-  id,
+  onArchive,
   itemName,
 }: {
-  action: (formData: FormData) => void | Promise<void>;
-  id: string;
+  onArchive: () => Promise<void>;
   itemName: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  async function handleArchive() {
+    setPending(true);
+    try {
+      await onArchive();
+      setOpen(false);
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={<Button type="button" variant="destructive" size="lg" className="h-11" />}
       >
@@ -36,12 +48,9 @@ export function ArchiveButton({
           This removes it from your active lists. All history stays safe and can be restored later if needed.
         </p>
         <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-          <form action={action} className="w-full">
-            <input type="hidden" name="id" value={id} />
-            <Button type="submit" variant="destructive" size="lg" className="h-11 w-full">
-              Yes, Archive
-            </Button>
-          </form>
+          <Button type="button" variant="destructive" size="lg" className="h-11 w-full" disabled={pending} onClick={handleArchive}>
+            {pending ? "Archiving..." : "Yes, Archive"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

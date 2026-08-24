@@ -43,7 +43,7 @@ export function OperatorPerformance({ operators }: { operators: OperatorRow[] })
           .join("")
           .toUpperCase();
         return (
-          <Link key={op.id} href={`/operators/${op.id}`}>
+          <Link key={op.id} href={`/operators/detail?id=${op.id}`}>
             <Card className="card-hover">
               <CardContent className="flex items-center gap-3 py-3">
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">

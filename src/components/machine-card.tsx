@@ -19,7 +19,7 @@ type Excavator = {
 
 export function MachineCard({ excavator: ex }: { excavator: Excavator }) {
   return (
-    <Link href={`/excavators/${ex.id}`}>
+    <Link href={`/excavators/detail?id=${ex.id}`}>
       <Card className="card-hover animate-fade-in-up h-full overflow-hidden py-0">
         <div className="flex items-center justify-between gap-2 bg-primary/8 px-4 py-3">
           <div className="flex items-center gap-2.5 min-w-0">

@@ -84,7 +84,7 @@ async function getComponentMaintenanceAlerts(businessId: string) {
           dueInHours < 0
             ? `${item.name} on ${label} is overdue for service/inspection by ${Math.abs(dueInHours)} hrs`
             : `${item.name} on ${label} needs service/inspection soon — due in ${dueInHours} hrs`,
-        href: `/excavators/${excavator.id}?tab=service`,
+        href: `/excavators/detail?id=${excavator.id}&tab=service`,
         dueInHours,
       });
     }
@@ -156,7 +156,7 @@ async function getAlertsUncached(businessId: string) {
     alerts.push({
       level: "warning",
       message: `${machineLabel(req.excavator.name, req.excavator.machineNumber)} started by ${req.operator.name} at ${req.startHourMeter} hrs`,
-      href: `/excavators/${req.excavatorId}`,
+      href: `/excavators/detail?id=${req.excavatorId}`,
     });
   }
   for (const excavator of excavators) {
@@ -170,7 +170,7 @@ async function getAlertsUncached(businessId: string) {
       lastServiceNextDueHour: lastService?.nextServiceDueHour,
       dueSoonThresholdHrs: business.maintenanceAlertThresholdHrs,
     });
-    const href = `/excavators/${excavator.id}`;
+    const href = `/excavators/detail?id=${excavator.id}`;
     if (serviceStatus.overdue) {
       alerts.push({
         level: "danger",
@@ -454,11 +454,11 @@ async function getDashboardSummaryUncached(businessId: string) {
     alerts.push({
       level: "warning",
       message: `${machineLabel(req.excavator.name, req.excavator.machineNumber)} started by ${req.operator.name} at ${req.startHourMeter} hrs`,
-      href: `/excavators/${req.excavatorId}`,
+      href: `/excavators/detail?id=${req.excavatorId}`,
     });
   }
   for (const { excavator, serviceStatus } of excavatorsWithStatus) {
-    const href = `/excavators/${excavator.id}`;
+    const href = `/excavators/detail?id=${excavator.id}`;
     if (serviceStatus.overdue) {
       alerts.push({
         level: "danger",

@@ -1,24 +1,68 @@
-import { requireBusiness } from "@/lib/session";
-import { listPendingLogs } from "@/lib/services/workSessions";
-import { listPendingWorkRequests } from "@/lib/services/operatorWorkRequests";
-import { listCustomerOptions } from "@/lib/services/customers";
-import { approveDailyLogAction, rejectDailyLogAction } from "../../excavators/actions";
-import { ApproveWorkRequestDialog } from "../../excavators/[id]/approve-work-request-dialog";
-import { RejectWorkRequestDialog } from "../../excavators/[id]/reject-work-request-dialog";
+"use client";
+
+import { useState } from "react";
+import useSWR, { useSWRConfig } from "swr";
+import { CheckCircle2 } from "lucide-react";
+import type { listPendingLogs } from "@/lib/services/workSessions";
+import type { listPendingWorkRequests } from "@/lib/services/operatorWorkRequests";
+import type { listCustomerOptions } from "@/lib/services/customers";
+import { apiFetch, swrFetcher } from "@/lib/api-client";
+import { ApproveWorkRequestDialog } from "../../excavators/detail/approve-work-request-dialog";
+import { RejectWorkRequestDialog } from "../../excavators/detail/reject-work-request-dialog";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/empty-state";
-import { CheckCircle2 } from "lucide-react";
 import { formatDate, formatDateTime } from "@/lib/utils/dates";
 import { formatHours } from "@/lib/utils/hours";
+import Loading from "../../loading";
 
-export default async function PendingApprovalsPage() {
-  const { businessId } = await requireBusiness();
-  const [logs, workRequests, customers] = await Promise.all([
-    listPendingLogs(businessId),
-    listPendingWorkRequests(businessId),
-    listCustomerOptions(businessId),
-  ]);
+type ApprovalsData = {
+  logs: Awaited<ReturnType<typeof listPendingLogs>>;
+  workRequests: Awaited<ReturnType<typeof listPendingWorkRequests>>;
+  customers: Awaited<ReturnType<typeof listCustomerOptions>>;
+};
+
+function LogApproveReject({ logId }: { logId: string }) {
+  const { mutate } = useSWRConfig();
+  const [pending, setPending] = useState<"approve" | "reject" | null>(null);
+
+  async function respond(action: "approve" | "reject") {
+    setPending(action);
+    try {
+      await apiFetch(`/api/daily-logs/${logId}/${action}`, { method: "POST" });
+      await mutate("/api/approvals");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  return (
+    <div className="flex gap-2 pt-1">
+      <button
+        type="button"
+        disabled={pending !== null}
+        onClick={() => respond("approve")}
+        className="flex-1 rounded-lg bg-working py-2.5 text-sm font-semibold text-working-foreground disabled:opacity-60"
+      >
+        {pending === "approve" ? "Approving…" : "Approve"}
+      </button>
+      <button
+        type="button"
+        disabled={pending !== null}
+        onClick={() => respond("reject")}
+        className="flex-1 rounded-lg bg-destructive/10 py-2.5 text-sm font-semibold text-destructive disabled:opacity-60"
+      >
+        {pending === "reject" ? "Rejecting…" : "Reject"}
+      </button>
+    </div>
+  );
+}
+
+export default function PendingApprovalsPage() {
+  const { data } = useSWR<ApprovalsData>("/api/approvals", swrFetcher, { dedupingInterval: 15_000 });
+
+  if (!data) return <Loading />;
+  const { logs, workRequests, customers } = data;
 
   return (
     <div>
@@ -128,28 +172,7 @@ export default async function PendingApprovalsPage() {
                 <p className="text-muted-foreground">Hours</p>
                 <p className="text-right font-semibold">{formatHours(log.hoursWorked)}</p>
               </div>
-              <div className="flex gap-2 pt-1">
-                <form action={approveDailyLogAction} className="flex-1">
-                  <input type="hidden" name="logId" value={log.id} />
-                  <input type="hidden" name="redirectTo" value="/operators/approvals" />
-                  <button
-                    type="submit"
-                    className="w-full rounded-lg bg-working py-2.5 text-sm font-semibold text-working-foreground"
-                  >
-                    Approve
-                  </button>
-                </form>
-                <form action={rejectDailyLogAction} className="flex-1">
-                  <input type="hidden" name="logId" value={log.id} />
-                  <input type="hidden" name="redirectTo" value="/operators/approvals" />
-                  <button
-                    type="submit"
-                    className="w-full rounded-lg bg-destructive/10 py-2.5 text-sm font-semibold text-destructive"
-                  >
-                    Reject
-                  </button>
-                </form>
-              </div>
+              <LogApproveReject logId={log.id} />
             </CardContent>
           </Card>
         ))}

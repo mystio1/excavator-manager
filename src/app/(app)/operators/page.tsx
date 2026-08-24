@@ -114,7 +114,7 @@ export default function OperatorsPage() {
           operators.map((op) => (
             <Card key={op.id} className="card-hover animate-fade-in-up">
               <CardContent className="flex items-center justify-between gap-2">
-                <Link href={`/operators/${op.id}`} className="min-w-0 flex-1">
+                <Link href={`/operators/detail?id=${op.id}`} className="min-w-0 flex-1">
                   <p className="truncate text-lg font-bold">{op.name}</p>
                   <p className="text-sm text-muted-foreground">{op.mobile}</p>
                   <p className="text-sm text-muted-foreground">
