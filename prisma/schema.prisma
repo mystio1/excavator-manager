@@ -1,0 +1,639 @@
+// Excavator Owner Management Software — data model
+// SQLite has no native enum support, so status/type fields are documented
+// strings (validated at the zod layer in src/lib/validation) rather than
+// Prisma enums.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy
+// ---------------------------------------------------------------------------
+
+model Business {
+  id                           String  @id @default(cuid())
+  name                         String
+  ownerName                    String
+  phone                        String
+  address                      String?
+  gstNumber                    String?
+  // Short, human-shareable code an operator enters at /operator-signup to
+  // scope their activation to this business — see registerBusiness /
+  // regenerateBusinessCode. Never editable directly, only regenerated.
+  code                         String  @unique
+  defaultServiceIntervalHrs    Float   @default(350)
+  maintenanceAlertThresholdHrs Float   @default(50)
+  // "en" | "hi" | "mr" — controls the display language of the whole
+  // operator portal (login/signup through every dialog), set here by the
+  // Admin. The pre-login screens can't know which business a visitor
+  // belongs to yet, so they stay in English; this takes effect from the
+  // operator's own home page onward.
+  operatorLanguage             String  @default("en")
+
+  // Bill letterhead — configured once in Settings, snapshotted onto each
+  // Bill at generation time so historical bills never change retroactively.
+  logoLeftUrl     String? // data: URI, small enough to keep inline
+  logoRightUrl    String?
+  signatureUrl    String?
+  billTagline     String? // e.g. "Excavation & Earthwork Services"
+  billAccentColor String  @default("#0B2B5E")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users                 User[]
+  excavators            Excavator[]
+  sites                 Site[]
+  customers             Customer[]
+  operators             Operator[]
+  serviceItems          ServiceItem[]
+  excavatorExpenses     ExcavatorExpense[]
+  bankAccounts          BankAccount[]
+  bills                 Bill[]
+  billNumberSequences   BillNumberSequence[]
+  payments              Payment[]
+  transactionCategories TransactionCategory[]
+  operatorWorkRequests  OperatorWorkRequest[]
+}
+
+// Multiple bank accounts a business may bill against — the owner picks one
+// per bill (e.g. a different account for GST vs Non-GST invoicing).
+model BankAccount {
+  id                 String   @id @default(cuid())
+  businessId         String
+  label              String
+  accountHolderName  String
+  accountNumber      String
+  ifsc               String
+  bankName           String
+  branch             String?
+  isDefaultForGst    Boolean  @default(false)
+  isDefaultForNonGst Boolean  @default(false)
+  isArchived         Boolean  @default(false)
+  createdAt          DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bills    Bill[]
+
+  @@index([businessId])
+}
+
+// role is a plain string ("OWNER" for now); kept as a field rather than an
+// enum so more roles (staff/accountant) can be added later without a migration.
+model User {
+  id               String    @id @default(cuid())
+  businessId       String
+  name             String
+  email            String    @unique
+  phone            String?
+  passwordHash     String
+  role             String    @default("OWNER")
+  // Forgot-password flow: a hash of the single-use reset token (never the
+  // raw token itself — same principle as passwordHash) plus its expiry.
+  // Both null once unused/consumed/expired.
+  resetTokenHash   String?
+  resetTokenExpiry DateTime?
+  createdAt        DateTime  @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+}
+
+// ---------------------------------------------------------------------------
+// Core fleet / people
+// ---------------------------------------------------------------------------
+
+// status: "WORKING" | "IDLE" | "SERVICE" — live pointer for fast dashboard
+// reads; WorkSession/ServiceRecord rows remain the source of truth for history.
+//
+// currentOperatorId is the stable, weeks-long operator<->machine pairing —
+// set once from the Machine page, unaffected by daily WorkSession
+// start/stop cycles. WorkSession.operatorId is snapshotted from this value
+// each time a job starts, so job history stays accurate even after the
+// pairing later changes; OperatorAssignment is the append-only history of
+// every pairing this machine has had.
+model Excavator {
+  id                 String    @id @default(cuid())
+  businessId         String
+  name               String
+  machineNumber      String?
+  brand              String?
+  model              String?
+  purchaseDate       DateTime?
+  startingHourMeter  Float     @default(0)
+  currentHourMeter   Float     @default(0)
+  serviceIntervalHrs Float?
+  status             String    @default("IDLE")
+  currentOperatorId  String?
+  // Stable, admin-set default site for this machine — set directly by the
+  // Admin (instant, no approval) or proposed by an Operator starting/editing
+  // a job (only takes effect once that job is approved). Never touched by
+  // daily job start/stop on its own; stays as-is until someone changes it.
+  currentSiteId      String?
+  isArchived         Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  business        Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  currentOperator Operator? @relation(fields: [currentOperatorId], references: [id], onDelete: SetNull)
+  currentSite     Site?     @relation("ExcavatorCurrentSite", fields: [currentSiteId], references: [id], onDelete: SetNull)
+
+  workSessions         WorkSession[]
+  serviceRecords       ServiceRecord[]
+  expenses             ExcavatorExpense[]
+  billItems            BillItem[]
+  directBills          Bill[]
+  operatorAssignments  OperatorAssignment[]
+  operatorWorkRequests OperatorWorkRequest[]
+
+  @@index([businessId])
+  @@index([businessId, status])
+  @@index([currentOperatorId])
+}
+
+// Append-only history of every operator<->machine pairing, independent of
+// WorkSession (a job) — one machine has exactly one OPEN (endDate: null) row
+// at a time, mirrored by Excavator.currentOperatorId for fast reads.
+// status: "ACTIVE" | "ENDED"
+model OperatorAssignment {
+  id          String    @id @default(cuid())
+  businessId  String
+  excavatorId String
+  operatorId  String
+  startDate   DateTime
+  endDate     DateTime?
+  status      String    @default("ACTIVE")
+  createdAt   DateTime  @default(now())
+
+  excavator Excavator @relation(fields: [excavatorId], references: [id], onDelete: Cascade)
+  operator  Operator  @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+
+  @@index([businessId])
+  @@index([excavatorId])
+  @@index([operatorId])
+}
+
+model Site {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  address    String?
+  createdAt  DateTime @default(now())
+
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  workSessions WorkSession[]
+  // Machines currently parked/working at this site — Excavator.currentSiteId,
+  // the stable admin-set default the operator sees (see that field's comment).
+  excavators   Excavator[]   @relation("ExcavatorCurrentSite")
+
+  @@index([businessId])
+}
+
+model Customer {
+  id          String   @id @default(cuid())
+  businessId  String
+  name        String
+  mobile      String
+  companyName String?
+  address     String?
+  gstNumber   String?
+  isArchived  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  workSessions WorkSession[]
+  bills        Bill[]
+
+  @@index([businessId])
+}
+
+model Operator {
+  id                   String    @id @default(cuid())
+  businessId           String
+  name                 String
+  mobile               String
+  address              String?
+  joiningDate          DateTime?
+  defaultMonthlySalary Float     @default(0)
+  isArchived           Boolean   @default(false)
+  // Operator self-login (portal): PIN-based, separate from the owner's
+  // email/password login. canLogin stays false until the Admin explicitly
+  // enables the portal for this operator and sets a PIN.
+  pinHash              String?
+  canLogin             Boolean   @default(false)
+  // Operator's own language choice for the portal (post-login) — overrides
+  // Business.operatorLanguage when set. Null means the operator hasn't
+  // personally picked one yet, so the admin's business-wide default applies.
+  language             String?
+  createdAt            DateTime  @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  workSessions         WorkSession[]
+  transactions         OperatorTransaction[]
+  assignedExcavators   Excavator[]
+  assignments          OperatorAssignment[]
+  operatorWorkRequests OperatorWorkRequest[]
+
+  @@index([businessId])
+  @@index([mobile])
+}
+
+// ---------------------------------------------------------------------------
+// Work tracking
+// ---------------------------------------------------------------------------
+
+// One job for a customer/site, spanning a date range (spec's Work History
+// rows) — status: "ACTIVE" | "COMPLETED". operatorId is snapshotted from
+// Excavator.currentOperatorId at start time (see OperatorAssignment for the
+// operator<->machine pairing itself, which outlives any single job).
+// totalHours is the sum of its DailyWorkLog rows, recomputed on every log
+// add/edit/delete — never hand-entered.
+model WorkSession {
+  id             String    @id @default(cuid())
+  businessId     String
+  excavatorId    String
+  customerId     String
+  siteId         String
+  operatorId     String
+  startDate      DateTime
+  endDate        DateTime?
+  startHourMeter Float
+  endHourMeter   Float?
+  totalHours     Float     @default(0)
+  attachment     String? // bucket/breaker/etc. reported in use — carried over from an OperatorWorkRequest on approval
+  dieselLiters   Float? // reported diesel refill, if any, during this job — see getSiteAnalysis
+  dieselDate     DateTime?
+  status         String    @default("ACTIVE")
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  excavator Excavator @relation(fields: [excavatorId], references: [id], onDelete: Restrict)
+  customer  Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site      Site      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  operator  Operator  @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+
+  dailyLogs           DailyWorkLog[]
+  billItems           BillItem[]
+  operatorWorkRequest OperatorWorkRequest?
+
+  @@index([businessId])
+  @@index([excavatorId])
+  @@index([customerId])
+  @@index([operatorId])
+  @@index([businessId, status])
+}
+
+// An operator-initiated job, self-started and self-ended from the portal —
+// kept entirely separate from WorkSession (which requires a Customer/Site
+// for billing, neither of which the operator picks) so nothing here ever
+// touches Excavator.currentHourMeter, billing, or maintenance math until an
+// Admin approves it and it becomes a real WorkSession.
+//
+// status: "ACTIVE" (started, no end submitted — informational only, nothing
+// to approve yet) -> "PENDING" (operator submitted an end reading, awaiting
+// review) -> "APPROVED" (Admin picked a Customer/Site and it became
+// workSession) | "REJECTED" (Admin sent it back; the operator can edit the
+// end reading and resubmit, flipping it back to PENDING).
+model OperatorWorkRequest {
+  id             String    @id @default(cuid())
+  businessId     String
+  excavatorId    String
+  operatorId     String
+  startDate      DateTime
+  startHourMeter Float
+  endDate        DateTime?
+  endHourMeter   Float?
+  attachment     String? // bucket/breaker/etc. the operator reports using, free text
+  // Proposed site for this job — defaults to Excavator.currentSiteName when
+  // the operator starts (see startOperatorWork), editable by them. Only
+  // updates the machine's actual currentSiteId once this request is
+  // approved; left untouched, the machine's site simply carries on as-is.
+  siteName       String?
+  dieselLiters   Float?
+  dieselDate     DateTime?
+  notes          String?
+  status         String    @default("ACTIVE")
+  rejectionNote  String?
+  workSessionId  String?   @unique
+  createdAt      DateTime  @default(now())
+  reviewedAt     DateTime?
+
+  business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  excavator   Excavator    @relation(fields: [excavatorId], references: [id], onDelete: Cascade)
+  operator    Operator     @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  workSession WorkSession? @relation(fields: [workSessionId], references: [id], onDelete: SetNull)
+
+  @@index([businessId])
+  @@index([excavatorId])
+  @@index([operatorId])
+}
+
+// hoursWorked is always server-computed (never accepted as raw input):
+// either (endHourMeter - startHourMeter) or derived from start/stop time
+// minus break minutes, whichever the owner filled in.
+//
+// source: "ADMIN" | "OPERATOR". status: "APPROVED" | "PENDING" | "REJECTED".
+// Admin-entered logs are auto-approved (unchanged behavior). Operator-portal
+// submissions land PENDING and do not move Excavator.currentHourMeter or
+// WorkSession.totalHours until an Admin approves them — maintenance/billing
+// must only ever see approved readings.
+model DailyWorkLog {
+  id             String    @id @default(cuid())
+  workSessionId  String
+  date           DateTime
+  startTime      String?
+  stopTime       String?
+  breakMinutes   Int?
+  startHourMeter Float?
+  endHourMeter   Float?
+  hoursWorked    Float
+  // Free-text note of who actually operated that day — only ever set on the
+  // ADMIN path (add-daily-log-dialog), always optional since the machine's
+  // assigned operator already covers the common case. Operator-portal
+  // submissions leave this null; the submitter's own identity is already known.
+  operatorName   String?
+  source         String    @default("ADMIN")
+  status         String    @default("APPROVED")
+  reviewedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  workSession WorkSession @relation(fields: [workSessionId], references: [id], onDelete: Cascade)
+
+  @@index([workSessionId])
+  @@index([date])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Operator money transactions & salary
+// ---------------------------------------------------------------------------
+
+// Reusable, per-business category catalog (mirrors ServiceItem) so a custom
+// category typed once ("Mobile Repair") is available in the dropdown after.
+model TransactionCategory {
+  id         String  @id @default(cuid())
+  businessId String
+  name       String
+  isDefault  Boolean @default(false)
+
+  business     Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transactions OperatorTransaction[]
+
+  @@index([businessId])
+}
+
+// Every owner<->operator money movement. Salary is never stored/duplicated —
+// it's computed live per calendar month as:
+//   defaultMonthlySalary + sum(BONUS_INCENTIVE) - sum(deductFromSalary=true) - sum(SALARY_PAYMENT)
+// (see src/lib/services/salary.ts). This row *is* the business financial
+// record (no separate expense row to keep in sync / accidentally double-count).
+// businessEffect: "ADVANCE_RECOVERABLE" | "BUSINESS_EXPENSE" | "SALARY_PAYMENT" | "BONUS_INCENTIVE" | "OTHER"
+model OperatorTransaction {
+  id               String   @id @default(cuid())
+  businessId       String
+  operatorId       String
+  categoryId       String?
+  amount           Float
+  date             DateTime
+  notes            String?
+  deductFromSalary Boolean  @default(true)
+  businessEffect   String   @default("ADVANCE_RECOVERABLE")
+  createdAt        DateTime @default(now())
+
+  operator Operator             @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  category TransactionCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([businessId])
+  @@index([operatorId])
+  @@index([categoryId])
+}
+
+// ---------------------------------------------------------------------------
+// Service & maintenance — component-level history
+// ---------------------------------------------------------------------------
+
+// Catalog of serviceable components (Engine Oil, Hydraulic Pump, Track
+// Chain, ...), grouped by category. isDefault rows are seeded per business
+// from the standard excavator component library; owners can add their own
+// ("+ Add New Component"), which then stays in the dropdown for future
+// services. defaultIntervalHours is left null unless the owner configures
+// one — never a fabricated number — and only components with an interval
+// set contribute to due/overdue status.
+model ServiceItem {
+  id                   String  @id @default(cuid())
+  businessId           String
+  name                 String
+  category             String  @default("Other")
+  defaultIntervalHours Float?
+  isDefault            Boolean @default(false)
+
+  business    Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  recordItems ServiceRecordItem[]
+
+  @@index([businessId])
+}
+
+model ServiceRecord {
+  id                 String   @id @default(cuid())
+  businessId         String
+  excavatorId        String
+  serviceDate        DateTime
+  hourMeterAtService Float
+  serviceType        String?
+  cost               Float    @default(0)
+  notes              String?
+  nextServiceDueHour Float?
+  createdAt          DateTime @default(now())
+
+  excavator Excavator           @relation(fields: [excavatorId], references: [id], onDelete: Restrict)
+  items     ServiceRecordItem[]
+
+  @@index([businessId])
+  @@index([excavatorId])
+}
+
+// Join table capturing what happened to each catalog component in a given
+// service — this per-item history is what powers "what was skipped last
+// time" / smart suggestions / component & replacement history.
+// action: "Inspected" | "Serviced" | "Repaired" | "Replaced" | "Changed" |
+//         "Cleaned" | "Greased" | "Not Done" | "Not Required" | "Other"
+// done stays true unless action is "Not Done"/"Not Required", for quick filtering.
+model ServiceRecordItem {
+  id              String  @id @default(cuid())
+  serviceRecordId String
+  serviceItemId   String
+  action          String  @default("Serviced")
+  done            Boolean @default(true)
+  cost            Float   @default(0)
+  brand           String?
+  notes           String?
+
+  serviceRecord ServiceRecord @relation(fields: [serviceRecordId], references: [id], onDelete: Cascade)
+  serviceItem   ServiceItem   @relation(fields: [serviceItemId], references: [id], onDelete: Restrict)
+
+  @@index([serviceRecordId])
+  @@index([serviceItemId])
+}
+
+// ---------------------------------------------------------------------------
+// Expenses (schema only this session — no UI yet)
+// ---------------------------------------------------------------------------
+
+// type: "DIESEL" | "REPAIR" | "SERVICE" | "PARTS" | "TRANSPORT" | "TYRES" | "OTHER"
+model ExcavatorExpense {
+  id          String   @id @default(cuid())
+  businessId  String
+  excavatorId String
+  date        DateTime
+  type        String
+  amount      Float
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  business  Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  excavator Excavator @relation(fields: [excavatorId], references: [id], onDelete: Restrict)
+
+  @@index([businessId])
+  @@index([excavatorId])
+}
+
+// ---------------------------------------------------------------------------
+// Billing (schema only this session — no UI yet)
+// ---------------------------------------------------------------------------
+
+// type: "GST" | "NON_GST" — one counter per business+type so bill numbers
+// (e.g. NG-0059) generate atomically without the owner tracking them.
+model BillNumberSequence {
+  id         String @id @default(cuid())
+  businessId String
+  type       String
+  prefix     String
+  lastNumber Int    @default(0)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, type])
+}
+
+// billType: "GST" | "NON_GST"; status: "UNPAID" | "PARTIAL" | "PAID"
+// paidAmount is a denormalized cache kept in sync by Payment writes so bill
+// lists don't need to sum payments on every read; Payment rows remain the
+// source of truth.
+model Bill {
+  id                  String    @id @default(cuid())
+  businessId          String
+  billNumber          String
+  billType            String
+  customerId          String
+  bankAccountId       String?
+  billDate            DateTime
+  subtotal            Float
+  transportCharges    Float     @default(0)
+  fuelCharges         Float     @default(0)
+  extraCharges        Float     @default(0)
+  bucketCharge        Float     @default(0)
+  breakerCharge       Float     @default(0)
+  discount            Float     @default(0)
+  gstPercentage       Float?
+  cgst                Float?
+  sgst                Float?
+  igst                Float?
+  buyerGstin          String?
+  totalAmount         Float
+  paidAmount          Float     @default(0)
+  status              String    @default("UNPAID")
+  notes               String?
+  // Owner's choice, made per-bill at generation time, of whether the
+  // customer's phone number is printed on this bill — frozen like the rest
+  // of the letterhead so toggling it later never rewrites past bills.
+  showCustomerPhone   Boolean   @default(true)
+  // Direct bill — a standalone invoice for bucket/breaker attachment hours
+  // hired directly (no logged WorkSessions), entered by hand instead of
+  // picked from work history. isDirect distinguishes it from the normal
+  // WorkSession-based flow, which uses `items` (BillItem[]) instead of the
+  // fields below. excavatorId is the single machine hired; bucket/breaker
+  // hours+rate are billed as their own line items (unlike bucketCharge/
+  // breakerCharge above, which are flat tool-usage surcharges on a normal
+  // hourly bill). dieselAdvance (dieselLiters × dieselPricePerLiter) is
+  // subtracted from the total — diesel the customer supplied counts as an
+  // advance payment, not a charge.
+  isDirect            Boolean   @default(false)
+  excavatorId         String?
+  fromDate            DateTime?
+  toDate              DateTime?
+  bucketHours         Float?
+  bucketRate          Float?
+  breakerHours        Float?
+  breakerRate         Float?
+  dieselLiters        Float?
+  dieselPricePerLiter Float?
+  dieselAdvance       Float?
+  // Frozen copy of business name/address/GST/logos/signature/bank details
+  // and the template/accent used, so a later Settings change never rewrites
+  // a bill that's already been generated.
+  letterhead          Json
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  excavator   Excavator?   @relation(fields: [excavatorId], references: [id], onDelete: SetNull)
+
+  items    BillItem[]
+  payments Payment[]
+
+  @@unique([businessId, billNumber])
+  @@index([businessId])
+  @@index([customerId])
+}
+
+// Links a bill line back to the underlying work so billed hours are never
+// double-counted on a later bill.
+model BillItem {
+  id            String   @id @default(cuid())
+  billId        String
+  excavatorId   String
+  workSessionId String?
+  siteName      String // snapshotted at creation — a later site rename must not alter old bills
+  fromDate      DateTime
+  toDate        DateTime
+  hours         Float
+  ratePerHour   Float
+  amount        Float
+
+  bill        Bill         @relation(fields: [billId], references: [id], onDelete: Cascade)
+  excavator   Excavator    @relation(fields: [excavatorId], references: [id], onDelete: Restrict)
+  workSession WorkSession? @relation(fields: [workSessionId], references: [id], onDelete: SetNull)
+
+  @@index([billId])
+  @@index([excavatorId])
+  @@index([workSessionId])
+}
+
+model Payment {
+  id         String   @id @default(cuid())
+  businessId String
+  billId     String
+  amount     Float
+  date       DateTime
+  method     String?
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bill     Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([billId])
+}

@@ -1,0 +1,282 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-primary-light: var(--primary-light);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-elevated: var(--elevated);
+  --color-working: var(--working);
+  --color-working-foreground: var(--working-foreground);
+  --color-idle: var(--idle);
+  --color-idle-foreground: var(--idle-foreground);
+  --color-service: var(--service);
+  --color-service-foreground: var(--service-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-purple: var(--purple);
+  --color-purple-foreground: var(--purple-foreground);
+  --color-header-border: var(--header-border);
+  --color-golden: var(--golden);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --animate-fade-in-up: fade-in-up 0.35s ease both;
+  --animate-fade-in: fade-in 0.25s ease both;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* =========================================================================
+   Excavator Manager — bold industrial-orange + gold brand identity. Light
+   mode is a rich warm cream/amber atmosphere, dark mode a near-black
+   "control center" — both anchor on the same orange with gold reserved as
+   a secondary, deliberately sparing highlight accent (heading treatment,
+   logo, header strip) rather than a general-purpose color. Status colors
+   stay fixed across modes so their meaning never shifts: emerald =
+   working/paid, amber = idle/waiting, construction orange-red = under
+   service (routine, not urgent), red = overdue/critical.
+   ========================================================================= */
+:root {
+  --working: #10b981;
+  --working-foreground: #ffffff;
+  /* Idle keeps the soft-tint-background + dark-readable-text convention
+     (unlike working/service's solid-fill + white-text) — it's used as a
+     light chip/banner background in many places, not a solid badge. */
+  --idle: rgba(245, 158, 11, 0.14);
+  --idle-foreground: #b45309;
+  --service: #f97316;
+  --service-foreground: #ffffff;
+  --info: #3b82f6;
+  --info-foreground: #ffffff;
+  --purple: #8b5cf6;
+  --purple-foreground: #ffffff;
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+}
+.dark {
+  --idle: rgba(245, 158, 11, 0.16);
+  --idle-foreground: #f59e0b;
+}
+
+:root {
+  /* Tells the browser which palette to use for native widgets it renders
+     itself (select dropdown popups, scrollbars, checkboxes) — without this,
+     a dark-mode select's popup list defaults to a light/white native popup
+     while our dark-mode text color carries over, making options unreadable. */
+  color-scheme: light;
+  --background: #fff7ea;
+  --foreground: #17212b;
+  --card: #ffffff;
+  --card-foreground: #17212b;
+  --elevated: #ffffff;
+  --popover: #ffffff;
+  --popover-foreground: #17212b;
+  --primary: #f4a910;
+  --primary-light: rgba(244, 169, 16, 0.1);
+  --primary-foreground: #1a1207;
+  --golden: #f6b51e;
+  --secondary: #fff0d8;
+  --secondary-foreground: #a16207;
+  --muted: #ffe9c4;
+  --muted-foreground: #687385;
+  --accent: rgba(244, 169, 16, 0.08);
+  --accent-foreground: #a16207;
+  --destructive: #ef4444;
+  --border: rgba(248, 199, 100, 0.2);
+  --input: rgba(248, 199, 100, 0.2);
+  --ring: #f4a910;
+  --radius: 1rem;
+  --sidebar: #fff0d8;
+  --sidebar-foreground: #17212b;
+  --sidebar-primary: #f4a910;
+  --sidebar-primary-foreground: #1a1207;
+  --sidebar-accent: rgba(244, 169, 16, 0.1);
+  --sidebar-accent-foreground: #a16207;
+  --sidebar-border: rgba(248, 199, 100, 0.2);
+  --sidebar-ring: #f4a910;
+  --header-bg: linear-gradient(90deg, #fff6de 0%, #ffe9b0 100%);
+  --header-border: rgba(246, 181, 30, 0.32);
+}
+.dark {
+  color-scheme: dark;
+  --background: #0b1118;
+  --foreground: #f5f7fa;
+  --card: #18212b;
+  --card-foreground: #f5f7fa;
+  --elevated: #202b36;
+  --popover: #202b36;
+  --popover-foreground: #f5f7fa;
+  --primary: #f4a910;
+  --primary-light: rgba(244, 169, 16, 0.18);
+  --primary-foreground: #1a1207;
+  --golden: #f6b51e;
+  --secondary: #202b36;
+  --secondary-foreground: #f4a910;
+  --muted: #202b36;
+  --muted-foreground: #9aa8b8;
+  --accent: rgba(244, 169, 16, 0.16);
+  --accent-foreground: #f4a910;
+  --destructive: #ef4444;
+  --border: #263140;
+  --input: #263140;
+  --ring: #f4a910;
+  --sidebar: #101720;
+  --sidebar-foreground: #f5f7fa;
+  --sidebar-primary: #f4a910;
+  --sidebar-primary-foreground: #1a1207;
+  --sidebar-accent: rgba(244, 169, 16, 0.16);
+  --sidebar-accent-foreground: #f4a910;
+  --sidebar-border: #263140;
+  --sidebar-ring: #f4a910;
+  --header-bg: linear-gradient(90deg, #18120a 0%, #1f170c 100%);
+  --header-border: rgba(246, 181, 30, 0.18);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    /* Slightly larger than the 16px browser default so the whole app reads
+       comfortably at 100% zoom instead of feeling small/sparse — every
+       rem-based Tailwind utility (text, spacing, radius, icon sizes) scales
+       proportionally from this, so nothing needs per-component resizing. */
+    font-size: 17.5px;
+    @apply font-sans;
+  }
+  /* NativeSelect's trigger is intentionally bg-transparent so it blends into
+     whatever card/dialog it sits on — but that leaves the browser with no
+     real color to render the native dropdown *popup* with, so it falls back
+     to its OS default (white), clashing with dark-mode text. <option> isn't
+     affected by the trigger's transparent background, so give it an actual
+     theme-aware surface color directly (more reliably honored by Chromium
+     for the popup than color-scheme alone). */
+  select option {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
+  body,
+  [data-slot="card"],
+  button,
+  input,
+  select,
+  textarea,
+  a {
+    transition:
+      background-color 0.2s ease,
+      border-color 0.2s ease,
+      color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+}
+
+@layer utilities {
+  .shadow-glow-primary {
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 35%, transparent), 0 4px 14px -2px color-mix(in oklab, var(--primary) 45%, transparent);
+  }
+  .card-hover {
+    transition:
+      transform 0.25s ease,
+      box-shadow 0.25s ease,
+      border-color 0.25s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in oklab, var(--primary) 30%, var(--border));
+    box-shadow: 0 18px 36px -16px rgba(15, 23, 42, 0.22);
+  }
+  .dark .card-hover:hover {
+    box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.6);
+  }
+  .app-topbar {
+    background: var(--header-bg);
+  }
+}
+
+@media print {
+  .print-hidden,
+  aside,
+  nav,
+  header {
+    display: none !important;
+  }
+  body,
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .bill-print-area {
+    color: #000 !important;
+  }
+  /* Chromium drops background-color/box-shadow on print/Save-as-PDF unless
+     told to keep them — without this the navy table header, striped rows,
+     and accent bar all render as plain white. */
+  .bill-print-area,
+  .bill-print-area * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
