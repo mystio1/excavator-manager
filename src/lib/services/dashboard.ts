@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { computeServiceStatus } from "@/lib/services/serviceStatus";
-import { computeSalaryForMonth, getTotalSalaryDue } from "@/lib/services/salary";
+import { getSalaryBreakdownForMonth, getTotalSalaryDue } from "@/lib/services/salary";
 import { currentMonthRange } from "@/lib/utils/dates";
 
 const TREND_MONTHS = 6;
@@ -716,24 +716,20 @@ export async function getTopCustomersByRevenue(businessId: string, limit = 5) {
 export async function getProfitOverview(businessId: string) {
   const { start, end } = currentMonthRange();
 
-  const [revenueAgg, serviceRecords, operators] = await Promise.all([
+  const [revenueAgg, serviceRecords, salaryBreakdown] = await Promise.all([
     db.bill.aggregate({ where: { businessId, billDate: { gte: start, lte: end } }, _sum: { totalAmount: true } }),
     db.serviceRecord.findMany({
       where: { businessId, serviceDate: { gte: start, lte: end } },
       select: { cost: true },
     }),
-    db.operator.findMany({ where: { businessId, isArchived: false }, select: { id: true } }),
+    getSalaryBreakdownForMonth(businessId, start.getFullYear(), start.getMonth()),
   ]);
 
   const revenue = Math.round((revenueAgg._sum.totalAmount ?? 0) * 100) / 100;
   const serviceCost = Math.round(serviceRecords.reduce((sum, r) => sum + r.cost, 0) * 100) / 100;
-
-  let salaryCost = 0;
-  for (const op of operators) {
-    const { baseSalary, bonus } = await computeSalaryForMonth(businessId, op.id, start.getFullYear(), start.getMonth());
-    salaryCost += baseSalary + bonus;
-  }
-  salaryCost = Math.round(salaryCost * 100) / 100;
+  const salaryCost = Math.round(
+    salaryBreakdown.reduce((sum, op) => sum + op.baseSalary + op.bonus, 0) * 100,
+  ) / 100;
 
   const expenses = Math.round((serviceCost + salaryCost) * 100) / 100;
   const netProfit = Math.round((revenue - expenses) * 100) / 100;
