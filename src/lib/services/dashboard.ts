@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { computeServiceStatus } from "@/lib/services/serviceStatus";
 import { getSalaryBreakdownForMonth, getTotalSalaryDue } from "@/lib/services/salary";
@@ -100,7 +101,7 @@ async function getComponentMaintenanceAlerts(businessId: string) {
  * aggregates) since every page renders the bell, not just the dashboard.
  * Idle-machine notices are deliberately excluded — those live on the
  * machine's own detail page instead, not in the global feed. */
-export async function getAlerts(businessId: string) {
+async function getAlertsUncached(businessId: string) {
   const [business, excavators, pendingLogsCount, pendingWorkRequestsCount, activeWorkRequests, componentAlerts] =
     await Promise.all([
       db.business.findUniqueOrThrow({
@@ -189,6 +190,18 @@ export async function getAlerts(businessId: string) {
 
   return alerts;
 }
+
+/**
+ * Cached across requests (not just within one, unlike the React cache()
+ * calls elsewhere) — this runs on every single page via (app)/layout.tsx,
+ * so an uncached version means clicking between pages re-runs this whole
+ * batch on every click even though the underlying alerts rarely change
+ * second-to-second. 15s is short enough that a new pending approval or
+ * overdue-service alert shows up within one page load either way, but long
+ * enough that navigating around the app for a bit doesn't re-hit the
+ * database for the same data repeatedly.
+ */
+export const getAlerts = unstable_cache(getAlertsUncached, ["dashboard-alerts"], { revalidate: 15 });
 
 /** Backs the "Hours This Month" card's View Detail dialog — per-machine
  * breakdown of hours worked and which attachment(s) were reported in use,
@@ -307,7 +320,7 @@ function percentChange(current: number, previous: number): number | null {
   return Math.round(((current - previous) / previous) * 1000) / 10;
 }
 
-export async function getDashboardSummary(businessId: string) {
+async function getDashboardSummaryUncached(businessId: string) {
   const { start, end } = currentMonthRange();
   const lastMonthEnd = new Date(start.getTime() - 1);
   const lastMonthStart = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), 1);
@@ -465,6 +478,13 @@ export async function getDashboardSummary(businessId: string) {
 
   return { cards, alerts, ownerName: business.ownerName };
 }
+
+/** Cached the same way and for the same reason as getAlerts above — this is
+ * the single largest query batch in the app (15 queries), and it backs the
+ * page you land back on most often. */
+export const getDashboardSummary = unstable_cache(getDashboardSummaryUncached, ["dashboard-summary"], {
+  revalidate: 15,
+});
 
 
 export type ActivityEvent = {
