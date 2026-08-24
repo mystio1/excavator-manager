@@ -40,13 +40,13 @@ export async function getOperatorRankingLast45Days(businessId: string) {
   const end = new Date();
   const start = new Date(end.getTime() - RANKING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
-  const operators = await db.operator.findMany({
-    where: { businessId, isArchived: false },
-    select: { id: true, name: true },
-  });
-  if (operators.length === 0) return [];
-
-  const [logs, sessionsWithoutLogs] = await Promise.all([
+  // None of these three depend on each other's results — fired together
+  // instead of fetching operators first, then logs/sessions after.
+  const [operators, logs, sessionsWithoutLogs] = await Promise.all([
+    db.operator.findMany({
+      where: { businessId, isArchived: false },
+      select: { id: true, name: true },
+    }),
     db.dailyWorkLog.findMany({
       where: { status: "APPROVED", date: { gte: start, lte: end }, workSession: { businessId } },
       select: { hoursWorked: true, workSession: { select: { operatorId: true } } },
@@ -60,6 +60,7 @@ export async function getOperatorRankingLast45Days(businessId: string) {
       select: { operatorId: true, totalHours: true },
     }),
   ]);
+  if (operators.length === 0) return [];
 
   const hoursByOperator = new Map<string, number>();
   for (const log of logs) {

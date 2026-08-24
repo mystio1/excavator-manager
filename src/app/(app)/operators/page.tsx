@@ -17,7 +17,13 @@ import { DeleteOperatorButton } from "./delete-operator-button";
 import { approveOperatorJoinAction, declineOperatorJoinAction } from "./actions";
 
 export default async function OperatorsPage() {
+  // TEMPORARY: timing instrumentation to find the real production
+  // bottleneck behind reported slow navigation — remove once diagnosed.
+  // eslint-disable-next-line react-hooks/purity -- diagnostic only, value never reaches rendering
+  const pageStart = performance.now();
   const { businessId } = await requireBusiness();
+  // eslint-disable-next-line react-hooks/purity -- diagnostic only, value never reaches rendering
+  const afterAuth = performance.now();
   const [operators, pendingLogCount, pendingWorkRequestCount, joinRequests, ranking] = await Promise.all([
     listOperators(businessId),
     countPendingLogs(businessId),
@@ -25,6 +31,11 @@ export default async function OperatorsPage() {
     listPendingJoinRequests(businessId),
     getOperatorRankingLast45Days(businessId),
   ]);
+  // eslint-disable-next-line react-hooks/purity -- diagnostic only, value never reaches rendering
+  const afterData = performance.now();
+  console.log(
+    `[perf] operators page: requireBusiness=${(afterAuth - pageStart).toFixed(0)}ms dataBatch=${(afterData - afterAuth).toFixed(0)}ms total=${(afterData - pageStart).toFixed(0)}ms`,
+  );
   const pendingCount = pendingLogCount + pendingWorkRequestCount;
 
   return (
