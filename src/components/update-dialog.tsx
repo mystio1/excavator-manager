@@ -5,6 +5,7 @@ import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { DownloadCloud, Loader2, TriangleAlert } from "lucide-react";
 import { UpdateInstaller, type DownloadProgress } from "@/lib/native/update-installer";
+import { apiUrl } from "@/lib/api-client";
 import { appVersionSchema, type AppVersion } from "@/lib/validation/app-version";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -32,7 +33,7 @@ export function UpdateDialog() {
   const checkForUpdate = useCallback(async () => {
     if (busyRef.current) return;
     try {
-      const res = await fetch("/api/app-version", { cache: "no-store" });
+      const res = await fetch(apiUrl("/api/app-version"), { cache: "no-store" });
       if (!res.ok) return;
       const parsed = appVersionSchema.safeParse(await res.json());
       if (!parsed.success) return;
