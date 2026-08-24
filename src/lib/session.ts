@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -10,22 +11,36 @@ import type { OperatorLang } from "@/lib/i18n/operator";
  * redirect itself: the (auth) and (app) route groups need opposite reactions
  * to "no valid session" (let them see login vs. bounce them to login), so
  * they each redirect based on this shared check instead of duplicating it.
+ *
+ * Wrapped in React's cache() — every layout, page, and server action on a
+ * request calls this independently (62 call sites), and without per-request
+ * memoization each one re-runs the underlying business-existence query, all
+ * hitting the same row. cache() collapses that to one query per request.
  */
-export async function getValidBusinessSession() {
+export const getValidBusinessSession = cache(async function getValidBusinessSession() {
   const session = await auth();
   // role must be OWNER here — an Operator-portal JWT carries the same
   // session shape (businessId + role) but must never be treated as valid
   // for the owner app, even though its businessId does resolve to a real row.
   if (!session?.user || session.user.role !== "OWNER") return null;
 
+  // Selects name/ownerName too, not just id — (app)/layout.tsx needs both on
+  // every page for the sidebar/header, and this query is already cached
+  // per-request, so folding them in here avoids a second round-trip to fetch
+  // the same row a second time.
   const business = await db.business.findUnique({
     where: { id: session.user.businessId },
-    select: { id: true },
+    select: { id: true, name: true, ownerName: true },
   });
   if (!business) return null;
 
-  return { userId: session.user.id, businessId: session.user.businessId };
-}
+  return {
+    userId: session.user.id,
+    businessId: session.user.businessId,
+    businessName: business.name,
+    ownerName: business.ownerName,
+  };
+});
 
 /**
  * Every page/action in the (app) route group calls this first. It is the
@@ -44,8 +59,9 @@ export async function requireBusiness() {
 /** Operator-portal analogue of getValidBusinessSession — session.user.id is
  * the Operator's id (see the "operator" Credentials provider in auth.ts).
  * Re-checks the Operator row on every call so a login disabled or an
- * operator archived from the Admin side takes effect immediately. */
-export async function getValidOperatorSession() {
+ * operator archived from the Admin side takes effect immediately. Also
+ * cache()'d per-request for the same reason as getValidBusinessSession. */
+export const getValidOperatorSession = cache(async function getValidOperatorSession() {
   const session = await auth();
   if (!session?.user || session.user.role !== "OPERATOR") return null;
 
@@ -72,7 +88,7 @@ export async function getValidOperatorSession() {
     // Business.operatorLanguage for why neither applies pre-login.
     operatorLang: (operator.language ?? operator.business.operatorLanguage) as OperatorLang,
   };
-}
+});
 
 export async function requireOperator() {
   const valid = await getValidOperatorSession();

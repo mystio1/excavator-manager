@@ -101,35 +101,40 @@ async function getComponentMaintenanceAlerts(businessId: string) {
  * Idle-machine notices are deliberately excluded — those live on the
  * machine's own detail page instead, not in the global feed. */
 export async function getAlerts(businessId: string) {
-  const [business, excavators, pendingLogsCount, pendingWorkRequestsCount, activeWorkRequests] = await Promise.all([
-    db.business.findUniqueOrThrow({
-      where: { id: businessId },
-      select: { defaultServiceIntervalHrs: true, maintenanceAlertThresholdHrs: true },
-    }),
-    db.excavator.findMany({
-      where: { businessId, isArchived: false },
-      select: {
-        id: true,
-        name: true,
-        machineNumber: true,
-        currentHourMeter: true,
-        startingHourMeter: true,
-        serviceIntervalHrs: true,
-        serviceRecords: { orderBy: { serviceDate: "desc" }, take: 1, select: { hourMeterAtService: true, nextServiceDueHour: true } },
-      },
-    }),
-    db.dailyWorkLog.count({ where: { status: "PENDING", workSession: { businessId } } }),
-    db.operatorWorkRequest.count({ where: { status: "PENDING", businessId } }),
-    db.operatorWorkRequest.findMany({
-      where: { status: "ACTIVE", businessId },
-      select: {
-        excavatorId: true,
-        excavator: { select: { name: true, machineNumber: true } },
-        operator: { select: { name: true } },
-        startHourMeter: true,
-      },
-    }),
-  ]);
+  const [business, excavators, pendingLogsCount, pendingWorkRequestsCount, activeWorkRequests, componentAlerts] =
+    await Promise.all([
+      db.business.findUniqueOrThrow({
+        where: { id: businessId },
+        select: { defaultServiceIntervalHrs: true, maintenanceAlertThresholdHrs: true },
+      }),
+      db.excavator.findMany({
+        where: { businessId, isArchived: false },
+        select: {
+          id: true,
+          name: true,
+          machineNumber: true,
+          currentHourMeter: true,
+          startingHourMeter: true,
+          serviceIntervalHrs: true,
+          serviceRecords: { orderBy: { serviceDate: "desc" }, take: 1, select: { hourMeterAtService: true, nextServiceDueHour: true } },
+        },
+      }),
+      db.dailyWorkLog.count({ where: { status: "PENDING", workSession: { businessId } } }),
+      db.operatorWorkRequest.count({ where: { status: "PENDING", businessId } }),
+      db.operatorWorkRequest.findMany({
+        where: { status: "ACTIVE", businessId },
+        select: {
+          excavatorId: true,
+          excavator: { select: { name: true, machineNumber: true } },
+          operator: { select: { name: true } },
+          startHourMeter: true,
+        },
+      }),
+      // Run alongside the rest instead of after — it doesn't depend on any
+      // of these results, so there's no reason to pay for it as a second
+      // sequential round-trip.
+      getComponentMaintenanceAlerts(businessId),
+    ]);
 
   const alerts: { level: "warning" | "danger"; message: string; href: string }[] = [];
   if (pendingLogsCount > 0) {
@@ -180,7 +185,7 @@ export async function getAlerts(businessId: string) {
     }
   }
 
-  alerts.push(...(await getComponentMaintenanceAlerts(businessId)));
+  alerts.push(...componentAlerts);
 
   return alerts;
 }
@@ -322,6 +327,7 @@ export async function getDashboardSummary(businessId: string) {
     pendingWorkRequestsCount,
     activeWorkRequests,
     operatorSalaryDue,
+    componentAlerts,
   ] = await Promise.all([
     db.business.findUniqueOrThrow({
       where: { id: businessId },
@@ -368,6 +374,9 @@ export async function getDashboardSummary(businessId: string) {
       },
     }),
     getTotalSalaryDue(businessId),
+    // Run alongside the rest instead of after — see the same change in
+    // getAlerts above for why.
+    getComponentMaintenanceAlerts(businessId),
   ]);
 
   const revenueThisMonth = Math.round((revenueAgg._sum.totalAmount ?? 0) * 100) / 100;
@@ -452,7 +461,7 @@ export async function getDashboardSummary(businessId: string) {
     }
   }
 
-  alerts.push(...(await getComponentMaintenanceAlerts(businessId)));
+  alerts.push(...componentAlerts);
 
   return { cards, alerts, ownerName: business.ownerName };
 }
