@@ -1,6 +1,9 @@
-import { notFound } from "next/navigation";
-import { requireBusiness } from "@/lib/session";
-import { getBillDetail, toBillPreviewData } from "@/lib/services/bills";
+"use client";
+
+import { useSearchParams } from "next/navigation";
+import useSWR from "swr";
+import type { getBillDetail, toBillPreviewData } from "@/lib/services/bills";
+import { swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { BillPreview } from "@/components/bill/bill-preview";
@@ -9,16 +12,22 @@ import { formatDate } from "@/lib/utils/dates";
 import { PrintButton } from "./print-button";
 import { DownloadExcelButton } from "./download-excel-button";
 import { PaymentSection } from "./payment-section";
+import Loading from "../../loading";
 
-export default async function BillDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const { businessId } = await requireBusiness();
+type BillDetail = NonNullable<Awaited<ReturnType<typeof getBillDetail>>>;
+type PreviewData = ReturnType<typeof toBillPreviewData>;
 
-  const bill = await getBillDetail(businessId, id);
-  if (!bill) notFound();
+export default function BillDetailPage() {
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id") ?? "";
 
-  const previewData = toBillPreviewData(bill);
+  const { data } = useSWR<{ bill: BillDetail; previewData: PreviewData }>(
+    id ? `/api/bills/${id}` : null,
+    swrFetcher,
+  );
 
+  if (!data) return <Loading />;
+  const { bill, previewData } = data;
   const pending = bill.totalAmount - bill.paidAmount;
 
   return (

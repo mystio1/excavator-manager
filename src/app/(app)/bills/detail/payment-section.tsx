@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { useSWRConfig } from "swr";
 import { Plus } from "lucide-react";
-import { addPaymentAction } from "../actions";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,17 +29,25 @@ export function PaymentSection({
   pending: number;
   payments: Payment[];
 }) {
-  const [state, formAction, isPending] = useActionState(addPaymentAction, undefined);
+  const { mutate } = useSWRConfig();
   const [showForm, setShowForm] = useState(false);
-  const wasPending = useRef(false);
   const today = new Date().toISOString().slice(0, 10);
+  const { error, pending: submitting, run } = useApiForm(async (body: Record<string, unknown>) => {
+    await apiFetch(`/api/bills/${billId}/payments`, { method: "POST", body: JSON.stringify(body) });
+    await mutate(`/api/bills/${billId}`);
+  });
 
-  useEffect(() => {
-    if (wasPending.current && !isPending && !state?.error) {
-      setShowForm(false);
-    }
-    wasPending.current = isPending;
-  }, [isPending, state]);
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const ok = await run({
+      amount: Number(fd.get("amount")),
+      date: fd.get("date"),
+      method: fd.get("method") || undefined,
+      notes: fd.get("notes") || undefined,
+    });
+    if (ok) setShowForm(false);
+  }
 
   return (
     <Card>
@@ -65,8 +75,7 @@ export function PaymentSection({
         ))}
 
         {showForm && (
-          <form action={formAction} className="flex flex-col gap-3 rounded-lg border border-dashed p-3">
-            <input type="hidden" name="billId" value={billId} />
+          <form onSubmit={onSubmit} className="flex flex-col gap-3 rounded-lg border border-dashed p-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label className="text-sm">Amount</Label>
@@ -95,10 +104,10 @@ export function PaymentSection({
                 <Input name="notes" className="h-11" />
               </div>
             </div>
-            {state?.error && <p className="text-sm font-medium text-destructive">{state.error}</p>}
+            {error && <p className="text-sm font-medium text-destructive">{error}</p>}
             <div className="flex gap-2">
-              <Button type="submit" disabled={isPending}>
-                {isPending ? "Saving..." : "Save Payment"}
+              <Button type="submit" disabled={submitting}>
+                {submitting ? "Saving..." : "Save Payment"}
               </Button>
               <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>
                 Cancel

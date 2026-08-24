@@ -35,7 +35,7 @@ export function OverduePayments({ bills }: { bills: OverdueRow[] }) {
               size="sm"
               variant="secondary"
               nativeButton={false}
-              render={<Link href={`/bills/${b.billId}`} />}
+              render={<Link href={`/bills/detail?id=${b.billId}`} />}
             >
               View
             </Button>

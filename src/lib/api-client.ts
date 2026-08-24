@@ -6,7 +6,9 @@ import { Capacitor } from "@capacitor/core";
 // capacitor.config.ts and www/offline.html for the same reason.
 const API_BASE = "https://excavator-manager.onrender.com";
 
-function apiUrl(path: string): string {
+/** Exported for the rare non-fetch case (e.g. an <a href download> link)
+ * that needs the same origin-resolution logic apiFetch applies internally. */
+export function apiUrl(path: string): string {
   return Capacitor.isNativePlatform() ? `${API_BASE}${path}` : path;
 }
 

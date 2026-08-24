@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { FileText, Receipt } from "lucide-react";
-import { generateDirectBillAction } from "../../actions";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,7 +41,14 @@ export function GenerateDirectBillForm({
   businessGstNumber: string | null;
   nextNonGstNumber: string;
 }) {
-  const [state, formAction, isPending] = useActionState(generateDirectBillAction, undefined);
+  const router = useRouter();
+  const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
+    const { bill } = await apiFetch<{ bill: { id: string } }>("/api/bills/direct", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    router.push(`/bills/detail?id=${bill.id}`);
+  });
 
   const [bucketHours, setBucketHours] = useState(0);
   const [bucketRate, setBucketRate] = useState(0);
@@ -70,10 +79,34 @@ export function GenerateDirectBillForm({
   const today = new Date().toISOString().slice(0, 10);
   const nothingBillable = totals.taxable <= 0;
 
-  return (
-    <form action={formAction} className="flex flex-col gap-4">
-      <input type="hidden" name="customerId" value={customerId} />
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    await run({
+      customerId,
+      excavatorId: fd.get("excavatorId"),
+      billDate: fd.get("billDate"),
+      fromDate: fd.get("fromDate"),
+      toDate: fd.get("toDate"),
+      bucketHours: bucketHours || 0,
+      bucketRate: bucketRate || 0,
+      breakerHours: breakerHours || 0,
+      breakerRate: breakerRate || 0,
+      transportCharges: transportCharges || 0,
+      dieselLiters: dieselLiters || 0,
+      dieselPricePerLiter: dieselPricePerLiter || 0,
+      billType,
+      billNumber: fd.get("billNumber") || undefined,
+      gstPercentage: billType === "GST" ? gstPercentage : undefined,
+      buyerGstin: fd.get("buyerGstin") || undefined,
+      bankAccountId: fd.get("bankAccountId") || undefined,
+      notes: fd.get("notes") || undefined,
+      showCustomerPhone,
+    });
+  }
 
+  return (
+    <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <Card>
         <CardContent className="flex flex-col gap-4">
           <p className="text-base font-semibold">Machine &amp; Period</p>
@@ -238,7 +271,6 @@ export function GenerateDirectBillForm({
               <FileText className="size-4" /> GST Bill
             </button>
           </div>
-          <input type="hidden" name="billType" value={billType} />
 
           {billType === "NON_GST" ? (
             <div className="flex flex-col gap-2">
@@ -282,7 +314,6 @@ export function GenerateDirectBillForm({
                     </button>
                   ))}
                 </div>
-                <input type="hidden" name="gstPercentage" value={gstPercentage} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
@@ -314,7 +345,6 @@ export function GenerateDirectBillForm({
           <label className="flex items-center gap-2 text-sm font-medium">
             <input
               type="checkbox"
-              name="showCustomerPhone"
               checked={showCustomerPhone}
               onChange={(e) => setShowCustomerPhone(e.target.checked)}
               className="size-4"
@@ -369,10 +399,10 @@ export function GenerateDirectBillForm({
         </CardContent>
       </Card>
 
-      {state?.error && <p className="text-sm font-medium text-destructive">{state.error}</p>}
+      {error && <p className="text-sm font-medium text-destructive">{error}</p>}
 
-      <Button type="submit" size="lg" className="h-12 text-base" disabled={isPending || nothingBillable}>
-        {isPending ? "Generating..." : "Generate Bill"}
+      <Button type="submit" size="lg" className="h-12 text-base" disabled={pending || nothingBillable}>
+        {pending ? "Generating..." : "Generate Bill"}
       </Button>
     </form>
   );

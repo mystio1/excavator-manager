@@ -73,7 +73,7 @@ export function BillsList({ bills }: { bills: BillListItem[] }) {
         const status = STATUS_LABEL[bill.status] ?? STATUS_LABEL.UNPAID;
         const pending = bill.totalAmount - bill.paidAmount;
         return (
-          <Link key={bill.id} href={`/bills/${bill.id}`}>
+          <Link key={bill.id} href={`/bills/detail?id=${bill.id}`}>
             <Card className="card-hover animate-fade-in-up">
               <CardContent className="flex flex-col gap-2">
                 <div className="flex items-start justify-between gap-2">

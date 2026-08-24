@@ -1,28 +1,58 @@
-import { requireBusiness } from "@/lib/session";
-import { listCustomerOptions } from "@/lib/services/customers";
-import { listSiteOptions } from "@/lib/services/sites";
-import { listExcavatorOptions } from "@/lib/services/excavators";
-import { listBankAccounts, getBusinessSettings } from "@/lib/services/settings";
-import { listUnbilledWorkSessions, previewNextNonGstBillNumber } from "@/lib/services/bills";
+"use client";
+
+import { useSearchParams } from "next/navigation";
+import useSWR from "swr";
+import { swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { NativeSelect } from "@/components/native-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GenerateBillForm } from "./generate-bill-form";
+import Loading from "../../loading";
 
-export default async function NewBillPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ customerId?: string; siteId?: string; excavatorId?: string; from?: string; to?: string }>;
-}) {
-  const { businessId } = await requireBusiness();
-  const { customerId, siteId, excavatorId, from, to } = await searchParams;
-  const [customers, sites, excavators] = await Promise.all([
-    listCustomerOptions(businessId),
-    listSiteOptions(businessId),
-    listExcavatorOptions(businessId),
-  ]);
+type CustomerOption = { id: string; name: string; companyName: string | null };
+type SiteOption = { id: string; name: string };
+type ExcavatorOption = { id: string; name: string; machineNumber: string | null };
+type Session = {
+  id: string;
+  excavatorName: string;
+  machineNumber: string | null;
+  siteName: string;
+  startDate: string;
+  endDate: string;
+  totalHours: number;
+};
+type BankAccount = { id: string; label: string; isDefaultForGst: boolean; isDefaultForNonGst: boolean };
+
+type BaseData = { customers: CustomerOption[]; sites: SiteOption[]; excavators: ExcavatorOption[] };
+type FullData = BaseData & {
+  sessions: Session[];
+  bankAccounts: BankAccount[];
+  businessGstNumber: string | null;
+  nextNonGstNumber: string;
+  customerName: string;
+};
+
+export default function NewBillPage() {
+  const searchParams = useSearchParams();
+  const customerId = searchParams.get("customerId") ?? "";
+  const siteId = searchParams.get("siteId") ?? "";
+  const excavatorId = searchParams.get("excavatorId") ?? "";
+  const from = searchParams.get("from") ?? "";
+  const to = searchParams.get("to") ?? "";
+
+  const query = new URLSearchParams();
+  if (customerId) query.set("customerId", customerId);
+  if (siteId) query.set("siteId", siteId);
+  if (excavatorId) query.set("excavatorId", excavatorId);
+  if (from) query.set("from", from);
+  if (to) query.set("to", to);
+
+  const { data } = useSWR<FullData | BaseData>(`/api/bills/new?${query.toString()}`, swrFetcher);
+
+  if (!data) return <Loading />;
+  const { customers, sites, excavators } = data;
 
   if (!customerId) {
     return (
@@ -96,19 +126,12 @@ export default async function NewBillPage({
     );
   }
 
-  const [sessions, bankAccounts, business, nextNonGstNumber, customer] = await Promise.all([
-    listUnbilledWorkSessions(businessId, customerId, { siteId, excavatorId, from, to }),
-    listBankAccounts(businessId),
-    getBusinessSettings(businessId),
-    previewNextNonGstBillNumber(businessId),
-    listCustomerOptions(businessId).then((list) => list.find((c) => c.id === customerId)),
-  ]);
-
+  const full = data as FullData;
   const hasFilters = !!(siteId || excavatorId || from || to);
 
   return (
     <div>
-      <PageHeader title={`Generate Bill — ${customer?.name ?? ""}`} backHref="/bills/new" />
+      <PageHeader title={`Generate Bill — ${full.customerName}`} backHref="/bills/new" />
       <div className="px-4 pb-6 md:px-8">
         {hasFilters && (
           <p className="mb-4 text-sm text-muted-foreground">
@@ -120,18 +143,10 @@ export default async function NewBillPage({
         )}
         <GenerateBillForm
           customerId={customerId}
-          sessions={sessions.map((s) => ({
-            id: s.id,
-            excavatorName: s.excavator.name,
-            machineNumber: s.excavator.machineNumber,
-            siteName: s.site.name,
-            startDate: s.startDate.toISOString(),
-            endDate: (s.endDate ?? s.startDate).toISOString(),
-            totalHours: s.totalHours,
-          }))}
-          bankAccounts={bankAccounts}
-          businessGstNumber={business.gstNumber}
-          nextNonGstNumber={nextNonGstNumber}
+          sessions={full.sessions}
+          bankAccounts={full.bankAccounts}
+          businessGstNumber={full.businessGstNumber}
+          nextNonGstNumber={full.nextNonGstNumber}
         />
       </div>
     </div>

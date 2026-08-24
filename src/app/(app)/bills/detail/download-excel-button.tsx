@@ -1,10 +1,13 @@
+"use client";
+
 import { FileSpreadsheet } from "lucide-react";
+import { apiUrl } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 
 export function DownloadExcelButton({ billId }: { billId: string }) {
   return (
     <Button
-      render={<a href={`/bills/${billId}/export`} download />}
+      render={<a href={apiUrl(`/bills/${billId}/export`)} download />}
       nativeButton={false}
       size="lg"
       variant="secondary"

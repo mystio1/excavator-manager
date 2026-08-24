@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { FileText, Receipt } from "lucide-react";
-import { generateBillAction } from "../actions";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,7 +46,14 @@ export function GenerateBillForm({
   businessGstNumber: string | null;
   nextNonGstNumber: string;
 }) {
-  const [state, formAction, isPending] = useActionState(generateBillAction, undefined);
+  const router = useRouter();
+  const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
+    const { bill } = await apiFetch<{ bill: { id: string } }>("/api/bills", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    router.push(`/bills/detail?id=${bill.id}`);
+  });
 
   const [selected, setSelected] = useState<Record<string, boolean>>(
     Object.fromEntries(sessions.map((s) => [s.id, true])),
@@ -89,10 +98,32 @@ export function GenerateBillForm({
   const today = new Date().toISOString().slice(0, 10);
   const noSelection = selectedSessions.length === 0;
 
-  return (
-    <form action={formAction} className="flex flex-col gap-4">
-      <input type="hidden" name="customerId" value={customerId} />
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    await run({
+      customerId,
+      workSessionIds: fd.getAll("workSessionIds"),
+      billDate: fd.get("billDate"),
+      ratePerHour: Number(fd.get("ratePerHour")) || 0,
+      transportCharges: Number(fd.get("transportCharges")) || 0,
+      fuelCharges: Number(fd.get("fuelCharges")) || 0,
+      extraCharges: Number(fd.get("extraCharges")) || 0,
+      bucketCharge: Number(fd.get("bucketCharge")) || 0,
+      breakerCharge: Number(fd.get("breakerCharge")) || 0,
+      discount: Number(fd.get("discount")) || 0,
+      billType,
+      billNumber: fd.get("billNumber") || undefined,
+      gstPercentage: billType === "GST" ? gstPercentage : undefined,
+      buyerGstin: fd.get("buyerGstin") || undefined,
+      bankAccountId: fd.get("bankAccountId") || undefined,
+      notes: fd.get("notes") || undefined,
+      showCustomerPhone,
+    });
+  }
 
+  return (
+    <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <Card>
         <CardContent className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
@@ -277,7 +308,6 @@ export function GenerateBillForm({
               <FileText className="size-4" /> GST Bill
             </button>
           </div>
-          <input type="hidden" name="billType" value={billType} />
 
           {billType === "NON_GST" ? (
             <div className="flex flex-col gap-2">
@@ -321,7 +351,6 @@ export function GenerateBillForm({
                     </button>
                   ))}
                 </div>
-                <input type="hidden" name="gstPercentage" value={gstPercentage} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
@@ -353,7 +382,6 @@ export function GenerateBillForm({
           <label className="flex items-center gap-2 text-sm font-medium">
             <input
               type="checkbox"
-              name="showCustomerPhone"
               checked={showCustomerPhone}
               onChange={(e) => setShowCustomerPhone(e.target.checked)}
               className="size-4"
@@ -414,10 +442,10 @@ export function GenerateBillForm({
         </CardContent>
       </Card>
 
-      {state?.error && <p className="text-sm font-medium text-destructive">{state.error}</p>}
+      {error && <p className="text-sm font-medium text-destructive">{error}</p>}
 
-      <Button type="submit" size="lg" className="h-12 text-base" disabled={isPending || noSelection}>
-        {isPending ? "Generating..." : "Generate Bill"}
+      <Button type="submit" size="lg" className="h-12 text-base" disabled={pending || noSelection}>
+        {pending ? "Generating..." : "Generate Bill"}
       </Button>
     </form>
   );

@@ -1,24 +1,41 @@
-import { requireBusiness } from "@/lib/session";
-import { listCustomerOptions } from "@/lib/services/customers";
-import { listExcavatorOptions } from "@/lib/services/excavators";
-import { listBankAccounts, getBusinessSettings } from "@/lib/services/settings";
-import { previewNextNonGstBillNumber } from "@/lib/services/bills";
+"use client";
+
+import { useSearchParams } from "next/navigation";
+import useSWR from "swr";
+import { swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { NativeSelect } from "@/components/native-select";
 import { Button } from "@/components/ui/button";
 import { GenerateDirectBillForm } from "./generate-direct-bill-form";
+import Loading from "../../../loading";
 
-export default async function NewDirectBillPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ customerId?: string }>;
-}) {
-  const { businessId } = await requireBusiness();
-  const { customerId } = await searchParams;
-  const customers = await listCustomerOptions(businessId);
+type CustomerOption = { id: string; name: string; companyName: string | null };
+type ExcavatorOption = { id: string; name: string; machineNumber: string | null };
+type BankAccount = { id: string; label: string; isDefaultForGst: boolean; isDefaultForNonGst: boolean };
+
+type BaseData = { customers: CustomerOption[] };
+type FullData = BaseData & {
+  excavators: ExcavatorOption[];
+  bankAccounts: BankAccount[];
+  businessGstNumber: string | null;
+  nextNonGstNumber: string;
+  customerName: string;
+};
+
+export default function NewDirectBillPage() {
+  const searchParams = useSearchParams();
+  const customerId = searchParams.get("customerId") ?? "";
+
+  const { data } = useSWR<FullData | BaseData>(
+    `/api/bills/new/direct${customerId ? `?customerId=${customerId}` : ""}`,
+    swrFetcher,
+  );
+
+  if (!data) return <Loading />;
 
   if (!customerId) {
+    const { customers } = data;
     return (
       <div>
         <PageHeader title="Direct Bill" backHref="/bills" />
@@ -55,24 +72,18 @@ export default async function NewDirectBillPage({
     );
   }
 
-  const [excavators, bankAccounts, business, nextNonGstNumber, customer] = await Promise.all([
-    listExcavatorOptions(businessId),
-    listBankAccounts(businessId),
-    getBusinessSettings(businessId),
-    previewNextNonGstBillNumber(businessId),
-    listCustomerOptions(businessId).then((list) => list.find((c) => c.id === customerId)),
-  ]);
+  const full = data as FullData;
 
   return (
     <div>
-      <PageHeader title={`Direct Bill — ${customer?.name ?? ""}`} backHref={`/bills/new/direct`} />
+      <PageHeader title={`Direct Bill — ${full.customerName}`} backHref="/bills/new/direct" />
       <div className="px-4 pb-6 md:px-8">
         <GenerateDirectBillForm
           customerId={customerId}
-          excavators={excavators}
-          bankAccounts={bankAccounts}
-          businessGstNumber={business.gstNumber}
-          nextNonGstNumber={nextNonGstNumber}
+          excavators={full.excavators}
+          bankAccounts={full.bankAccounts}
+          businessGstNumber={full.businessGstNumber}
+          nextNonGstNumber={full.nextNonGstNumber}
         />
       </div>
     </div>
