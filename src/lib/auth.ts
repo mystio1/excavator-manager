@@ -4,6 +4,11 @@ import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Render (and most PaaS hosts) terminate TLS and proxy requests, so the
+  // Host header Auth.js sees doesn't match a hardcoded expectation by
+  // default — it rejects everything as an UntrustedHost unless told to
+  // trust the platform's proxy headers.
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: [
