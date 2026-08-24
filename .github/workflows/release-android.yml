@@ -49,6 +49,15 @@ jobs:
           echo "versionName=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "versionCode=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
+          # actions/checkout resolves tag-triggered runs by commit SHA, not
+          # by the tag object itself, so the local tag ref it leaves behind
+          # can be a lightweight ref pointing straight at the commit — which
+          # makes `%(contents)` read the COMMIT message instead of the
+          # annotated tag's own message. Force-fetch the real tag object by
+          # name first so this always reads what was actually typed in
+          # `git tag -a -m "..."`.
+          git fetch origin "+refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}" --force
+
           TAG_MESSAGE="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME")"
 
           if echo "$TAG_MESSAGE" | grep -qF '[force-update]'; then
