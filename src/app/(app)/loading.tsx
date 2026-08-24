@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { ExcavatorLogo } from "@/components/excavator-logo";
 
 /**
  * Shown instantly the moment any navigation starts under (app)/ — the
@@ -10,9 +10,11 @@ import { Loader2 } from "lucide-react";
  */
 export default function Loading() {
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-muted-foreground">
-      <Loader2 className="size-8 animate-spin text-primary" />
-      <p className="text-sm">Loading…</p>
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
+      <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+        <ExcavatorLogo animated className="size-9" />
+      </div>
+      <p className="text-sm font-medium text-muted-foreground">Loading…</p>
     </div>
   );
 }

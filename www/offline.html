@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>You're offline</title>
+<style>
+  :root {
+    --background: #fff7ea;
+    --foreground: #17212b;
+    --muted-foreground: #687385;
+    --primary: #f4a910;
+    --primary-foreground: #1a1207;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #0b1118;
+      --foreground: #f5f7fa;
+      --muted-foreground: #9aa8b8;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    padding: 2rem 1.5rem;
+    padding-top: max(2rem, env(safe-area-inset-top));
+    padding-bottom: max(2rem, env(safe-area-inset-bottom));
+    text-align: center;
+  }
+  .icon {
+    width: 88px;
+    height: 88px;
+    border-radius: 22px;
+    margin-bottom: 1.5rem;
+    animation: bounce 2.2s ease-in-out infinite;
+  }
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  h1 {
+    font-size: 1.375rem;
+    font-weight: 800;
+    margin: 0 0 0.5rem;
+  }
+  p {
+    font-size: 0.9375rem;
+    color: var(--muted-foreground);
+    margin: 0 0 1.75rem;
+    max-width: 320px;
+    line-height: 1.5;
+  }
+  button {
+    appearance: none;
+    border: none;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 0.9375rem;
+    font-weight: 700;
+    padding: 0.75rem 2rem;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  button:active {
+    opacity: 0.85;
+  }
+  .retrying {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <img class="icon" src="icon.png" alt="Excavator Manager" />
+  <h1>You're offline</h1>
+  <p>Excavator Manager needs an internet connection to load your business data. Check your connection and try again.</p>
+  <button id="retry" type="button">Retry</button>
+
+  <script>
+    // This page is bundled inside the APK (server.errorPath in
+    // capacitor.config.ts) and loads whenever the live server can't be
+    // reached — no network, DNS failure, or the server itself is down.
+    // The real app URL is hardcoded here since this is a static file with
+    // no build step; keep it in sync with capacitor.config.ts's server.url.
+    var APP_URL = "https://excavator-manager.onrender.com/";
+
+    document.getElementById("retry").addEventListener("click", function () {
+      var btn = this;
+      btn.textContent = "Retrying…";
+      btn.classList.add("retrying");
+      window.location.href = APP_URL;
+    });
+  </script>
+</body>
+</html>
