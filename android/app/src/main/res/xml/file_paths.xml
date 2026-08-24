@@ -4,4 +4,6 @@
     <cache-path name="my_cache_images" path="." />
     <!-- Where UpdateInstallerPlugin downloads release APKs -->
     <external-files-path name="updates" path="updates/" />
+    <!-- Where FileSaverPlugin saves files (e.g. bill Excel exports) for viewing/sharing -->
+    <external-files-path name="downloads" path="downloads/" />
 </paths>
