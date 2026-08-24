@@ -1,6 +1,6 @@
 # Excavator Manager
 
-A fast, mobile-friendly management system for excavator/JCB owners — machines, customers, operators, work-hour tracking, salaries, servicing and billing. Built with Next.js (App Router), Prisma + SQLite, and Auth.js. Designed to be self-hosted: everything, including the database, lives in this project folder.
+A fast, mobile-friendly management system for excavator/JCB owners — machines, customers, operators, work-hour tracking, salaries, servicing and billing. Built with Next.js (App Router), Prisma + Postgres, and Auth.js. Also ships as a directly-installed Android app (Capacitor) with in-app self-updates — see [Android app](#android-app) below.
 
 ## Running it
 
@@ -13,7 +13,7 @@ Open [http://localhost:3000](http://localhost:3000). The first visit redirects t
 
 ## Data
 
-Everything is stored in `dev.db` (SQLite) in the project root — back this file up regularly. `AUTH_SECRET` and `DATABASE_URL` live in `.env` (not committed); generate a new secret for any new deployment with:
+Postgres, via `DATABASE_URL` in `.env` (not committed). `SHADOW_DATABASE_URL` is only needed for `prisma migrate dev` locally. `AUTH_SECRET` is the Auth.js session-encryption key — generate a new one for any new deployment with:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
@@ -21,19 +21,27 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 ## Self-hosting in production
 
+Deployed on [Render](https://render.com) — pushing to `main` redeploys automatically. Render env vars needed: `DATABASE_URL` (Internal Postgres connection string), `AUTH_SECRET`, `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM` (forgot-password emails), `GITHUB_RELEASE_REPO` and optionally `GITHUB_API_TOKEN` (used by `/api/app-version`, see below). Pre-Deploy Command: `npx prisma migrate deploy`.
+
+## Android app
+
+The Android app (`/android`, Capacitor) is a native shell that loads this same deployed site directly — there's no separate mobile codebase to keep in sync. Ordinary feature changes need nothing beyond the usual `git push`; only native-shell changes (permissions, icon, the update system itself) need a new APK build.
+
+**Cutting a new Android release:**
+
 ```bash
-npm run build
-npm run start
+git tag -a v1.0.3 -m "Dashboard improvements" -m "Bug fixes"
+git push origin v1.0.3
 ```
 
-Runs a standalone Node server on port 3000 (set `PORT` to change it). Point a reverse proxy (nginx, Caddy) at it if you want a domain/HTTPS. Because the database is a local file, keep it on a machine/disk that stays up and gets backed up — there's no external database to fail over to.
+Each `-m` line becomes a release-notes bullet shown in the in-app update dialog. Add a line containing exactly `[force-update]` to make it mandatory. `.github/workflows/release-android.yml` then builds and signs the APK and publishes it as a GitHub Release; installed apps discover it via `GET /api/app-version`, which reads that release's `version.json`.
+
+Required GitHub Secrets (Settings → Secrets and variables → Actions) for the signing key: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
 
 ## What's built so far
 
-- Auth + multi-business accounts
-- Dashboard with live counts, alerts and a 6-month hours chart
-- Excavators: add machine, start/stop work, daily hour logging (by hour-meter or clock time), work history with filters
-- Customers: add, search, full machine/work history per customer
-- Operators: add, current-assignment view
-
-Coming next: operator salary & advances, service tracking with per-item history, expenses, and GST/Non-GST bill generation with PDF export — the database schema for all of these already exists (see `prisma/schema.prisma`), just not the screens yet.
+- Auth + multi-business accounts, forgot-password email flow
+- Dashboard with live counts, alerts, predictive per-component maintenance warnings, and trend charts
+- Excavators: machines, work sessions, daily hour logging, service/component history, site tracking
+- Customers, Operators (with a self-serve portal — PIN login, Hindi/Marathi/English), GST/Non-GST billing with PDF/Excel export
+- Android app with in-app auto-update (this file's [Android app](#android-app) section)
