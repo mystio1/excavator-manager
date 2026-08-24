@@ -1,15 +1,30 @@
 "use client";
 
-import { useActionState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { resetPasswordAction } from "../actions";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function ResetPasswordForm({ token }: { token: string }) {
-  const [state, formAction, isPending] = useActionState(resetPasswordAction, undefined);
+  const router = useRouter();
+  const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
+    await apiFetch("/api/auth/reset-password", { method: "POST", body: JSON.stringify(body) });
+    router.push("/login?reset=1");
+  });
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    await run({
+      token,
+      password: fd.get("password"),
+      confirmPassword: fd.get("confirmPassword"),
+    });
+  }
 
   return (
     <Card>
@@ -17,8 +32,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
         <CardTitle className="text-2xl">Set a New Password</CardTitle>
       </CardHeader>
       <CardContent>
-        <form action={formAction} className="flex flex-col gap-4">
-          <input type="hidden" name="token" value={token} />
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="password" className="text-base">
               New Password
@@ -46,10 +60,10 @@ export function ResetPasswordForm({ token }: { token: string }) {
               className="h-12 text-base"
             />
           </div>
-          {state?.error && (
+          {error && (
             <p className="text-sm font-medium text-destructive">
-              {state.error}
-              {state.error.includes("expired") && (
+              {error}
+              {error.includes("expired") && (
                 <>
                   {" "}
                   <Link href="/forgot-password" className="underline underline-offset-4">
@@ -59,8 +73,8 @@ export function ResetPasswordForm({ token }: { token: string }) {
               )}
             </p>
           )}
-          <Button type="submit" size="lg" className="h-12 text-base" disabled={isPending}>
-            {isPending ? "Saving..." : "Reset Password"}
+          <Button type="submit" size="lg" className="h-12 text-base" disabled={pending}>
+            {pending ? "Saving..." : "Reset Password"}
           </Button>
         </form>
       </CardContent>

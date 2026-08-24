@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { ChevronsLeft, LogOut, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isNavItemActive, NAV_ITEMS } from "./nav-items";
-import { logoutAction } from "@/app/(auth)/actions";
+import { useLogout } from "@/lib/use-logout";
 import { ExcavatorLogo } from "@/components/excavator-logo";
 
 const COLLAPSE_KEY = "excavator-sidebar-collapsed";
@@ -14,6 +14,7 @@ const COLLAPSE_KEY = "excavator-sidebar-collapsed";
 export function Sidebar({ businessName }: { businessName: string }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const { logout, pending } = useLogout();
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing from a browser-only API unavailable during SSR
@@ -96,19 +97,21 @@ export function Sidebar({ businessName }: { businessName: string }) {
         </Link>
       </div>
 
-      <form action={logoutAction} className="border-t border-sidebar-border p-3">
+      <div className="border-t border-sidebar-border p-3">
         <button
-          type="submit"
+          type="button"
+          disabled={pending}
+          onClick={logout}
           title={collapsed ? "Log Out" : undefined}
           className={cn(
-            "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:opacity-60",
             collapsed && "justify-center",
           )}
         >
           <LogOut className="size-5 shrink-0" />
           {!collapsed && "Log Out"}
         </button>
-      </form>
+      </div>
 
       <button
         type="button"

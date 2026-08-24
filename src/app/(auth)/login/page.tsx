@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense, useActionState } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { loginAction } from "../actions";
+import { useRouter, useSearchParams } from "next/navigation";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,9 +19,19 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
-  const [state, formAction, isPending] = useActionState(loginAction, undefined);
+  const router = useRouter();
   const searchParams = useSearchParams();
   const justReset = searchParams.get("reset") === "1";
+  const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
+    await apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify(body) });
+    router.push("/dashboard");
+  });
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    await run({ email: fd.get("email"), password: fd.get("password") });
+  }
 
   return (
     <Card>
@@ -33,7 +44,7 @@ function LoginForm() {
             Password reset — log in with your new password.
           </p>
         )}
-        <form action={formAction} className="flex flex-col gap-4">
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="email" className="text-base">
               Email
@@ -51,9 +62,9 @@ function LoginForm() {
             </div>
             <Input id="password" name="password" type="password" required className="h-12 text-base" />
           </div>
-          {state?.error && <p className="text-sm font-medium text-destructive">{state.error}</p>}
-          <Button type="submit" size="lg" className="h-12 text-base" disabled={isPending}>
-            {isPending ? "Logging in..." : "Log In"}
+          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          <Button type="submit" size="lg" className="h-12 text-base" disabled={pending}>
+            {pending ? "Logging in..." : "Log In"}
           </Button>
         </form>
         <p className="mt-4 text-center text-sm text-muted-foreground">

@@ -1,17 +1,27 @@
+"use client";
+
+import { useEffect } from "react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getValidBusinessSession } from "@/lib/session";
+import { useRouter } from "next/navigation";
+import { apiFetch, ApiError } from "@/lib/api-client";
 import { ExcavatorLogo } from "@/components/excavator-logo";
 
-export default async function AuthLayout({ children }: { children: React.ReactNode }) {
-  // Checks the business still exists, not just that a session cookie is
-  // present — otherwise a stale session (JWT valid, business gone) would
-  // bounce here from /login and get redirected straight back to /dashboard,
-  // which redirects back to /login: an infinite loop.
-  const valid = await getValidBusinessSession();
-  if (valid) {
-    redirect("/dashboard");
-  }
+export default function AuthLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Checks the business still exists, not just that a session cookie is
+    // present — otherwise a stale session (JWT valid, business gone) would
+    // bounce here from /login and get redirected straight back to
+    // /dashboard, which redirects back to /login: an infinite loop.
+    apiFetch("/api/layout")
+      .then(() => router.replace("/dashboard"))
+      .catch((err) => {
+        if (!(err instanceof ApiError && err.status === 401)) {
+          console.error("Session check failed:", err);
+        }
+      });
+  }, [router]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-10">

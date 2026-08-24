@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { ChevronDown, Search } from "lucide-react";
 import { ThemeToggleButton } from "@/components/theme-toggle-button";
@@ -10,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NotificationBell } from "@/components/shell/notification-bell";
-import { logoutAction } from "@/app/(auth)/actions";
+import { useLogout } from "@/lib/use-logout";
 
 type Alert = { level: "warning" | "danger"; message: string; href: string };
 
@@ -30,6 +32,8 @@ export function DesktopTopHeader({
   ownerName: string;
   alerts: Alert[];
 }) {
+  const { logout, pending } = useLogout();
+
   return (
     <header className="app-topbar hidden h-16 shrink-0 items-center gap-4 border-b border-header-border px-6 md:flex">
       <form action="/search" method="get" className="relative max-w-md flex-1">
@@ -57,14 +61,14 @@ export function DesktopTopHeader({
           <DropdownMenuContent align="end" sideOffset={8} className="w-44">
             <DropdownMenuItem render={<Link href="/settings" />}>Settings</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <form action={logoutAction}>
-              <button
-                type="submit"
-                className="flex w-full cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm text-destructive select-none hover:bg-destructive/10"
-              >
-                Log Out
-              </button>
-            </form>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={logout}
+              className="flex w-full cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm text-destructive select-none hover:bg-destructive/10 disabled:opacity-60"
+            >
+              Log Out
+            </button>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

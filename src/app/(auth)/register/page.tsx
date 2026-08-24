@@ -1,15 +1,33 @@
 "use client";
 
-import { useActionState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { registerAction } from "../actions";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function RegisterPage() {
-  const [state, formAction, isPending] = useActionState(registerAction, undefined);
+  const router = useRouter();
+  const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
+    await apiFetch("/api/auth/register", { method: "POST", body: JSON.stringify(body) });
+    router.push("/dashboard");
+  });
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    await run({
+      businessName: fd.get("businessName"),
+      ownerName: fd.get("ownerName"),
+      phone: fd.get("phone"),
+      email: fd.get("email"),
+      password: fd.get("password"),
+      businessCode: fd.get("businessCode") || undefined,
+    });
+  }
 
   return (
     <Card>
@@ -17,7 +35,7 @@ export default function RegisterPage() {
         <CardTitle className="text-2xl">Create Your Business Account</CardTitle>
       </CardHeader>
       <CardContent>
-        <form action={formAction} className="flex flex-col gap-4">
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="businessName" className="text-base">
               Business Name
@@ -64,9 +82,9 @@ export default function RegisterPage() {
               generate one for you.
             </p>
           </div>
-          {state?.error && <p className="text-sm font-medium text-destructive">{state.error}</p>}
-          <Button type="submit" size="lg" className="h-12 text-base" disabled={isPending}>
-            {isPending ? "Creating account..." : "Create Account"}
+          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          <Button type="submit" size="lg" className="h-12 text-base" disabled={pending}>
+            {pending ? "Creating account..." : "Create Account"}
           </Button>
         </form>
         <p className="mt-4 text-center text-sm text-muted-foreground">

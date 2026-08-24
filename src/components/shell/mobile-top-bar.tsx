@@ -1,12 +1,16 @@
+"use client";
+
 import Link from "next/link";
 import { LogOut, Search, Settings } from "lucide-react";
-import { logoutAction } from "@/app/(auth)/actions";
+import { useLogout } from "@/lib/use-logout";
 import { ExcavatorLogo } from "@/components/excavator-logo";
 import { NotificationBell } from "@/components/shell/notification-bell";
 
 type Alert = { level: "warning" | "danger"; message: string; href: string };
 
 export function MobileTopBar({ businessName, alerts }: { businessName: string; alerts: Alert[] }) {
+  const { logout, pending } = useLogout();
+
   return (
     <header className="app-topbar flex items-center justify-between border-b border-header-border px-4 py-3 md:hidden">
       <div className="flex min-w-0 items-center gap-2 font-bold">
@@ -23,11 +27,9 @@ export function MobileTopBar({ businessName, alerts }: { businessName: string; a
         <Link href="/settings" aria-label="Settings" className="p-2 text-muted-foreground">
           <Settings className="size-5" />
         </Link>
-        <form action={logoutAction}>
-          <button type="submit" aria-label="Log out" className="p-2 text-muted-foreground">
-            <LogOut className="size-5" />
-          </button>
-        </form>
+        <button type="button" disabled={pending} onClick={logout} aria-label="Log out" className="p-2 text-muted-foreground disabled:opacity-60">
+          <LogOut className="size-5" />
+        </button>
       </div>
     </header>
   );
