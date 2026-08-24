@@ -1,22 +1,16 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-// This app has live Server Actions, sessions, and a database — it can't be
-// statically exported into `webDir`. Instead the WebView loads the real
-// deployed site directly; `webDir` is only used for the bundled offline
-// fallback page below (www/offline.html), never shown otherwise.
+// `webDir` is the static-exported Next.js build (see `npm run build:android`
+// / scripts/build-android.mjs), bundled straight into the APK — same
+// approach as the Shivam Transport app this was matched to. The WebView
+// never loads a live URL; every page is local, and all data comes from
+// fetch() calls to the deployed API (see src/lib/api-client.ts's
+// Capacitor.isNativePlatform() branch), same as a native app calling a
+// backend, not a browser loading a website.
 const config: CapacitorConfig = {
   appId: 'com.excavatormanager.app',
   appName: 'Excavator Manager',
-  webDir: 'www',
-  server: {
-    url: 'https://excavator-manager.onrender.com',
-    cleartext: false,
-    // Shown instead of the WebView's raw browser error page (e.g. Chrome's
-    // "Webpage not available" / net::ERR_NAME_NOT_RESOLVED) on any load
-    // failure — no internet, DNS failure, or the server being down. Native
-    // Capacitor behavior (Bridge.getErrorUrl()), not custom native code.
-    errorPath: 'offline.html',
-  },
+  webDir: 'out',
 };
 
 export default config;

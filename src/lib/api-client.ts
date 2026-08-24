@@ -2,8 +2,7 @@ import { Capacitor } from "@capacitor/core";
 
 // The Android bundled build has no server of its own to resolve a relative
 // "/api/..." path against — it runs from a local file origin and has to
-// call the real deployed API explicitly. Same URL already hardcoded in
-// capacitor.config.ts and www/offline.html for the same reason.
+// call the real deployed API explicitly.
 const API_BASE = "https://excavator-manager.onrender.com";
 
 /** Exported for the rare non-fetch case (e.g. an <a href download> link)

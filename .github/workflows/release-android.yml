@@ -39,6 +39,9 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Build static-exported web bundle
+        run: npm run build:android
+
       - name: Sync Capacitor Android project
         run: npx cap sync android
 

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:android": "node scripts/build-android.mjs",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate"
