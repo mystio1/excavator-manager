@@ -11,6 +11,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
+  // The Android app's bundled static build runs from a different origin
+  // (capacitor://localhost) than the API (the Render domain) — a normal
+  // "lax" session cookie is never sent on those cross-origin fetch() calls.
+  // "none" makes it a cross-site cookie, which browsers require Secure for
+  // (a SameSite=None cookie without Secure is dropped entirely) — only
+  // applied in production (HTTPS); local dev over plain http://localhost
+  // can't satisfy Secure at all, and doesn't need cross-origin cookies since
+  // nothing there talks to the app from a different origin.
+  cookies:
+    process.env.NODE_ENV === "production"
+      ? {
+          sessionToken: {
+            options: {
+              sameSite: "none",
+              secure: true,
+            },
+          },
+        }
+      : undefined,
   providers: [
     Credentials({
       id: "credentials",

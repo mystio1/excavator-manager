@@ -1,9 +1,11 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, HardHat, Plus, Trophy, UserPlus } from "lucide-react";
-import { requireBusiness } from "@/lib/session";
-import { getOperatorRankingLast45Days, listOperators, listPendingJoinRequests } from "@/lib/services/operators";
-import { countPendingLogs } from "@/lib/services/workSessions";
-import { countPendingWorkRequests } from "@/lib/services/operatorWorkRequests";
+import useSWR, { useSWRConfig } from "swr";
+import { CheckCircle2, HardHat, Loader2, Plus, Trophy, UserPlus } from "lucide-react";
+import type { getOperatorRankingLast45Days, listOperators, listPendingJoinRequests } from "@/lib/services/operators";
+import { apiFetch, swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,17 +16,62 @@ import { formatHours } from "@/lib/utils/hours";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
 import { DeleteOperatorButton } from "./delete-operator-button";
-import { approveOperatorJoinAction, declineOperatorJoinAction } from "./actions";
+import Loading from "../loading";
 
-export default async function OperatorsPage() {
-  const { businessId } = await requireBusiness();
-  const [operators, pendingLogCount, pendingWorkRequestCount, joinRequests, ranking] = await Promise.all([
-    listOperators(businessId),
-    countPendingLogs(businessId),
-    countPendingWorkRequests(businessId),
-    listPendingJoinRequests(businessId),
-    getOperatorRankingLast45Days(businessId),
-  ]);
+type OperatorsData = {
+  operators: Awaited<ReturnType<typeof listOperators>>;
+  pendingLogCount: number;
+  pendingWorkRequestCount: number;
+  joinRequests: Awaited<ReturnType<typeof listPendingJoinRequests>>;
+  ranking: Awaited<ReturnType<typeof getOperatorRankingLast45Days>>;
+};
+
+function JoinRequestCard({ id, name, mobile }: { id: string; name: string; mobile: string }) {
+  const { mutate } = useSWRConfig();
+  const [pending, setPending] = useState<"approve" | "decline" | null>(null);
+
+  async function respond(action: "approve" | "decline") {
+    setPending(action);
+    try {
+      await apiFetch(`/api/operators/${id}/${action}-join`, { method: "POST" });
+      await mutate("/api/operators");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  return (
+    <Card className="border-primary/40 bg-primary/5">
+      <CardContent className="flex items-center justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-1.5 font-bold">
+            <UserPlus className="size-4 text-primary" />
+            {name}
+          </p>
+          <p className="text-sm text-muted-foreground">{mobile}</p>
+          <Badge variant="outline" className="mt-1 text-xs">
+            Requested to join
+          </Badge>
+        </div>
+        <div className="flex gap-2">
+          <Button type="button" size="sm" variant="secondary" disabled={pending !== null} onClick={() => respond("decline")}>
+            {pending === "decline" ? <Loader2 className="size-4 animate-spin" /> : "Decline"}
+          </Button>
+          <Button type="button" size="sm" disabled={pending !== null} onClick={() => respond("approve")}>
+            {pending === "approve" ? <Loader2 className="size-4 animate-spin" /> : "Approve"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function OperatorsPage() {
+  const { data } = useSWR<OperatorsData>("/api/operators", swrFetcher, { dedupingInterval: 15_000 });
+
+  if (!data) return <Loading />;
+
+  const { operators, pendingLogCount, pendingWorkRequestCount, joinRequests, ranking } = data;
   const pendingCount = pendingLogCount + pendingWorkRequestCount;
 
   return (
@@ -41,34 +88,7 @@ export default async function OperatorsPage() {
 
       <div className="flex flex-col gap-3 px-4 pb-6 md:px-8">
         {joinRequests.map((req) => (
-          <Card key={req.id} className="border-primary/40 bg-primary/5">
-            <CardContent className="flex items-center justify-between gap-3">
-              <div>
-                <p className="flex items-center gap-1.5 font-bold">
-                  <UserPlus className="size-4 text-primary" />
-                  {req.name}
-                </p>
-                <p className="text-sm text-muted-foreground">{req.mobile}</p>
-                <Badge variant="outline" className="mt-1 text-xs">
-                  Requested to join
-                </Badge>
-              </div>
-              <div className="flex gap-2">
-                <form action={declineOperatorJoinAction}>
-                  <input type="hidden" name="id" value={req.id} />
-                  <Button type="submit" size="sm" variant="secondary">
-                    Decline
-                  </Button>
-                </form>
-                <form action={approveOperatorJoinAction}>
-                  <input type="hidden" name="id" value={req.id} />
-                  <Button type="submit" size="sm">
-                    Approve
-                  </Button>
-                </form>
-              </div>
-            </CardContent>
-          </Card>
+          <JoinRequestCard key={req.id} id={req.id} name={req.name} mobile={req.mobile} />
         ))}
         {pendingCount > 0 && (
           <Link

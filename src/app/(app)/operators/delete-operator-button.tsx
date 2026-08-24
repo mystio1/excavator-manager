@@ -1,13 +1,33 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
-import { archiveOperatorAction } from "./actions";
+import { useState } from "react";
+import { useSWRConfig } from "swr";
+import { Loader2, Trash2 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export function DeleteOperatorButton({ operatorId, operatorName }: { operatorId: string; operatorName: string }) {
+  const { mutate } = useSWRConfig();
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  async function handleDelete() {
+    setPending(true);
+    try {
+      await apiFetch(`/api/operators/${operatorId}`, { method: "DELETE" });
+      setOpen(false);
+      // Re-fetches the list this button lives on (SWR's cache key is the
+      // request path) — the client-fetch analogue of the old
+      // revalidatePath("/operators") in the Server Action this replaced.
+      await mutate("/api/operators");
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
           <Button
@@ -29,14 +49,11 @@ export function DeleteOperatorButton({ operatorId, operatorName }: { operatorId:
           Deleting the operator will permanently remove them, along with their data, from your active operator
           list. This cannot be undone.
         </p>
-        <form action={archiveOperatorAction}>
-          <input type="hidden" name="id" value={operatorId} />
-          <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-            <Button type="submit" variant="destructive" size="lg" className="h-11 w-full">
-              Yes, Delete
-            </Button>
-          </DialogFooter>
-        </form>
+        <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
+          <Button type="button" variant="destructive" size="lg" className="h-11 w-full" disabled={pending} onClick={handleDelete}>
+            {pending ? <Loader2 className="size-4 animate-spin" /> : "Yes, Delete"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

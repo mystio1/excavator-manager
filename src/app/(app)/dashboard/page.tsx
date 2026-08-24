@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import useSWR from "swr";
 import {
   Banknote,
   Clock,
@@ -8,8 +11,7 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import { requireBusiness } from "@/lib/session";
-import {
+import type {
   getDashboardSummary,
   getMachineHoursDetail,
   getMonthlyHoursTrend,
@@ -19,6 +21,7 @@ import {
   getRecentActivity,
   getTopCustomersByRevenue,
 } from "@/lib/services/dashboard";
+import { swrFetcher } from "@/lib/api-client";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/currency";
 import { SummaryCard } from "@/components/dashboard/summary-card";
 import { AlertBanner } from "@/components/dashboard/alert-banner";
@@ -30,8 +33,21 @@ import { TopCustomers } from "@/components/dashboard/top-customers";
 import { RecentActivityCard } from "@/components/dashboard/recent-activity-card";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import Loading from "../loading";
 
-const RECENT_ACTIVITY_LIMIT = 20;
+type Summary = Awaited<ReturnType<typeof getDashboardSummary>>;
+type DashboardData = {
+  cards: Summary["cards"];
+  alerts: Summary["alerts"];
+  ownerName: Summary["ownerName"];
+  hoursTrend: Awaited<ReturnType<typeof getMonthlyHoursTrend>>;
+  revenueTrend: Awaited<ReturnType<typeof getMonthlyRevenueTrend>>;
+  activity: Awaited<ReturnType<typeof getRecentActivity>>;
+  machineHours: Awaited<ReturnType<typeof getMachineHoursDetail>>;
+  paymentCollection: Awaited<ReturnType<typeof getPaymentCollectionStatus>>;
+  profit: Awaited<ReturnType<typeof getProfitOverview>>;
+  topCustomers: Awaited<ReturnType<typeof getTopCustomersByRevenue>>;
+};
 
 function greeting() {
   const hour = new Date().getHours();
@@ -40,28 +56,13 @@ function greeting() {
   return "Good evening";
 }
 
-export default async function DashboardPage() {
-  const { businessId } = await requireBusiness();
-  const [
-    { cards, alerts, ownerName },
-    hoursTrend,
-    revenueTrend,
-    activity,
-    machineHours,
-    paymentCollection,
-    profit,
-    topCustomers,
-  ] = await Promise.all([
-    getDashboardSummary(businessId),
-    getMonthlyHoursTrend(businessId),
-    getMonthlyRevenueTrend(businessId),
-    getRecentActivity(businessId, RECENT_ACTIVITY_LIMIT),
-    getMachineHoursDetail(businessId),
-    getPaymentCollectionStatus(businessId),
-    getProfitOverview(businessId),
-    getTopCustomersByRevenue(businessId),
-  ]);
+export default function DashboardPage() {
+  const { data } = useSWR<DashboardData>("/api/dashboard", swrFetcher, { dedupingInterval: 15_000 });
 
+  if (!data) return <Loading />;
+
+  const { cards, alerts, ownerName, hoursTrend, revenueTrend, activity, machineHours, paymentCollection, profit, topCustomers } =
+    data;
   const firstName = ownerName.split(" ")[0];
 
   return (
