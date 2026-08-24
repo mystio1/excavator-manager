@@ -5,6 +5,7 @@ import type { getBusinessSettings, listBankAccounts } from "@/lib/services/setti
 import { swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
 import { ThemeSwitcher } from "@/components/theme-switcher";
+import { AppVersionFooter } from "@/components/app-version-footer";
 import { BusinessProfileForm } from "./business-profile-form";
 import { BillLetterheadForm } from "./bill-letterhead-form";
 import { BankAccountsSection } from "./bank-accounts-section";
@@ -33,6 +34,7 @@ export default function SettingsPage() {
         <BusinessProfileForm business={business} />
         <BillLetterheadForm business={business} />
         <BankAccountsSection accounts={bankAccounts} />
+        <AppVersionFooter />
       </div>
     </div>
   );
