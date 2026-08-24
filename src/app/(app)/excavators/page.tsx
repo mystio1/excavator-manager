@@ -1,19 +1,27 @@
+"use client";
+
 import Link from "next/link";
+import useSWR from "swr";
 import { Plus, Truck } from "lucide-react";
-import { requireBusiness } from "@/lib/session";
-import { listExcavators, getMachinePerformanceSummary } from "@/lib/services/excavators";
+import type { getMachinePerformanceSummary, listExcavators } from "@/lib/services/excavators";
+import { swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { MachineCard } from "@/components/machine-card";
 import { MachinePerformanceList } from "@/components/machine-performance-list";
 import { EmptyState } from "@/components/empty-state";
+import Loading from "../loading";
 
-export default async function ExcavatorsPage() {
-  const { businessId } = await requireBusiness();
-  const [excavators, machinePerformance] = await Promise.all([
-    listExcavators(businessId),
-    getMachinePerformanceSummary(businessId),
-  ]);
+type ExcavatorsData = {
+  excavators: Awaited<ReturnType<typeof listExcavators>>;
+  machinePerformance: Awaited<ReturnType<typeof getMachinePerformanceSummary>>;
+};
+
+export default function ExcavatorsPage() {
+  const { data } = useSWR<ExcavatorsData>("/api/excavators", swrFetcher, { dedupingInterval: 15_000 });
+
+  if (!data) return <Loading />;
+  const { excavators, machinePerformance } = data;
 
   return (
     <div>
