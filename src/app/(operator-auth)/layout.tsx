@@ -1,12 +1,25 @@
-import { redirect } from "next/navigation";
-import { getValidOperatorSession } from "@/lib/session";
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { apiFetch, ApiError } from "@/lib/api-client";
 import { ExcavatorLogo } from "@/components/excavator-logo";
 
-export default async function OperatorAuthLayout({ children }: { children: React.ReactNode }) {
-  const valid = await getValidOperatorSession();
-  if (valid) {
-    redirect("/operator");
-  }
+export default function OperatorAuthLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Checks the operator is still active, not just that a session cookie is
+    // present — see (auth)/layout.tsx's identical reasoning for why this
+    // can't be a stale-JWT check alone.
+    apiFetch("/api/operator/layout")
+      .then(() => router.replace("/operator"))
+      .catch((err) => {
+        if (!(err instanceof ApiError && err.status === 401)) {
+          console.error("Session check failed:", err);
+        }
+      });
+  }, [router]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-10">

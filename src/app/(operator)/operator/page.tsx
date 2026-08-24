@@ -1,20 +1,69 @@
-import { requireOperator } from "@/lib/session";
-import { getOperatorPortalState } from "@/lib/services/workSessions";
-import { listOpenOperatorRequests, listRecentOperatorRequests } from "@/lib/services/operatorWorkRequests";
+"use client";
+
+import useSWR from "swr";
+import { swrFetcher } from "@/lib/api-client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatDateTime } from "@/lib/utils/dates";
 import { formatHours } from "@/lib/utils/hours";
-import { ot } from "@/lib/i18n/operator";
+import { ot, type OperatorLang } from "@/lib/i18n/operator";
+import { ExcavatorLogo } from "@/components/excavator-logo";
 import { SubmitReadingDialog } from "../submit-reading-dialog";
 import { StartWorkDialog } from "../start-work-dialog";
 import { EndWorkDialog } from "../end-work-dialog";
 import { EditWorkDialog } from "../edit-work-dialog";
 import { OperatorLanguageSwitcher } from "../operator-language-switcher";
 
-export default async function OperatorHomePage() {
-  const { operatorId, operatorLang: lang } = await requireOperator();
-  const { excavator, activeSession } = await getOperatorPortalState(operatorId);
+type DailyLog = { id: string; date: Date; hoursWorked: number; status: string };
+type WorkRequest = {
+  id: string;
+  status: "ACTIVE" | "PENDING" | "APPROVED" | "REJECTED";
+  startDate: Date;
+  startHourMeter: number;
+  endDate: Date | null;
+  endHourMeter: number | null;
+  siteName: string | null;
+  attachment: string | null;
+  dieselLiters: number | null;
+  dieselDate: Date | null;
+  notes: string | null;
+  rejectionNote: string | null;
+};
+type Excavator = {
+  id: string;
+  name: string;
+  machineNumber: string | null;
+  currentHourMeter: number;
+  currentSite: { name: string } | null;
+};
+type ActiveSession = {
+  id: string;
+  customer: { name: string };
+  site: { name: string };
+  dailyLogs: DailyLog[];
+};
+type HomeData = {
+  operatorLang: OperatorLang;
+  excavator: Excavator | null;
+  activeSession: ActiveSession | null;
+  openRequests: WorkRequest[];
+  recentRequests: WorkRequest[];
+};
+
+export default function OperatorHomePage() {
+  const { data } = useSWR<HomeData>("/api/operator/home", swrFetcher);
+
+  if (!data) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 p-10">
+        <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+          <ExcavatorLogo animated className="size-8" />
+        </div>
+      </div>
+    );
+  }
+
+  const { operatorLang: lang, excavator, activeSession, openRequests, recentRequests } = data;
   const t = (key: string, vars?: Record<string, string | number>) => ot(lang, key, vars);
 
   const LOG_STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -91,10 +140,6 @@ export default async function OperatorHomePage() {
     );
   }
 
-  const [openRequests, recentRequests] = await Promise.all([
-    listOpenOperatorRequests(operatorId, excavator.id),
-    listRecentOperatorRequests(operatorId, excavator.id, 5),
-  ]);
   const openIds = new Set(openRequests.map((r) => r.id));
   const history = recentRequests.filter((r) => !openIds.has(r.id));
 

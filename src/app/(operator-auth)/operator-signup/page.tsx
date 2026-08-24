@@ -1,9 +1,11 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
-import { operatorSignupAction } from "../actions";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,8 +13,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OperatorLanguageToggle } from "@/components/operator-language-toggle";
 import { OPERATOR_LANG_STORAGE_KEY, ot, otMsg, type OperatorLang } from "@/lib/i18n/operator";
 
+type SignupResult = { ok: true } | { success: true; message: string };
+
 export default function OperatorSignupPage() {
-  const [state, formAction, isPending] = useActionState(operatorSignupAction, undefined);
+  const router = useRouter();
+  const [result, setResult] = useState<SignupResult | null>(null);
+  const { error, pending: isPending, run } = useApiForm(async (body: Record<string, unknown>) => {
+    const res = await apiFetch<SignupResult>("/api/auth/operator-signup", { method: "POST", body: JSON.stringify(body) });
+    if ("success" in res) {
+      setResult(res);
+    } else {
+      router.push("/operator");
+    }
+  });
   const [lang, setLang] = useState<OperatorLang>("en");
 
   useEffect(() => {
@@ -28,7 +41,19 @@ export default function OperatorSignupPage() {
 
   const t = (key: string) => ot(lang, key);
 
-  if (state && "success" in state) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    await run({
+      businessCode: fd.get("businessCode"),
+      name: fd.get("name"),
+      mobile: fd.get("mobile"),
+      pin: fd.get("pin"),
+      confirmPin: fd.get("confirmPin"),
+    });
+  }
+
+  if (result && "success" in result) {
     return (
       <>
         <OperatorLanguageToggle lang={lang} onChange={chooseLang} />
@@ -36,7 +61,7 @@ export default function OperatorSignupPage() {
           <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
             <CheckCircle2 className="size-10 text-working" />
             <p className="text-lg font-bold">{t("signup.requestSent")}</p>
-            <p className="text-sm text-muted-foreground">{otMsg(lang, state.message)}</p>
+            <p className="text-sm text-muted-foreground">{otMsg(lang, result.message)}</p>
             <Button size="lg" className="mt-2 h-12 w-full text-base" nativeButton={false} render={<Link href="/operator-login" />}>
               {t("signup.goToLogin")}
             </Button>
@@ -55,7 +80,7 @@ export default function OperatorSignupPage() {
         </CardHeader>
         <CardContent>
           <p className="mb-4 text-sm text-muted-foreground">{t("signup.intro")}</p>
-          <form action={formAction} className="flex flex-col gap-4">
+          <form onSubmit={onSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <Label htmlFor="businessCode" className="text-base">
                 {t("signup.businessCode")}
@@ -102,7 +127,7 @@ export default function OperatorSignupPage() {
               </Label>
               <Input id="confirmPin" name="confirmPin" type="password" inputMode="numeric" required className="h-12 text-base" />
             </div>
-            {state?.error && <p className="text-sm font-medium text-destructive">{otMsg(lang, state.error)}</p>}
+            {error && <p className="text-sm font-medium text-destructive">{otMsg(lang, error)}</p>}
             <Button type="submit" size="lg" className="h-12 text-base" disabled={isPending}>
               {isPending ? t("signup.submitting") : t("signup.submit")}
             </Button>

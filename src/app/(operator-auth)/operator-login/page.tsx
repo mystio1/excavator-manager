@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { operatorLoginAction } from "../actions";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +15,11 @@ import { OPERATOR_LANG_STORAGE_KEY, ot, otMsg, type OperatorLang } from "@/lib/i
 const REMEMBERED_MOBILE_KEY = "operator-remembered-mobile";
 
 export default function OperatorLoginPage() {
-  const [state, formAction, isPending] = useActionState(operatorLoginAction, undefined);
+  const router = useRouter();
+  const { error, pending: isPending, run } = useApiForm(async (body: Record<string, unknown>) => {
+    await apiFetch("/api/auth/operator-login", { method: "POST", body: JSON.stringify(body) });
+    router.push("/operator");
+  });
   const [lang, setLang] = useState<OperatorLang>("en");
   const [rememberedMobile, setRememberedMobile] = useState<string | null>(null);
 
@@ -30,9 +36,12 @@ export default function OperatorLoginPage() {
     localStorage.setItem(OPERATOR_LANG_STORAGE_KEY, next);
   }
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    const mobile = rememberedMobile ?? (new FormData(e.currentTarget).get("mobile") as string) ?? "";
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const mobile = rememberedMobile ?? (fd.get("mobile") as string) ?? "";
     if (mobile) localStorage.setItem(REMEMBERED_MOBILE_KEY, mobile);
+    await run({ mobile, pin: fd.get("pin") });
   }
 
   function useDifferentNumber() {
@@ -50,7 +59,7 @@ export default function OperatorLoginPage() {
           <CardTitle className="text-2xl">{t("login.title")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <form action={formAction} onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {rememberedMobile ? (
               <div className="flex flex-col gap-1.5">
                 <input type="hidden" name="mobile" value={rememberedMobile} />
@@ -85,7 +94,7 @@ export default function OperatorLoginPage() {
                 autoFocus={!!rememberedMobile}
               />
             </div>
-            {state?.error && <p className="text-sm font-medium text-destructive">{otMsg(lang, state.error)}</p>}
+            {error && <p className="text-sm font-medium text-destructive">{otMsg(lang, error)}</p>}
             <Button type="submit" size="lg" className="h-12 text-base" disabled={isPending}>
               {isPending ? t("login.submitting") : t("login.submit")}
             </Button>

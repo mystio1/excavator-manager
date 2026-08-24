@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { useSWRConfig } from "swr";
 import { Clock } from "lucide-react";
-import { submitReadingAction } from "./actions";
+import { apiFetch } from "@/lib/api-client";
+import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,19 +28,32 @@ export function SubmitReadingDialog({
   currentHourMeter: number;
   lang: OperatorLang;
 }) {
-  const [state, formAction, isPending] = useActionState(submitReadingAction, undefined);
+  const { mutate } = useSWRConfig();
   const [mode, setMode] = useState<"meter" | "time">("meter");
   const today = new Date().toISOString().slice(0, 10);
   const [open, setOpen] = useState(false);
-  const wasPending = useRef(false);
+  const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
+    await apiFetch("/api/operator/daily-log", { method: "POST", body: JSON.stringify(body) });
+  });
   const t = (key: string) => ot(lang, key);
 
-  useEffect(() => {
-    if (wasPending.current && !isPending && !state?.error) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const ok = await run({
+      workSessionId,
+      date: fd.get("date"),
+      startHourMeter: fd.get("startHourMeter") || undefined,
+      endHourMeter: fd.get("endHourMeter") || undefined,
+      startTime: fd.get("startTime") || undefined,
+      stopTime: fd.get("stopTime") || undefined,
+      breakMinutes: fd.get("breakMinutes") || undefined,
+    });
+    if (ok) {
+      await mutate("/api/operator/home");
       setOpen(false);
     }
-    wasPending.current = isPending;
-  }, [isPending, state]);
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -50,9 +65,7 @@ export function SubmitReadingDialog({
         <DialogHeader>
           <DialogTitle>{t("submitReading.title")}</DialogTitle>
         </DialogHeader>
-        <form action={formAction} className="flex flex-col gap-4">
-          <input type="hidden" name="workSessionId" value={workSessionId} />
-
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="date" className="text-base">
               {t("submitReading.date")}
@@ -139,11 +152,11 @@ export function SubmitReadingDialog({
             </>
           )}
 
-          {state?.error && <p className="text-sm font-medium text-destructive">{otMsg(lang, state.error)}</p>}
+          {error && <p className="text-sm font-medium text-destructive">{otMsg(lang, error)}</p>}
 
           <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-            <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={isPending}>
-              {isPending ? t("submitReading.submitting") : t("submitReading.submit")}
+            <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
+              {pending ? t("submitReading.submitting") : t("submitReading.submit")}
             </Button>
           </DialogFooter>
         </form>

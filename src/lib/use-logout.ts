@@ -7,7 +7,7 @@ import { apiFetch } from "@/lib/api-client";
 /** Replaces logoutAction (a Server Action) — unreachable from the Android
  * bundled build, which has no Next.js server backing its own origin to
  * post a Server Action to. */
-export function useLogout() {
+export function useLogout(redirectTo: string = "/login") {
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
@@ -15,7 +15,7 @@ export function useLogout() {
     setPending(true);
     try {
       await apiFetch("/api/auth/logout", { method: "POST" });
-      router.push("/login");
+      router.push(redirectTo);
     } finally {
       setPending(false);
     }
