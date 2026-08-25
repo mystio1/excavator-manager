@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, Clock, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatCurrency } from "@/lib/utils/currency";
+import { formatCurrencyCompact } from "@/lib/utils/currency";
 import { cn } from "@/lib/utils";
 import type { PaymentCollectionCustomer } from "@/lib/services/dashboard";
 
@@ -123,7 +123,7 @@ export function PaymentCollectionStatus({
               >
                 <span className="truncate font-medium">{c.name}</span>
                 <span className={cn("shrink-0 font-bold tabular-nums", BUCKETS[open].text)}>
-                  {formatCurrency(open === "paid" ? c.billed : c.pending)}
+                  {formatCurrencyCompact(open === "paid" ? c.billed : c.pending)}
                 </span>
               </Link>
             ))
@@ -138,15 +138,15 @@ export function PaymentCollectionStatus({
         </div>
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>
-            Received <span className="font-bold text-foreground">{formatCurrency(totalReceived)}</span>
+            Received <span className="font-bold text-foreground">{formatCurrencyCompact(totalReceived)}</span>
           </span>
           <span>
-            Pending <span className="font-bold text-foreground">{formatCurrency(totalPending)}</span>
+            Pending <span className="font-bold text-foreground">{formatCurrencyCompact(totalPending)}</span>
           </span>
         </div>
         <div className="flex items-center justify-between border-t border-border pt-2 text-xs text-muted-foreground">
           <span className="font-medium">Total Billed</span>
-          <span className="font-bold text-foreground">{formatCurrency(totalBilled)}</span>
+          <span className="font-bold text-foreground">{formatCurrencyCompact(totalBilled)}</span>
         </div>
       </div>
     </div>

@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/native-select";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatCurrency } from "@/lib/utils/currency";
+import { formatCurrencyCompact } from "@/lib/utils/currency";
 import { formatDateRange } from "@/lib/utils/dates";
 import { formatHours } from "@/lib/utils/hours";
 import { StatusBadge } from "@/components/status-badge";
@@ -87,11 +87,11 @@ export default function CustomerDetailPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <span className="rounded-full bg-working/15 px-3 py-1 text-sm font-semibold text-working">
-                {formatCurrency(totalRevenue)} Total
+                {formatCurrencyCompact(totalRevenue)} Total
               </span>
               {pending > 0.01 && (
                 <span className="rounded-full bg-destructive/15 px-3 py-1 text-sm font-semibold text-destructive">
-                  {formatCurrency(pending)} Pending
+                  {formatCurrencyCompact(pending)} Pending
                 </span>
               )}
             </div>

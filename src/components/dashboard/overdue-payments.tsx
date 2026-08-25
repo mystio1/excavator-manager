@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatCurrency } from "@/lib/utils/currency";
+import { formatCurrencyCompact } from "@/lib/utils/currency";
 
 type OverdueRow = {
   billId: string;
@@ -30,7 +30,7 @@ export function OverduePayments({ bills }: { bills: OverdueRow[] }) {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <p className="text-right font-bold text-destructive">{formatCurrency(b.pending)}</p>
+            <p className="text-right font-bold text-destructive">{formatCurrencyCompact(b.pending)}</p>
             <Button
               size="sm"
               variant="secondary"

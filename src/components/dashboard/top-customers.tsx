@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatCurrency } from "@/lib/utils/currency";
+import { formatCurrencyCompact } from "@/lib/utils/currency";
 
 type CustomerRow = {
   customerId: string;
@@ -27,9 +27,9 @@ export function TopCustomers({ customers }: { customers: CustomerRow[] }) {
             <p className="truncate text-[15px] font-bold">{c.name}</p>
           </div>
           <div className="shrink-0 text-right text-sm">
-            <p className="text-base font-extrabold tabular-nums">{formatCurrency(c.revenue)}</p>
+            <p className="text-base font-extrabold tabular-nums">{formatCurrencyCompact(c.revenue)}</p>
             <p className={c.pending > 0.01 ? "text-xs font-medium text-destructive" : "text-xs font-medium text-working"}>
-              {c.pending > 0.01 ? `${formatCurrency(c.pending)} pending` : "Fully received"}
+              {c.pending > 0.01 ? `${formatCurrencyCompact(c.pending)} pending` : "Fully received"}
             </p>
           </div>
         </Link>

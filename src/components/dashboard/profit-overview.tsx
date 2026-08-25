@@ -1,4 +1,4 @@
-import { formatCurrency } from "@/lib/utils/currency";
+import { formatCurrencyCompact } from "@/lib/utils/currency";
 
 type Breakdown = { label: string; amount: number };
 
@@ -40,13 +40,13 @@ export function ProfitOverview({
           Actual Profit
         </p>
         <p className="col-start-1 row-start-2 self-end text-xl font-extrabold tracking-tight text-primary tabular-nums sm:text-2xl">
-          {formatCurrency(revenue)}
+          {formatCurrencyCompact(revenue)}
         </p>
         <p className="col-start-2 row-start-2 self-end text-xl font-extrabold tracking-tight text-destructive tabular-nums sm:text-2xl">
-          {formatCurrency(expenses)}
+          {formatCurrencyCompact(expenses)}
         </p>
         <p className="col-start-3 row-start-2 self-end text-xl font-extrabold tracking-tight text-working tabular-nums sm:text-2xl">
-          {formatCurrency(netProfit)}
+          {formatCurrencyCompact(netProfit)}
         </p>
       </div>
 
@@ -65,7 +65,7 @@ export function ProfitOverview({
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium">{b.label}</span>
                   <span className="font-bold">
-                    {formatCurrency(b.amount)} · {pct}%
+                    {formatCurrencyCompact(b.amount)} · {pct}%
                   </span>
                 </div>
                 <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
