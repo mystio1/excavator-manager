@@ -623,44 +623,71 @@ export async function getOperatorPerformance(businessId: string) {
   );
 }
 
+export type PaymentCollectionCustomer = { id: string; name: string; billed: number; paid: number; pending: number };
+
 /** "Payment Collection": how many customers are fully paid vs. still owe
- * something, plus the totals for a stacked collected/pending progress bar. */
+ * something, plus the totals for a stacked collected/pending progress bar
+ * and the actual customer breakdown per bucket (shown on the dashboard only
+ * once a bucket is tapped — see PaymentCollectionStatus). */
 export async function getPaymentCollectionStatus(businessId: string) {
   const bills = await db.bill.findMany({
     where: { businessId },
-    select: { customerId: true, totalAmount: true, paidAmount: true },
+    select: {
+      customerId: true,
+      totalAmount: true,
+      paidAmount: true,
+      customer: { select: { name: true, companyName: true } },
+    },
   });
 
-  const byCustomer = new Map<string, { billed: number; paid: number }>();
+  const byCustomer = new Map<string, { name: string; billed: number; paid: number }>();
   for (const b of bills) {
-    const entry = byCustomer.get(b.customerId) ?? { billed: 0, paid: 0 };
+    const entry = byCustomer.get(b.customerId) ?? {
+      name: b.customer.companyName ? `${b.customer.name} — ${b.customer.companyName}` : b.customer.name,
+      billed: 0,
+      paid: 0,
+    };
     entry.billed += b.totalAmount;
     entry.paid += b.paidAmount;
     byCustomer.set(b.customerId, entry);
   }
 
-  let paidCount = 0;
-  let partialCount = 0;
-  let overdueCount = 0; // "overdue" here = still owes, distinct bucket from "in progress" partial
   let totalBilled = 0;
   let totalReceived = 0;
+  const paidCustomers: PaymentCollectionCustomer[] = [];
+  const partialCustomers: PaymentCollectionCustomer[] = [];
+  const overdueCustomers: PaymentCollectionCustomer[] = []; // "overdue" here = still owes, distinct bucket from "in progress" partial
 
-  for (const { billed, paid } of byCustomer.values()) {
+  for (const [id, { name, billed, paid }] of byCustomer) {
     totalBilled += billed;
     totalReceived += paid;
     const pending = billed - paid;
-    if (pending <= 0.01) paidCount++;
-    else if (paid > 0.01) partialCount++;
-    else overdueCount++;
+    const entry: PaymentCollectionCustomer = {
+      id,
+      name,
+      billed: Math.round(billed * 100) / 100,
+      paid: Math.round(paid * 100) / 100,
+      pending: Math.round(pending * 100) / 100,
+    };
+    if (pending <= 0.01) paidCustomers.push(entry);
+    else if (paid > 0.01) partialCustomers.push(entry);
+    else overdueCustomers.push(entry);
   }
 
+  paidCustomers.sort((a, b) => b.billed - a.billed);
+  partialCustomers.sort((a, b) => b.pending - a.pending);
+  overdueCustomers.sort((a, b) => b.pending - a.pending);
+
   return {
-    paidCount,
-    partialCount,
-    overdueCount,
+    paidCount: paidCustomers.length,
+    partialCount: partialCustomers.length,
+    overdueCount: overdueCustomers.length,
     totalBilled: Math.round(totalBilled * 100) / 100,
     totalReceived: Math.round(totalReceived * 100) / 100,
     totalPending: Math.round((totalBilled - totalReceived) * 100) / 100,
+    paidCustomers,
+    partialCustomers,
+    overdueCustomers,
   };
 }
 
