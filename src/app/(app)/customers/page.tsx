@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { SummaryCard } from "@/components/dashboard/summary-card";
 import { EmptyState } from "@/components/empty-state";
-import { formatCurrency } from "@/lib/utils/currency";
+import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/currency";
 import { WhatsAppButton } from "./whatsapp-button";
 import { ArchiveCustomerButton } from "./archive-customer-button";
 import Loading from "../loading";
@@ -54,8 +54,20 @@ export default function CustomersPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
           <SummaryCard icon={Users} label="Total Customers" value={customers.length} />
           <SummaryCard icon={UserX} label="With Pending Dues" value={withPendingDues} accent="danger" />
-          <SummaryCard icon={Banknote} label="Total Revenue" value={formatCurrency(totalRevenue)} accent="success" />
-          <SummaryCard icon={Banknote} label="Pending Payments" value={formatCurrency(pendingPayments)} accent="danger" />
+          <SummaryCard
+            icon={Banknote}
+            label="Total Revenue"
+            value={formatCurrencyCompact(totalRevenue)}
+            exactValue={formatCurrency(totalRevenue)}
+            accent="success"
+          />
+          <SummaryCard
+            icon={Banknote}
+            label="Pending Payments"
+            value={formatCurrencyCompact(pendingPayments)}
+            exactValue={formatCurrency(pendingPayments)}
+            accent="danger"
+          />
         </div>
 
         <form method="get" className="flex flex-col gap-3 sm:flex-row">
@@ -97,13 +109,13 @@ export default function CustomersPage() {
                       )}
                       <p className="text-sm text-muted-foreground">
                         {customer.mobile} · {customer.tripCount} trip{customer.tripCount === 1 ? "" : "s"} ·{" "}
-                        {formatCurrency(customer.totalRevenue)}
+                        {formatCurrencyCompact(customer.totalRevenue)}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       {customer.pending > 0.01 && (
                         <span className="rounded-full bg-destructive/15 px-2.5 py-1 text-xs font-semibold text-destructive">
-                          {formatCurrency(customer.pending)} pending
+                          {formatCurrencyCompact(customer.pending)} pending
                         </span>
                       )}
                       <WhatsAppButton mobile={customer.mobile} name={customer.name} pending={customer.pending} />
