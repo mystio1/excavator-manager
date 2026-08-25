@@ -12,7 +12,7 @@ export function MobileTopBar({ businessName, alerts }: { businessName: string; a
   const { logout, pending } = useLogout();
 
   return (
-    <header className="app-topbar flex items-center justify-between border-b border-header-border px-4 py-3 md:hidden">
+    <header className="app-topbar flex items-center justify-between border-b border-header-border px-4 pb-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:hidden">
       <div className="flex min-w-0 items-center gap-2 font-bold">
         <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <ExcavatorLogo className="size-4" />

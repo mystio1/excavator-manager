@@ -207,7 +207,11 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    /* Backstop against horizontal overflow — individual layouts (the owner
+       shell's <main>) already guard their own scroll region, but this
+       catches anything that doesn't (the operator portal's <main> didn't),
+       app-wide, in one place instead of per-layout. */
+    @apply bg-background text-foreground overflow-x-hidden;
   }
   html {
     /* Slightly larger than the 16px browser default so the whole app reads
