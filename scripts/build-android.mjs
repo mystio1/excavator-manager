@@ -11,10 +11,6 @@ import { spawn } from "node:child_process";
 
 const MOVES = [
   ["src/app/api", "src/app/_api.android-build-excluded"],
-  // Not under src/app/api — it lives at bills/[id]/export because it's a
-  // Route Handler nested under a page route, not part of the API tree, but
-  // it still reads the request/session and can't be statically exported.
-  ["src/app/(app)/bills/[id]", "src/app/(app)/_bills-id.android-build-excluded"],
   ["src/proxy.ts", "src/proxy.ts.android-build-excluded"],
 ];
 

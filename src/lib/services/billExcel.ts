@@ -22,6 +22,27 @@ function thinBorder(): Partial<ExcelJS.Borders> {
   return { top: side, bottom: side, left: side, right: side };
 }
 
+const DATA_URI_RE = /^data:image\/(png|jpe?g|gif);base64,(.+)$/i;
+
+/** logoLeftUrl/logoRightUrl/signatureUrl are data: URIs stored directly on
+ * Business (see ImageUploadField) — same source BillPreview reads for the
+ * on-screen/print version, just floated onto the sheet instead of laid out
+ * with flex/img. `ext` is a fixed pixel size (not tied to row/col size), so
+ * placement doesn't depend on getting column widths to line up. */
+function addLetterheadImage(
+  workbook: ExcelJS.Workbook,
+  sheet: ExcelJS.Worksheet,
+  dataUri: string | null | undefined,
+  tl: { col: number; row: number },
+  ext: { width: number; height: number },
+) {
+  const match = dataUri?.match(DATA_URI_RE);
+  if (!match) return;
+  const extension = match[1].toLowerCase() === "jpg" ? "jpeg" : (match[1].toLowerCase() as "png" | "jpeg" | "gif");
+  const imageId = workbook.addImage({ base64: match[2], extension });
+  sheet.addImage(imageId, { tl, ext, editAs: "oneCell" });
+}
+
 function infoRow(
   sheet: ExcelJS.Worksheet,
   row: number,
@@ -83,7 +104,15 @@ export function buildBillWorkbook(bill: BillPreviewData): ExcelJS.Workbook {
 
   sheet.columns = [{ width: 28 }, { width: 20 }, { width: 12 }, { width: 14 }, { width: 16 }];
 
-  let row = 1;
+  // Accent bar — mirrors BillPreview's top strip (bill-preview.tsx's
+  // `<div className="h-1" style={{ backgroundColor: accent }} />`).
+  sheet.getRow(1).height = 4;
+  for (let c = 1; c <= LAST_COL; c++) {
+    sheet.getCell(1, c).fill = solidFill(accent);
+  }
+
+  let row = 2;
+  const headerTopRow = row;
 
   sheet.mergeCells(row, 1, row, LAST_COL);
   const nameCell = sheet.getCell(row, 1);
@@ -124,6 +153,24 @@ export function buildBillWorkbook(bill: BillPreviewData): ExcelJS.Workbook {
     c.alignment = { horizontal: "center" };
     row++;
   }
+
+  // Logos float over the header block just built (left/right edges, like
+  // BillPreview's flex layout) — sized to roughly fill it regardless of how
+  // many optional lines (tagline/proprietor/address) actually rendered.
+  const headerRows = row - headerTopRow;
+  for (let r = headerTopRow; r < row; r++) {
+    sheet.getRow(r).height = Math.max(sheet.getRow(r).height ?? 15, 20);
+  }
+  const headerPx = headerRows * 26;
+  const logoSize = Math.min(64, headerPx);
+  addLetterheadImage(workbook, sheet, lh.logoLeftUrl, { col: 0.05, row: headerTopRow - 1 }, { width: logoSize, height: logoSize });
+  addLetterheadImage(
+    workbook,
+    sheet,
+    lh.logoRightUrl,
+    { col: LAST_COL - 0.75, row: headerTopRow - 1 },
+    { width: logoSize, height: logoSize },
+  );
 
   row += 1;
 
@@ -313,6 +360,13 @@ export function buildBillWorkbook(bill: BillPreviewData): ExcelJS.Workbook {
   forLine.font = { italic: true, size: 10 };
   forLine.alignment = { horizontal: "right" };
   row++;
+
+  if (lh.signatureUrl) {
+    sheet.getRow(row).height = 30;
+    addLetterheadImage(workbook, sheet, lh.signatureUrl, { col: LAST_COL - 1.6, row: row - 1 }, { width: 100, height: 34 });
+    row++;
+  }
+
   const signLine = sheet.getCell(row, LAST_COL);
   signLine.value = "Authorized Signatory";
   signLine.font = { bold: true, size: 10 };

@@ -25,7 +25,7 @@ function blobToBase64(blob: Blob): Promise<string> {
 
 export function DownloadExcelButton({ billId }: { billId: string }) {
   const [pending, setPending] = useState(false);
-  const href = apiUrl(`/bills/${billId}/export`);
+  const href = apiUrl(`/api/bills/${billId}/export`);
 
   // Plain `<a download>` only works for same-origin resources — on the
   // Android bundled build the export API is cross-origin (the app is fully
