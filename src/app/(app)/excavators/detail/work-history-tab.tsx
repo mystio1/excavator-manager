@@ -9,6 +9,7 @@ import { formatHours } from "@/lib/utils/hours";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/native-select";
 import { StatusBadge } from "@/components/status-badge";
 import { DeleteReadingButton } from "./delete-reading-button";
@@ -72,21 +73,22 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
             </NativeSelect>
             {/* col-span-2 on mobile — half a 2-col mobile row clips a native
                 date input's own "dd-mm-yyyy" text, leaving only the
-                calendar icon visible. */}
-            <Input
-              name="from"
-              type="date"
-              defaultValue={filters.from}
-              className="col-span-2 h-11 md:col-span-1"
-              aria-label="From date"
-            />
-            <Input
-              name="to"
-              type="date"
-              defaultValue={filters.to}
-              className="col-span-2 h-11 md:col-span-1"
-              aria-label="To date"
-            />
+                calendar icon visible. Visible labels too — an empty date
+                input shows no placeholder text at all on some mobile
+                browsers, so an aria-label alone left the field looking like
+                a plain blank box with no hint of what it's for. */}
+            <div className="col-span-2 flex flex-col gap-1 md:col-span-1">
+              <Label htmlFor="wh-from-date" className="text-xs text-muted-foreground">
+                From Date
+              </Label>
+              <Input id="wh-from-date" name="from" type="date" defaultValue={filters.from} className="h-11" />
+            </div>
+            <div className="col-span-2 flex flex-col gap-1 md:col-span-1">
+              <Label htmlFor="wh-to-date" className="text-xs text-muted-foreground">
+                To Date
+              </Label>
+              <Input id="wh-to-date" name="to" type="date" defaultValue={filters.to} className="h-11" />
+            </div>
             <Input
               name="site"
               placeholder="Site"

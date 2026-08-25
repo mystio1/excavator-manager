@@ -23,25 +23,31 @@ export function ProfitOverview({
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">Revenue − Expenses = Net Profit, for this month.</p>
 
-      <div className="grid grid-cols-3 gap-3 rounded-2xl bg-muted/40 p-3.5">
-        <div>
-          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Money Earned</p>
-          <p className="mt-0.5 text-xl font-extrabold tracking-tight text-primary tabular-nums sm:text-2xl">
-            {formatCurrency(revenue)}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Expenses</p>
-          <p className="mt-0.5 text-xl font-extrabold tracking-tight text-destructive tabular-nums sm:text-2xl">
-            {formatCurrency(expenses)}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Actual Profit</p>
-          <p className="mt-0.5 text-xl font-extrabold tracking-tight text-working tabular-nums sm:text-2xl">
-            {formatCurrency(netProfit)}
-          </p>
-        </div>
+      {/* Explicit rows (not 3 independently-flowing cells) so the values
+          always share one baseline — "Money Earned"/"Actual Profit" wrap to
+          2 lines at narrow widths while the shorter "Expenses" label stays
+          on 1, and 3 separately-flowing cells let that push only two of the
+          three values down, misaligning them. A shared grid row forces all
+          three labels (and separately, all three values) to the same height. */}
+      <div className="grid grid-cols-3 grid-rows-2 gap-x-3 gap-y-0.5 rounded-2xl bg-muted/40 p-3.5">
+        <p className="col-start-1 row-start-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          Money Earned
+        </p>
+        <p className="col-start-2 row-start-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          Expenses
+        </p>
+        <p className="col-start-3 row-start-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          Actual Profit
+        </p>
+        <p className="col-start-1 row-start-2 self-end text-xl font-extrabold tracking-tight text-primary tabular-nums sm:text-2xl">
+          {formatCurrency(revenue)}
+        </p>
+        <p className="col-start-2 row-start-2 self-end text-xl font-extrabold tracking-tight text-destructive tabular-nums sm:text-2xl">
+          {formatCurrency(expenses)}
+        </p>
+        <p className="col-start-3 row-start-2 self-end text-xl font-extrabold tracking-tight text-working tabular-nums sm:text-2xl">
+          {formatCurrency(netProfit)}
+        </p>
       </div>
 
       <div className="flex items-center justify-between rounded-xl bg-muted/50 px-3.5 py-2.5">

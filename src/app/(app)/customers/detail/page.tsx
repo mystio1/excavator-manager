@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { SummaryCard } from "@/components/dashboard/summary-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/native-select";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils/currency";
@@ -127,10 +128,23 @@ export default function CustomerDetailPage() {
             </NativeSelect>
             {/* Stacked below sm: — a native date input squeezed to half a
                 phone-width row clips its own "dd-mm-yyyy" text, leaving only
-                the calendar icon visible. */}
+                the calendar icon visible. Visible labels too — an empty
+                date input shows no placeholder text at all on some mobile
+                browsers, so an aria-label alone left the field looking like
+                a plain blank box with no hint of what it's for. */}
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Input type="date" name="from" defaultValue={from} className="h-11" aria-label="From date" />
-              <Input type="date" name="to" defaultValue={to} className="h-11" aria-label="To date" />
+              <div className="flex flex-1 flex-col gap-1">
+                <Label htmlFor="from-date" className="text-xs text-muted-foreground">
+                  From Date
+                </Label>
+                <Input id="from-date" type="date" name="from" defaultValue={from} className="h-11" />
+              </div>
+              <div className="flex flex-1 flex-col gap-1">
+                <Label htmlFor="to-date" className="text-xs text-muted-foreground">
+                  To Date
+                </Label>
+                <Input id="to-date" type="date" name="to" defaultValue={to} className="h-11" />
+              </div>
             </div>
             <div className="sm:col-span-3">
               <Button type="submit" size="sm" variant="secondary">
