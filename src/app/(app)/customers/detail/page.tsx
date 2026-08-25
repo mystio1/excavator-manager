@@ -125,7 +125,10 @@ export default function CustomerDetailPage() {
                 </option>
               ))}
             </NativeSelect>
-            <div className="flex gap-2">
+            {/* Stacked below sm: — a native date input squeezed to half a
+                phone-width row clips its own "dd-mm-yyyy" text, leaving only
+                the calendar icon visible. */}
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Input type="date" name="from" defaultValue={from} className="h-11" aria-label="From date" />
               <Input type="date" name="to" defaultValue={to} className="h-11" aria-label="To date" />
             </div>

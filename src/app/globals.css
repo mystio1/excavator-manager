@@ -219,6 +219,13 @@
        rem-based Tailwind utility (text, spacing, radius, icon sizes) scales
        proportionally from this, so nothing needs per-component resizing. */
     font-size: 17.5px;
+    /* Mobile WebViews auto-inflate text ("font boosting") in narrow flex
+       columns to guess at what's "readable" — it's what made same-sized
+       numbers on different dashboard cards render at visibly different
+       sizes on Android. This makes every declared font-size render exactly
+       as declared instead of being silently re-scaled by that heuristic. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
     @apply font-sans;
   }
   /* NativeSelect's trigger is intentionally bg-transparent so it blends into

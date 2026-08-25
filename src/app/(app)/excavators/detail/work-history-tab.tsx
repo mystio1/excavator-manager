@@ -70,8 +70,23 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
                 </option>
               ))}
             </NativeSelect>
-            <Input name="from" type="date" defaultValue={filters.from} className="h-11" aria-label="From date" />
-            <Input name="to" type="date" defaultValue={filters.to} className="h-11" aria-label="To date" />
+            {/* col-span-2 on mobile — half a 2-col mobile row clips a native
+                date input's own "dd-mm-yyyy" text, leaving only the
+                calendar icon visible. */}
+            <Input
+              name="from"
+              type="date"
+              defaultValue={filters.from}
+              className="col-span-2 h-11 md:col-span-1"
+              aria-label="From date"
+            />
+            <Input
+              name="to"
+              type="date"
+              defaultValue={filters.to}
+              className="col-span-2 h-11 md:col-span-1"
+              aria-label="To date"
+            />
             <Input
               name="site"
               placeholder="Site"

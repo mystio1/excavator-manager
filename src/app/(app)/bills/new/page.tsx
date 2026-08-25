@@ -102,7 +102,7 @@ export default function NewBillPage() {
                     ))}
                   </NativeSelect>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <p className="mb-2 text-sm font-semibold text-muted-foreground">From Date (Optional)</p>
                     <Input type="date" name="from" className="h-11" />
