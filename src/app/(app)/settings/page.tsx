@@ -11,18 +11,20 @@ import { BillLetterheadForm } from "./bill-letterhead-form";
 import { BankAccountsSection } from "./bank-accounts-section";
 import { BusinessCodeCard } from "./business-code-card";
 import { OperatorLanguageForm } from "./operator-language-form";
+import { AppLockSection } from "./app-lock-section";
 import Loading from "../loading";
 
 type SettingsData = {
   business: Awaited<ReturnType<typeof getBusinessSettings>>;
   bankAccounts: Awaited<ReturnType<typeof listBankAccounts>>;
+  hasPin: boolean;
 };
 
 export default function SettingsPage() {
   const { data } = useSWR<SettingsData>("/api/settings", swrFetcher);
 
   if (!data) return <Loading />;
-  const { business, bankAccounts } = data;
+  const { business, bankAccounts, hasPin } = data;
 
   return (
     <div>
@@ -30,6 +32,7 @@ export default function SettingsPage() {
       <div className="flex flex-col gap-4 px-4 pb-6 md:px-8">
         <ThemeSwitcher />
         <BusinessCodeCard code={business.code} />
+        <AppLockSection hasPin={hasPin} />
         <OperatorLanguageForm operatorLanguage={business.operatorLanguage} />
         <BusinessProfileForm business={business} />
         <BillLetterheadForm business={business} />

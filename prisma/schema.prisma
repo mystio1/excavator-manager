@@ -36,6 +36,17 @@ model Business {
   // operator's own home page onward.
   operatorLanguage             String  @default("en")
 
+  // Support-console-managed (see /support and src/lib/services/support.ts) —
+  // not editable from anywhere in the normal owner-facing UI. frozen blocks
+  // every API route except the ones that need to keep working to show the
+  // frozen notice itself (see requireBusinessApi). maxOperators/
+  // maxBillsPerDay are null (unlimited) for every business until support
+  // deliberately sets a cap; enforced at operator creation and bill
+  // creation respectively.
+  frozen         Boolean @default(false)
+  maxOperators   Int?
+  maxBillsPerDay Int?
+
   // Bill letterhead — configured once in Settings, snapshotted onto each
   // Bill at generation time so historical bills never change retroactively.
   logoLeftUrl     String? // data: URI, small enough to keep inline
@@ -60,6 +71,30 @@ model Business {
   payments              Payment[]
   transactionCategories TransactionCategory[]
   operatorWorkRequests  OperatorWorkRequest[]
+  auditLogs             AuditLog[]
+}
+
+// Written by support-console actions (see src/lib/services/support.ts) —
+// impersonate/freeze/unfreeze/setLimits — attributed to the target
+// business's own owner user where one exists, so there's always a durable
+// trace of when and what support did on a business's behalf. Not currently
+// surfaced in the owner-facing UI (support-only, for now).
+model AuditLog {
+  id         String   @id @default(cuid())
+  businessId String
+  userId     String?
+  userName   String
+  action     String
+  entityId   String
+  details    Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([businessId])
+  @@index([businessId, createdAt])
+  @@index([entityId])
 }
 
 // Multiple bank accounts a business may bill against — the owner picks one
@@ -91,7 +126,11 @@ model User {
   businessId       String
   name             String
   email            String    @unique
-  phone            String?
+  // Nullable for legacy rows only — registerBusiness always collects one.
+  // Unique so login-by-phone can findUnique() the same way login-by-email
+  // does; null values are exempt from the constraint (multiple users can
+  // still have no phone on file).
+  phone            String?   @unique
   passwordHash     String
   role             String    @default("OWNER")
   // Forgot-password flow: a hash of the single-use reset token (never the
@@ -99,9 +138,14 @@ model User {
   // Both null once unused/consumed/expired.
   resetTokenHash   String?
   resetTokenExpiry DateTime?
+  // Optional app-lock PIN (4 or 6 digits) — a lightweight re-unlock gate on
+  // top of an already-valid session, not a replacement for passwordHash.
+  // Null means the owner hasn't turned this on; set from Settings.
+  appPinHash       String?
   createdAt        DateTime  @default(now())
 
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  auditLogs AuditLog[]
 
   @@index([businessId])
 }
@@ -362,6 +406,21 @@ model DailyWorkLog {
   // assigned operator already covers the common case. Operator-portal
   // submissions leave this null; the submitter's own identity is already known.
   operatorName   String?
+  // Diesel reported alongside this specific day's reading — distinct from
+  // OperatorWorkRequest's own dieselLiters/dieselDate (that's diesel
+  // reported when starting/ending a whole job, this is diesel reported on
+  // any day in between). Rolled into WorkSession.dieselLiters/dieselDate
+  // (added, not overwritten — see stopWork/approveDailyLog) once this log
+  // is APPROVED, same "unapproved data must never move anything real"
+  // principle as startHourMeter/endHourMeter not touching
+  // Excavator.currentHourMeter until then.
+  dieselLiters   Float?
+  notes          String?
+  // Tool reported in use that day ("Bucket" | "Breaker" | "Chaining", see
+  // ATTACHMENT_VALUES) — set (not merged, unlike dieselLiters) onto
+  // WorkSession.attachment once APPROVED, since it represents the current
+  // tool rather than a quantity to sum.
+  attachment     String?
   source         String    @default("ADMIN")
   status         String    @default("APPROVED")
   reviewedAt     DateTime?

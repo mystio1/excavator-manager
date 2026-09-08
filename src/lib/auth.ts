@@ -2,6 +2,8 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
+import { verifySupportToken } from "@/lib/supportTokens";
+import { findUserByIdentifier } from "@/lib/services/auth";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   // Render (and most PaaS hosts) terminate TLS and proxy requests, so the
@@ -34,17 +36,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Credentials({
       id: "credentials",
       credentials: {
-        email: { label: "Email", type: "email" },
+        identifier: { label: "Email or phone", type: "text" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const email = credentials?.email;
+        const identifier = credentials?.identifier;
         const password = credentials?.password;
-        if (typeof email !== "string" || typeof password !== "string") {
+        if (typeof identifier !== "string" || typeof password !== "string") {
           return null;
         }
 
-        const user = await db.user.findUnique({ where: { email: email.toLowerCase() } });
+        // Same input box accepts either — "@" is enough to tell them apart,
+        // no email address can appear as a phone number and vice versa.
+        const user = await findUserByIdentifier(identifier);
         if (!user) return null;
 
         const valid = await verifyPassword(password, user.passwordHash);
@@ -94,6 +98,36 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         return null;
+      },
+    }),
+    // Support-console impersonation (see src/app/api/support/impersonate)
+    // — never reachable with just a userId; the caller must also present a
+    // valid, unexpired support token (checked here too, not just by the
+    // route calling this, so this provider is safe even if invoked some
+    // other way). Signs the target owner straight in as a real session,
+    // same shape as the "credentials" provider above.
+    Credentials({
+      id: "support-impersonate",
+      credentials: {
+        userId: { label: "User ID", type: "text" },
+        supportToken: { label: "Support Token", type: "text" },
+      },
+      async authorize(credentials) {
+        const userId = credentials?.userId;
+        const supportToken = credentials?.supportToken;
+        if (typeof userId !== "string" || typeof supportToken !== "string") return null;
+        if (!process.env.AUTH_SECRET || !verifySupportToken(supportToken, process.env.AUTH_SECRET)) return null;
+
+        const user = await db.user.findUnique({ where: { id: userId } });
+        if (!user) return null;
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          businessId: user.businessId,
+          role: user.role,
+        };
       },
     }),
   ],

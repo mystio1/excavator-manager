@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
 import { BillsList } from "./bills-list";
+import { ExportRegisterButton } from "./export-register-button";
 import Loading from "../loading";
 
 const FILTERS = [
@@ -56,6 +57,14 @@ export default function BillsPage() {
 
   if (!data || !bills) return <Loading />;
   const { counts } = data;
+
+  const exportQuery = (() => {
+    const params = new URLSearchParams();
+    if (customerId) params.set("customerId", customerId);
+    if (activeFilter.id !== "all") params.set("filter", activeFilter.id);
+    const qs = params.toString();
+    return qs ? `?${qs}` : "";
+  })();
 
   return (
     <div>
@@ -119,7 +128,12 @@ export default function BillsPage() {
             actionHref={customerId ? `/bills/new?customerId=${customerId}` : "/bills/new"}
           />
         ) : (
-          <BillsList bills={bills} />
+          <>
+            <div className="self-start">
+              <ExportRegisterButton query={exportQuery} />
+            </div>
+            <BillsList bills={bills} />
+          </>
         )}
       </div>
     </div>

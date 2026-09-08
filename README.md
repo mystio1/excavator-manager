@@ -21,7 +21,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 ## Self-hosting in production
 
-Deployed on [Render](https://render.com) — pushing to `main` redeploys automatically. Render env vars needed: `DATABASE_URL` (Internal Postgres connection string), `AUTH_SECRET`, `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM` (forgot-password emails), `GITHUB_RELEASE_REPO` and optionally `GITHUB_API_TOKEN` (used by `/api/app-version`, see below). Pre-Deploy Command: `npx prisma migrate deploy`.
+Deployed on [Render](https://render.com) — pushing to `main` redeploys automatically. Render env vars needed: `DATABASE_URL` (Internal Postgres connection string), `AUTH_SECRET`, `RESEND_API_KEY`/`RESEND_FROM_EMAIL` (forgot-password emails — see `.env` for setup notes; raw SMTP isn't used because Gmail silently stalls connections from cloud-hosting IPs), `GITHUB_RELEASE_REPO` and optionally `GITHUB_API_TOKEN` (used by `/api/app-version`, see below). Pre-Deploy Command: `npx prisma migrate deploy`.
 
 ## Android app
 

@@ -20,7 +20,7 @@ export const registerSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  email: z.string().trim().email("Enter a valid email"),
+  identifier: z.string().trim().min(1, "Enter your email or phone number"),
   password: z.string().min(1, "Enter your password"),
 });
 
@@ -43,3 +43,30 @@ export const resetPasswordSchema = z
     message: "Passwords don't match",
     path: ["confirmPassword"],
   });
+
+const appPinDigits = z
+  .string()
+  .trim()
+  .regex(/^(\d{4}|\d{6})$/, "PIN must be exactly 4 or 6 digits");
+
+// currentPin is required only once a PIN already exists — enforced in the
+// route/service, not here, since that depends on server-side state (whether
+// User.appPinHash is set) this schema alone can't see.
+export const setAppPinSchema = z
+  .object({
+    currentPin: z.string().trim().optional(),
+    newPin: appPinDigits,
+    confirmPin: z.string().trim(),
+  })
+  .refine((data) => data.newPin === data.confirmPin, {
+    message: "PINs don't match",
+    path: ["confirmPin"],
+  });
+
+export const disableAppPinSchema = z.object({
+  currentPin: z.string().trim().min(1, "Enter your current PIN"),
+});
+
+export const verifyAppPinSchema = z.object({
+  pin: z.string().trim().min(1, "Enter your PIN"),
+});

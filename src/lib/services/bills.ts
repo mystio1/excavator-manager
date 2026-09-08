@@ -27,6 +27,20 @@ export type BillLetterhead = {
 
 const NON_GST_PREFIX = "NG-";
 
+/** maxBillsPerDay is support-console-managed (see
+ * src/lib/services/support.ts) — null/unset for every business until
+ * support deliberately caps one. */
+async function checkDailyBillLimit(businessId: string, maxBillsPerDay: number | null) {
+  if (maxBillsPerDay == null) return null;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const billsToday = await db.bill.count({ where: { businessId, createdAt: { gte: startOfToday } } });
+  if (billsToday >= maxBillsPerDay) {
+    return `You've reached your plan's limit of ${maxBillsPerDay} bills per day. Contact support to raise it.` as const;
+  }
+  return null;
+}
+
 function buildLetterhead(
   business: Business,
   bankAccount: BankAccount | null,
@@ -132,6 +146,9 @@ export async function createBill(businessId: string, input: GenerateBillInput) {
       : Promise.resolve(null),
   ]);
 
+  const limitError = await checkDailyBillLimit(businessId, business.maxBillsPerDay);
+  if (limitError) return { error: limitError } as const;
+
   if (sessions.length !== input.workSessionIds.length) {
     return { error: "One or more selected work records are no longer available to bill" } as const;
   }
@@ -229,6 +246,9 @@ export async function createDirectBill(businessId: string, input: GenerateDirect
     return { error: "Machine not found" } as const;
   }
 
+  const limitError = await checkDailyBillLimit(businessId, business.maxBillsPerDay);
+  if (limitError) return { error: limitError } as const;
+
   const bucketAmount = Math.round(input.bucketHours * input.bucketRate * 100) / 100;
   const breakerAmount = Math.round(input.breakerHours * input.breakerRate * 100) / 100;
   const subtotal = Math.round((bucketAmount + breakerAmount) * 100) / 100;
@@ -295,13 +315,19 @@ export async function createDirectBill(businessId: string, input: GenerateDirect
 
 export async function listBills(
   businessId: string,
-  filters?: { customerId?: string; isDirect?: boolean },
+  filters?: { customerId?: string; isDirect?: boolean; from?: string; to?: string },
 ) {
+  const billDate: { gte?: Date; lte?: Date } = {};
+  if (filters?.from) billDate.gte = new Date(filters.from);
+  // Bound at end-of-day so a bill dated on the "to" day itself is included.
+  if (filters?.to) billDate.lte = new Date(`${filters.to}T23:59:59.999`);
+
   return db.bill.findMany({
     where: {
       businessId,
       ...(filters?.customerId ? { customerId: filters.customerId } : {}),
       ...(filters?.isDirect !== undefined ? { isDirect: filters.isDirect } : {}),
+      ...(Object.keys(billDate).length > 0 ? { billDate } : {}),
     },
     orderBy: { billDate: "desc" },
     include: {

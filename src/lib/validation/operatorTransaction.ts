@@ -42,3 +42,7 @@ export const addTransactionSchema = z.object({
 });
 
 export type AddTransactionInput = z.infer<typeof addTransactionSchema>;
+
+export const updateTransactionSchema = addTransactionSchema.omit({ operatorId: true });
+
+export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>;

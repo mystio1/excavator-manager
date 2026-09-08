@@ -109,6 +109,9 @@ export async function addDailyLog(businessId: string, input: DailyLogInput) {
       endHourMeter: input.endHourMeter ?? null,
       hoursWorked,
       operatorName: input.operatorName || null,
+      dieselLiters: input.dieselLiters ?? null,
+      notes: input.notes || null,
+      attachment: input.attachment || null,
       source: "ADMIN",
       status: "APPROVED",
       reviewedAt: new Date(),
@@ -121,6 +124,23 @@ export async function addDailyLog(businessId: string, input: DailyLogInput) {
     await db.excavator.update({
       where: { id: session.excavatorId },
       data: { currentHourMeter: input.endHourMeter },
+    });
+  }
+
+  // Already-approved (this whole path is auto-approved), so rolled into the
+  // session immediately. Diesel is added to whatever's already there (same
+  // accumulate-not-overwrite reasoning as stopWork); attachment is set, not
+  // merged, since it's the current tool rather than a quantity to sum.
+  if (input.dieselLiters != null || input.attachment) {
+    await db.workSession.update({
+      where: { id: session.id },
+      data: {
+        ...(input.dieselLiters != null && {
+          dieselLiters: (session.dieselLiters ?? 0) + input.dieselLiters,
+          dieselDate: new Date(input.date),
+        }),
+        ...(input.attachment && { attachment: input.attachment }),
+      },
     });
   }
 
@@ -161,6 +181,9 @@ export async function submitDailyLog(operatorId: string, input: DailyLogInput) {
       startHourMeter: input.startHourMeter ?? null,
       endHourMeter: input.endHourMeter ?? null,
       hoursWorked,
+      dieselLiters: input.dieselLiters ?? null,
+      notes: input.notes || null,
+      attachment: input.attachment || null,
       source: "OPERATOR",
       status: "PENDING",
     },
@@ -211,6 +234,23 @@ export async function approveDailyLog(businessId: string, logId: string) {
     });
   }
 
+  // Same moment diesel/attachment become "official," mirroring
+  // currentHourMeter above — diesel is added to whatever's already on the
+  // session (see addDailyLog/stopWork), attachment is set since it's the
+  // current tool, not a quantity to sum.
+  if (log.dieselLiters != null || log.attachment) {
+    await db.workSession.update({
+      where: { id: log.workSessionId },
+      data: {
+        ...(log.dieselLiters != null && {
+          dieselLiters: (log.workSession.dieselLiters ?? 0) + log.dieselLiters,
+          dieselDate: log.date,
+        }),
+        ...(log.attachment && { attachment: log.attachment }),
+      },
+    });
+  }
+
   return { ok: true } as const;
 }
 
@@ -246,6 +286,16 @@ export async function deleteDailyLog(businessId: string, logId: string) {
 
   await recomputeTotalHours(log.workSessionId);
 
+  // Only an APPROVED log's diesel was ever rolled into the session (see
+  // approveDailyLog/addDailyLog) — a still-PENDING one never touched it, so
+  // there's nothing to unwind there.
+  if (log.status === "APPROVED" && log.dieselLiters != null) {
+    await db.workSession.update({
+      where: { id: log.workSessionId },
+      data: { dieselLiters: Math.max(0, (log.workSession.dieselLiters ?? 0) - log.dieselLiters) },
+    });
+  }
+
   if (log.workSession.status === "ACTIVE") {
     const latest = await db.dailyWorkLog.findFirst({
       where: { workSessionId: log.workSessionId, status: "APPROVED" },
@@ -258,6 +308,16 @@ export async function deleteDailyLog(businessId: string, logId: string) {
       await db.excavator.update({
         where: { id: log.workSession.excavatorId },
         data: { currentHourMeter },
+      });
+    }
+    // Only when some remaining log actually reports one — unlike hour meter
+    // there's no "original" attachment to fall back to, so an empty result
+    // here leaves whatever's already on the session alone rather than
+    // wiping out a legitimately-set value.
+    if (latest?.attachment) {
+      await db.workSession.update({
+        where: { id: log.workSessionId },
+        data: { attachment: latest.attachment },
       });
     }
   }
@@ -290,6 +350,17 @@ export async function stopWork(businessId: string, input: StopWorkInput) {
       endHourMeter: input.endHourMeter,
       totalHours,
       status: "COMPLETED",
+      // Added to whatever was already recorded earlier in this job (e.g.
+      // from the operator's own start-work entry) rather than replacing it
+      // — a machine can get topped up more than once before a job wraps up,
+      // and overwriting would silently lose that earlier fill-up. Only
+      // touched at all when diesel is actually reported this time; an
+      // existing note is likewise left alone when none is given now.
+      ...(input.dieselLiters != null && {
+        dieselLiters: (session.dieselLiters ?? 0) + input.dieselLiters,
+        dieselDate: new Date(input.endDate),
+      }),
+      ...(input.notes && { notes: input.notes }),
     },
   });
 

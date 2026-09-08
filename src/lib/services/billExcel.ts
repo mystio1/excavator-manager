@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import type { BillPreviewData } from "@/components/bill/bill-preview";
+import type { listBills } from "@/lib/services/bills";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/dates";
 import { amountInWords } from "@/lib/utils/numberToWords";
@@ -386,6 +387,121 @@ export function buildBillWorkbook(bill: BillPreviewData): ExcelJS.Workbook {
   footer.value = "Thank you for your business!";
   footer.font = { italic: true, size: 9, color: { argb: MUTED } };
   footer.alignment = { horizontal: "center" };
+
+  return workbook;
+}
+
+type RegisterRow = Awaited<ReturnType<typeof listBills>>[number];
+
+const REGISTER_HEADERS = ["Bill No.", "Date", "Customer", "Type", "Site(s)", "Total", "Paid", "Pending", "Status"];
+const REGISTER_LAST_COL = REGISTER_HEADERS.length;
+
+/** The whole-business counterpart to buildBillWorkbook — one row per bill
+ * instead of one workbook per bill, so an owner can hand a single .xlsx to
+ * an accountant instead of downloading every bill individually. */
+export function buildBillsRegisterWorkbook(
+  bills: RegisterRow[],
+  meta: { businessName: string; from?: string; to?: string },
+): ExcelJS.Workbook {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = meta.businessName;
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet("Bills Register", {
+    views: [{ state: "frozen", ySplit: 4 }],
+    pageSetup: { fitToPage: true, fitToWidth: 1, orientation: "landscape" },
+  });
+
+  sheet.columns = [
+    { width: 16 },
+    { width: 12 },
+    { width: 26 },
+    { width: 10 },
+    { width: 28 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 },
+  ];
+
+  sheet.mergeCells(1, 1, 1, REGISTER_LAST_COL);
+  const titleCell = sheet.getCell(1, 1);
+  titleCell.value = `${meta.businessName} — Bills Register`;
+  titleCell.font = { bold: true, size: 14, color: { argb: BLUE } };
+
+  sheet.mergeCells(2, 1, 2, REGISTER_LAST_COL);
+  const subtitleCell = sheet.getCell(2, 1);
+  const range =
+    meta.from || meta.to
+      ? `${meta.from ? formatDate(new Date(meta.from)) : "the beginning"} to ${meta.to ? formatDate(new Date(meta.to)) : "now"}`
+      : "All bills";
+  subtitleCell.value = `${range} — generated ${formatDate(new Date())}`;
+  subtitleCell.font = { italic: true, size: 10, color: { argb: MUTED } };
+
+  const headerRow = 4;
+  REGISTER_HEADERS.forEach((h, i) => {
+    const cell = sheet.getCell(headerRow, i + 1);
+    cell.value = h;
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = solidFill(BLUE);
+    cell.alignment = { horizontal: i >= 5 ? "right" : "left", vertical: "middle" };
+    cell.border = thinBorder();
+  });
+
+  let row = headerRow + 1;
+  let totalAmount = 0;
+  let totalPaid = 0;
+
+  bills.forEach((bill, i) => {
+    const pending = bill.totalAmount - bill.paidAmount;
+    totalAmount += bill.totalAmount;
+    totalPaid += bill.paidAmount;
+    const sites = [...new Set(bill.items.map((item) => item.siteName))].join(", ");
+    const bg = i % 2 === 0 ? "FFFFFFFF" : "FFF8FAFC";
+
+    const values: [number, string | number, "left" | "right"][] = [
+      [1, bill.billNumber, "left"],
+      [2, formatDate(bill.billDate), "left"],
+      [3, bill.customer.companyName ? `${bill.customer.name} (${bill.customer.companyName})` : bill.customer.name, "left"],
+      [4, bill.billType === "GST" ? "GST" : "Non-GST", "left"],
+      [5, sites || "—", "left"],
+      [6, formatCurrency(bill.totalAmount), "right"],
+      [7, formatCurrency(bill.paidAmount), "right"],
+      [8, formatCurrency(pending), "right"],
+      [9, bill.status, "right"],
+    ];
+    values.forEach(([col, value, align]) => {
+      const cell = sheet.getCell(row, col);
+      cell.value = value;
+      cell.alignment = { horizontal: align, vertical: "top" };
+      cell.fill = solidFill(bg);
+      cell.border = thinBorder();
+      if (col === 8 && pending > 0.01) cell.font = { color: { argb: RED } };
+      if (col === 9) {
+        cell.font = { color: { argb: bill.status === "PAID" ? "FF15803D" : bill.status === "PARTIAL" ? "FFA16207" : RED } };
+      }
+    });
+    row++;
+  });
+
+  row++;
+  sheet.mergeCells(row, 1, row, 5);
+  const totalLabelCell = sheet.getCell(row, 1);
+  totalLabelCell.value = `Total Bills: ${bills.length}`;
+  totalLabelCell.font = { bold: true };
+  totalLabelCell.alignment = { horizontal: "right" };
+
+  const summaryCells: [number, string, string?][] = [
+    [6, formatCurrency(totalAmount)],
+    [7, formatCurrency(totalPaid)],
+    [8, formatCurrency(totalAmount - totalPaid), RED],
+  ];
+  summaryCells.forEach(([col, value, color]) => {
+    const cell = sheet.getCell(row, col);
+    cell.value = value;
+    cell.font = { bold: true, color: color ? { argb: color } : undefined };
+    cell.alignment = { horizontal: "right" };
+  });
 
   return workbook;
 }

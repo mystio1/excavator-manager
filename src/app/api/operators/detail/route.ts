@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
 import { getOperatorDetail } from "@/lib/services/operators";
 import { listCategories, listTransactions } from "@/lib/services/operatorTransactions";
-import { computeSalaryForMonth } from "@/lib/services/salary";
+import { computeSalaryForMonth, getLifetimeSalarySummary } from "@/lib/services/salary";
 
 export async function GET(req: Request) {
   const auth = await requireBusinessApi();
@@ -21,11 +21,12 @@ export async function GET(req: Request) {
   const [monthYear, monthIndex] = monthParam ? monthParam.split("-").map(Number) : [now.getFullYear(), now.getMonth() + 1];
   const salaryDate = new Date(monthYear!, monthIndex! - 1, 1);
 
-  const [categories, transactions, salary] = await Promise.all([
+  const [categories, transactions, salary, lifetimeSalary] = await Promise.all([
     listCategories(businessId),
     listTransactions(businessId, id),
     computeSalaryForMonth(businessId, id, salaryDate.getFullYear(), salaryDate.getMonth()),
+    getLifetimeSalarySummary(businessId, id),
   ]);
 
-  return NextResponse.json({ detail, categories, transactions, salary });
+  return NextResponse.json({ detail, categories, transactions, salary, lifetimeSalary });
 }

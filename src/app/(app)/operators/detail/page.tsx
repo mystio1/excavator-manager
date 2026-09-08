@@ -6,7 +6,7 @@ import useSWR from "swr";
 import { ChevronLeft, ChevronRight, Pencil, Truck } from "lucide-react";
 import type { getOperatorDetail } from "@/lib/services/operators";
 import type { listCategories, listTransactions } from "@/lib/services/operatorTransactions";
-import type { computeSalaryForMonth } from "@/lib/services/salary";
+import type { computeSalaryForMonth, getLifetimeSalarySummary } from "@/lib/services/salary";
 import { swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -16,8 +16,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate, formatDateRange } from "@/lib/utils/dates";
 import { formatHours } from "@/lib/utils/hours";
+import { cn } from "@/lib/utils";
 import { AddTransactionDialog } from "./add-transaction-dialog";
+import { EditTransactionDialog } from "./edit-transaction-dialog";
+import { DeleteTransactionButton } from "./delete-transaction-button";
 import { OperatorPinCard } from "./operator-pin-card";
+import { SalaryBreakdownDialog } from "./salary-breakdown-dialog";
 import Loading from "../../loading";
 
 const MONTH_LABEL = new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric" });
@@ -28,6 +32,7 @@ type DetailData = {
   categories: Awaited<ReturnType<typeof listCategories>>;
   transactions: Awaited<ReturnType<typeof listTransactions>>;
   salary: Awaited<ReturnType<typeof computeSalaryForMonth>>;
+  lifetimeSalary: Awaited<ReturnType<typeof getLifetimeSalarySummary>>;
 };
 
 export default function OperatorDetailPage() {
@@ -51,7 +56,7 @@ export default function OperatorDetailPage() {
 
   if (!data) return <Loading />;
   const { operator, assignedExcavator, pastWork } = data.detail;
-  const { categories, transactions, salary } = data;
+  const { categories, transactions, salary, lifetimeSalary } = data;
 
   return (
     <div>
@@ -109,6 +114,37 @@ export default function OperatorDetailPage() {
               </CardContent>
             </Card>
 
+            <Card>
+              <CardContent className="flex flex-col gap-2 text-sm">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                  Since Joining ({formatDateRange(lifetimeSalary.joiningDate, lifetimeSalary.asOf)})
+                </p>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total Payable Salary</span>
+                  <span className="font-semibold">{formatCurrency(lifetimeSalary.totalPayable)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Salary Given</span>
+                  <span className="font-semibold">{formatCurrency(lifetimeSalary.totalPaid)}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2 text-base">
+                  <span className="font-semibold">
+                    Remaining {lifetimeSalary.remaining < 0 ? "(overpaid)" : ""}
+                  </span>
+                  <span
+                    className={cn(
+                      "font-bold",
+                      lifetimeSalary.remaining > 0 && "text-working",
+                      lifetimeSalary.remaining < 0 && "text-destructive",
+                    )}
+                  >
+                    {formatCurrency(lifetimeSalary.remaining)}
+                  </span>
+                </div>
+                <SalaryBreakdownDialog lifetimeSalary={lifetimeSalary} />
+              </CardContent>
+            </Card>
+
             <OperatorPinCard operatorId={operator.id} canLogin={operator.canLogin} hasPinSet={!!operator.pinHash} />
           </TabsContent>
 
@@ -127,11 +163,15 @@ export default function OperatorDetailPage() {
                     <p className="text-sm text-muted-foreground">{formatDate(tx.date)}</p>
                     {tx.notes && <p className="text-sm text-muted-foreground">{tx.notes}</p>}
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold">{formatCurrency(tx.amount)}</p>
-                    <Badge variant="outline" className="text-xs">
-                      {tx.deductFromSalary ? "Deducted" : "Not deducted"}
-                    </Badge>
+                  <div className="flex items-center gap-1">
+                    <div className="text-right">
+                      <p className="font-bold">{formatCurrency(tx.amount)}</p>
+                      <Badge variant="outline" className="text-xs">
+                        {tx.deductFromSalary ? "Deducted" : "Not deducted"}
+                      </Badge>
+                    </div>
+                    <EditTransactionDialog transaction={tx} categories={categories} />
+                    <DeleteTransactionButton operatorId={operator.id} transactionId={tx.id} />
                   </div>
                 </CardContent>
               </Card>
@@ -187,6 +227,17 @@ export default function OperatorDetailPage() {
                   <span className="text-muted-foreground">Already Paid</span>
                   <span className="font-semibold">-{formatCurrency(salary.alreadyPaid)}</span>
                 </div>
+                {salary.carriedForward !== 0 && (
+                  <div className="flex justify-between border-t pt-2">
+                    <span className="text-muted-foreground">
+                      Carried Forward {salary.carriedForward > 0 ? "(unpaid earlier)" : "(overpaid earlier)"}
+                    </span>
+                    <span className={cn("font-semibold", salary.carriedForward > 0 ? "text-working" : "text-destructive")}>
+                      {salary.carriedForward > 0 ? "+" : ""}
+                      {formatCurrency(salary.carriedForward)}
+                    </span>
+                  </div>
+                )}
                 <div className="mt-2 flex justify-between border-t pt-2 text-base">
                   <span className="font-semibold">Remaining Payable</span>
                   <span className="font-bold">{formatCurrency(salary.payable)}</span>

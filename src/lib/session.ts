@@ -30,7 +30,7 @@ export const getValidBusinessSession = cache(async function getValidBusinessSess
   // the same row a second time.
   const business = await db.business.findUnique({
     where: { id: session.user.businessId },
-    select: { id: true, name: true, ownerName: true },
+    select: { id: true, name: true, ownerName: true, frozen: true },
   });
   if (!business) return null;
 
@@ -39,6 +39,7 @@ export const getValidBusinessSession = cache(async function getValidBusinessSess
     businessId: session.user.businessId,
     businessName: business.name,
     ownerName: business.ownerName,
+    businessFrozen: business.frozen,
   };
 });
 
@@ -73,7 +74,7 @@ export const getValidOperatorSession = cache(async function getValidOperatorSess
       canLogin: true,
       isArchived: true,
       language: true,
-      business: { select: { operatorLanguage: true } },
+      business: { select: { operatorLanguage: true, frozen: true } },
     },
   });
   if (!operator || !operator.canLogin || operator.isArchived) return null;
@@ -87,6 +88,7 @@ export const getValidOperatorSession = cache(async function getValidOperatorSess
     // see prisma/schema.prisma's comments on Operator.language and
     // Business.operatorLanguage for why neither applies pre-login.
     operatorLang: (operator.language ?? operator.business.operatorLanguage) as OperatorLang,
+    businessFrozen: operator.business.frozen,
   };
 });
 

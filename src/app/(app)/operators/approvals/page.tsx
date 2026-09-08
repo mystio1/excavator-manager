@@ -171,6 +171,24 @@ export default function PendingApprovalsPage() {
                 )}
                 <p className="text-muted-foreground">Hours</p>
                 <p className="text-right font-semibold">{formatHours(log.hoursWorked)}</p>
+                {log.attachment && (
+                  <>
+                    <p className="text-muted-foreground">Attachment</p>
+                    <p className="text-right font-semibold">{log.attachment}</p>
+                  </>
+                )}
+                {log.dieselLiters != null && (
+                  <>
+                    <p className="text-muted-foreground">Diesel</p>
+                    <p className="text-right font-semibold">{log.dieselLiters} L</p>
+                  </>
+                )}
+                {log.notes && (
+                  <>
+                    <p className="text-muted-foreground">Note</p>
+                    <p className="text-right font-semibold">{log.notes}</p>
+                  </>
+                )}
               </div>
               <LogApproveReject logId={log.id} />
             </CardContent>

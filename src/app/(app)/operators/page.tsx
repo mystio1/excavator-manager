@@ -19,7 +19,7 @@ import { DeleteOperatorButton } from "./delete-operator-button";
 import Loading from "../loading";
 
 type OperatorsData = {
-  operators: Awaited<ReturnType<typeof listOperators>>;
+  operators: (Awaited<ReturnType<typeof listOperators>>[number] & { remainingSalary: number })[];
   pendingLogCount: number;
   pendingWorkRequestCount: number;
   joinRequests: Awaited<ReturnType<typeof listPendingJoinRequests>>;
@@ -122,7 +122,15 @@ export default function OperatorsPage() {
                   </p>
                 </Link>
                 <div className="flex shrink-0 items-center gap-1">
-                  <p className="text-sm font-semibold">{formatCurrency(op.defaultMonthlySalary)}/mo</p>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold">{formatCurrency(op.defaultMonthlySalary)}/mo</p>
+                    {op.remainingSalary !== 0 && (
+                      <p className={cn("text-xs font-semibold", op.remainingSalary > 0 ? "text-working" : "text-destructive")}>
+                        {op.remainingSalary > 0 ? "Due: " : "Overpaid: "}
+                        {formatCurrency(Math.abs(op.remainingSalary))}
+                      </p>
+                    )}
+                  </div>
                   <DeleteOperatorButton operatorId={op.id} operatorName={op.name} />
                 </div>
               </CardContent>

@@ -4,14 +4,14 @@ import useSWR from "swr";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Link from "next/link";
-import { LogOut } from "lucide-react";
+import { LogOut, Snowflake } from "lucide-react";
 import { ApiError, swrFetcher } from "@/lib/api-client";
 import { useLogout } from "@/lib/use-logout";
 import { ExcavatorLogo } from "@/components/excavator-logo";
 import { Button } from "@/components/ui/button";
 import { ThemeToggleButton } from "@/components/theme-toggle-button";
 
-type LayoutData = { operatorName: string };
+type LayoutData = { operatorName: string; frozen: boolean };
 
 export default function OperatorLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -30,6 +30,23 @@ export default function OperatorLayout({ children }: { children: React.ReactNode
         <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
           <ExcavatorLogo animated className="size-9" />
         </div>
+      </div>
+    );
+  }
+
+  if (data.frozen) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
+        <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+          <Snowflake className="size-9" />
+        </div>
+        <h1 className="text-xl font-bold">Account Temporarily Frozen</h1>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          This account has been frozen by our support team. Your data is safe — contact support for recovery.
+        </p>
+        <Button onClick={logout} disabled={pending} variant="secondary">
+          {pending ? "Logging out..." : "Log Out"}
+        </Button>
       </div>
     );
   }

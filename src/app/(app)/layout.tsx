@@ -2,16 +2,39 @@
 
 import useSWR from "swr";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Snowflake } from "lucide-react";
 import { ApiError, swrFetcher } from "@/lib/api-client";
+import { useLogout } from "@/lib/use-logout";
+import { PIN_UNLOCKED_KEY } from "@/lib/appLock";
 import { ExcavatorLogo } from "@/components/excavator-logo";
+import { AppLockScreen } from "@/components/app-lock-screen";
+import { Button } from "@/components/ui/button";
 import { Sidebar } from "@/components/shell/sidebar";
 import { BottomNav } from "@/components/shell/bottom-nav";
 import { MobileTopBar } from "@/components/shell/mobile-top-bar";
 import { DesktopTopHeader } from "@/components/shell/desktop-top-header";
 
 type Alert = { level: "warning" | "danger"; message: string; href: string };
-type LayoutData = { businessName: string; ownerName: string; alerts: Alert[] };
+type LayoutData = { businessName: string; ownerName: string; alerts: Alert[]; frozen: boolean; hasPin: boolean };
+
+function FrozenNotice() {
+  const { logout, pending } = useLogout();
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
+      <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+        <Snowflake className="size-9" />
+      </div>
+      <h1 className="text-xl font-bold">Account Temporarily Frozen</h1>
+      <p className="max-w-sm text-sm text-muted-foreground">
+        This account has been frozen by our support team. Your data is safe — contact support for recovery.
+      </p>
+      <Button onClick={logout} disabled={pending} variant="secondary">
+        {pending ? "Logging out..." : "Log Out"}
+      </Button>
+    </div>
+  );
+}
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -21,6 +44,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     // changes underneath it.
     dedupingInterval: 15_000,
     revalidateOnFocus: true,
+  });
+  // Lazy-init from sessionStorage — safe even though it runs on first
+  // render, because the "!data" branch below shows the same Loading state
+  // regardless of this value until the client-side fetch actually resolves.
+  const [unlocked, setUnlocked] = useState(() => {
+    try {
+      return sessionStorage.getItem(PIN_UNLOCKED_KEY) === "1";
+    } catch {
+      return false;
+    }
   });
 
   useEffect(() => {
@@ -38,6 +71,26 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <ExcavatorLogo animated className="size-9" />
         </div>
       </div>
+    );
+  }
+
+  if (data.frozen) {
+    return <FrozenNotice />;
+  }
+
+  if (data.hasPin && !unlocked) {
+    return (
+      <AppLockScreen
+        onUnlocked={() => {
+          try {
+            sessionStorage.setItem(PIN_UNLOCKED_KEY, "1");
+          } catch {
+            // Private-browsing/storage-blocked — falls back to asking again
+            // next render, same as if nothing had been saved at all.
+          }
+          setUnlocked(true);
+        }}
+      />
     );
   }
 

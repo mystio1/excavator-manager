@@ -29,17 +29,20 @@ export function StopWorkDialog({
   const { mutate } = useSWRConfig();
   const today = new Date().toISOString().slice(0, 10);
   const [open, setOpen] = useState(false);
-  const { error, pending, run } = useApiForm(async (data: { endDate: string; endHourMeter: string }) => {
-    await apiFetch(`/api/excavators/${excavatorId}/stop-work`, {
-      method: "POST",
-      body: JSON.stringify({ workSessionId, endDate: data.endDate, endHourMeter: Number(data.endHourMeter) }),
-    });
+  const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
+    await apiFetch(`/api/excavators/${excavatorId}/stop-work`, { method: "POST", body: JSON.stringify(body) });
   });
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    const ok = await run({ endDate: fd.get("endDate") as string, endHourMeter: fd.get("endHourMeter") as string });
+    const ok = await run({
+      workSessionId,
+      endDate: fd.get("endDate"),
+      endHourMeter: Number(fd.get("endHourMeter")),
+      dieselLiters: fd.get("dieselLiters") || undefined,
+      notes: fd.get("notes") || undefined,
+    });
     if (ok) {
       await mutate(`/api/excavators/${excavatorId}`);
       setOpen(false);
@@ -86,6 +89,20 @@ export function StopWorkDialog({
               required
               className="h-12 text-base"
             />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="dieselLiters" className="text-base">
+              Diesel Taken (L) (Optional)
+            </Label>
+            <Input id="dieselLiters" name="dieselLiters" type="number" step="0.1" min="0" className="h-12 text-base" />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="stopWorkNotes" className="text-base">
+              Note (Optional)
+            </Label>
+            <Input id="stopWorkNotes" name="notes" className="h-12 text-base" />
           </div>
 
           {error && <p className="text-sm font-medium text-destructive">{error}</p>}

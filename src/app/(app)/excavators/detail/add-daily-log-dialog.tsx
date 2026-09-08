@@ -8,6 +8,7 @@ import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AttachmentPicker } from "@/components/attachment-picker";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -47,6 +48,9 @@ export function AddDailyLogDialog({
       stopTime: fd.get("stopTime") || undefined,
       breakMinutes: fd.get("breakMinutes") || undefined,
       operatorName: fd.get("operatorName") || undefined,
+      dieselLiters: fd.get("dieselLiters") || undefined,
+      notes: fd.get("notes") || undefined,
+      attachment: fd.get("attachment") || undefined,
     });
     if (ok) {
       await mutate(`/api/excavators/${excavatorId}`);
@@ -161,6 +165,22 @@ export function AddDailyLogDialog({
               placeholder="Who ran the machine today"
               className="h-12 text-base"
             />
+          </div>
+
+          <AttachmentPicker name="attachment" label="Attachment / Tool Used (Optional)" />
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="dieselLiters" className="text-base">
+              Diesel Taken (L) (Optional)
+            </Label>
+            <Input id="dieselLiters" name="dieselLiters" type="number" step="0.1" min="0" className="h-12 text-base" />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="notes" className="text-base">
+              Note (Optional)
+            </Label>
+            <Input id="notes" name="notes" className="h-12 text-base" />
           </div>
 
           {error && <p className="text-sm font-medium text-destructive">{error}</p>}

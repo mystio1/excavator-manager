@@ -25,6 +25,9 @@ export const dailyLogSchema = z
     stopTime: z.string().optional(),
     breakMinutes: z.coerce.number().min(0).optional(),
     operatorName: z.string().trim().optional(),
+    dieselLiters: z.coerce.number().positive("Must be greater than 0").optional(),
+    notes: z.string().trim().optional(),
+    attachment: z.string().trim().optional(),
   })
   .refine(
     (data) =>
@@ -46,6 +49,8 @@ export const stopWorkSchema = z.object({
   workSessionId: z.string().min(1),
   endDate: z.string().min(1, "Select an end date"),
   endHourMeter: z.coerce.number().min(0, "Must be 0 or more"),
+  dieselLiters: z.coerce.number().positive("Must be greater than 0").optional(),
+  notes: z.string().trim().optional(),
 });
 
 export type StopWorkInput = z.infer<typeof stopWorkSchema>;

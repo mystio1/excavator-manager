@@ -76,8 +76,18 @@ export async function getOperatorRankingLast45Days(businessId: string) {
     .sort((a, b) => b.hours - a.hours);
 }
 
+/** maxOperators is support-console-managed (see src/lib/services/support.ts)
+ * — null/unset for every business until support deliberately caps one. */
 export async function createOperator(businessId: string, input: AddOperatorInput) {
-  return db.operator.create({
+  const business = await db.business.findUniqueOrThrow({ where: { id: businessId }, select: { maxOperators: true } });
+  if (business.maxOperators != null) {
+    const activeCount = await db.operator.count({ where: { businessId, isArchived: false } });
+    if (activeCount >= business.maxOperators) {
+      return { error: `You've reached your plan's limit of ${business.maxOperators} operators. Contact support to raise it.` } as const;
+    }
+  }
+
+  const operator = await db.operator.create({
     data: {
       businessId,
       name: input.name,
@@ -87,6 +97,7 @@ export async function createOperator(businessId: string, input: AddOperatorInput
       defaultMonthlySalary: input.defaultMonthlySalary ?? 0,
     },
   });
+  return { operator } as const;
 }
 
 export async function updateOperator(businessId: string, id: string, input: AddOperatorInput) {

@@ -34,7 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${geistMono.variable} dark h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: NO_FLASH_THEME_SCRIPT }} />

@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    await signIn("credentials", { email: parsed.data.email, password: parsed.data.password, redirect: false });
+    await signIn("credentials", { identifier: parsed.data.email, password: parsed.data.password, redirect: false });
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: "Account created — please log in" }, { status: 401 });

@@ -17,6 +17,9 @@ const nextConfig: NextConfig = {
   // Hides the on-screen Next.js dev-mode route indicator — operators/owners
   // using the tunnel link shouldn't see framework chrome.
   devIndicators: false,
+  images: {
+    unoptimized: true,
+  },
 };
 
 export default nextConfig;

@@ -1,5 +1,9 @@
 import { db } from "@/lib/db";
-import { DEFAULT_TRANSACTION_CATEGORIES, type AddTransactionInput } from "@/lib/validation/operatorTransaction";
+import {
+  DEFAULT_TRANSACTION_CATEGORIES,
+  type AddTransactionInput,
+  type UpdateTransactionInput,
+} from "@/lib/validation/operatorTransaction";
 
 export async function listCategories(businessId: string) {
   return db.transactionCategory.findMany({
@@ -22,20 +26,23 @@ export async function listTransactions(businessId: string, operatorId: string) {
   });
 }
 
-/** Every transaction *is* the business financial record — no separate
- * expense row to keep in sync (see the OperatorTransaction schema comment).
- * A category typed via "+ Add Custom Category" is created once and reused. */
-export async function createTransaction(businessId: string, input: AddTransactionInput) {
-  let categoryId = input.categoryId || null;
+// A category typed via "+ Add Custom Category" is created once and reused
+// on any later transaction (add or edit) that picks the same name.
+async function resolveCategoryId(businessId: string, categoryId: string | undefined, newCategoryName: string | undefined) {
+  if (categoryId) return categoryId;
+  if (!newCategoryName) return null;
 
-  if (!categoryId && input.newCategoryName) {
-    const existing = await db.transactionCategory.findFirst({
-      where: { businessId, name: { equals: input.newCategoryName } },
-    });
-    const category =
-      existing ?? (await db.transactionCategory.create({ data: { businessId, name: input.newCategoryName } }));
-    categoryId = category.id;
-  }
+  const existing = await db.transactionCategory.findFirst({
+    where: { businessId, name: { equals: newCategoryName } },
+  });
+  const category = existing ?? (await db.transactionCategory.create({ data: { businessId, name: newCategoryName } }));
+  return category.id;
+}
+
+/** Every transaction *is* the business financial record — no separate
+ * expense row to keep in sync (see the OperatorTransaction schema comment). */
+export async function createTransaction(businessId: string, input: AddTransactionInput) {
+  const categoryId = await resolveCategoryId(businessId, input.categoryId, input.newCategoryName);
 
   return db.operatorTransaction.create({
     data: {
@@ -49,6 +56,26 @@ export async function createTransaction(businessId: string, input: AddTransactio
       businessEffect: input.businessEffect,
     },
   });
+}
+
+export async function updateTransaction(businessId: string, transactionId: string, input: UpdateTransactionInput) {
+  const categoryId = await resolveCategoryId(businessId, input.categoryId, input.newCategoryName);
+
+  return db.operatorTransaction.updateMany({
+    where: { id: transactionId, businessId },
+    data: {
+      categoryId,
+      amount: input.amount,
+      date: new Date(input.date),
+      notes: input.notes || null,
+      deductFromSalary: input.deductFromSalary ?? true,
+      businessEffect: input.businessEffect,
+    },
+  });
+}
+
+export async function deleteTransaction(businessId: string, transactionId: string) {
+  return db.operatorTransaction.deleteMany({ where: { id: transactionId, businessId } });
 }
 
 export async function listRecentTransactionsForBusiness(businessId: string, limit = 10) {

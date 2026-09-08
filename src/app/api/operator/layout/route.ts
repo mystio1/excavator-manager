@@ -4,9 +4,10 @@ import { db } from "@/lib/db";
 
 /** Backs the client-rendered (operator)/layout.tsx used by the Android
  * bundled build — same data the server-rendered operator layout fetches
- * directly. */
+ * directly. allowFrozen: true for the same reason as /api/layout — this is
+ * how a frozen business's operator client learns it's frozen at all. */
 export async function GET() {
-  const auth = await requireOperatorApi();
+  const auth = await requireOperatorApi({ allowFrozen: true });
   if (auth.error) return auth.error;
 
   const operator = await db.operator.findUniqueOrThrow({
@@ -14,5 +15,5 @@ export async function GET() {
     select: { name: true },
   });
 
-  return NextResponse.json({ operatorName: operator.name });
+  return NextResponse.json({ operatorName: operator.name, frozen: auth.session.businessFrozen });
 }

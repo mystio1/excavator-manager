@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { db } from "@/lib/db";
-import { hashPassword } from "@/lib/password";
+import { hashPassword, verifyPassword } from "@/lib/password";
+import { rateLimited } from "@/lib/rateLimit";
 import { sendPasswordResetEmail } from "@/lib/email";
 import { DEFAULT_COMPONENT_LIBRARY } from "@/lib/services/serviceRecords";
 import { DEFAULT_TRANSACTION_CATEGORIES } from "@/lib/validation/operatorTransaction";
@@ -70,6 +71,33 @@ export async function registerBusiness(input: z.infer<typeof registerSchema>) {
   return { businessId: business.id } as const;
 }
 
+/** Same "@" means email, else it's a phone number" rule the credentials
+ * provider's authorize() uses (see auth.ts) — kept here so both it and the
+ * frozen pre-check below resolve an identifier to a user identically. */
+export function findUserByIdentifier(identifier: string) {
+  const trimmed = identifier.trim();
+  return trimmed.includes("@")
+    ? db.user.findUnique({ where: { email: trimmed.toLowerCase() } })
+    : db.user.findUnique({ where: { phone: trimmed } });
+}
+
+/**
+ * Blocks a login attempt outright once support has frozen the business —
+ * checked before the password, same order the support console's reference
+ * app uses (a frozen account's login always fails with the frozen message,
+ * never "wrong password", regardless of which one was actually wrong).
+ * Without this, the credentials provider would still authenticate a frozen
+ * owner and only turn them away on their next request via requireBusinessApi
+ * — a fully logged-in session that immediately hits a wall on every route
+ * instead of never getting one in the first place.
+ */
+export async function isLoginBlockedByFrozenBusiness(identifier: string) {
+  const user = await findUserByIdentifier(identifier);
+  if (!user) return false;
+  const business = await db.business.findUnique({ where: { id: user.businessId }, select: { frozen: true } });
+  return business?.frozen ?? false;
+}
+
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 function hashResetToken(token: string) {
@@ -111,4 +139,67 @@ export async function resetPassword(token: string, newPassword: string) {
   });
 
   return { ok: true } as const;
+}
+
+/**
+ * A 4-6 digit PIN is only ~10,000-1,000,000 combinations — trivial to
+ * brute-force without a limit, unlike a full password. One shared budget
+ * per userId (not IP) across every place a currentPin gets checked —
+ * verify, change, and disable all guess against the same PIN, so an
+ * attacker blocked on one can't just move to another to keep guessing.
+ */
+function pinRateLimited(userId: string) {
+  return rateLimited(`app-pin:${userId}`, 5, 5 * 60 * 1000);
+}
+export const PIN_RATE_LIMIT_MESSAGE = "Too many attempts. Please wait 5 minutes and try again.";
+
+/**
+ * Sets or changes the owner's app-lock PIN — a lightweight re-unlock gate
+ * the (app) layout shows on a fresh app open when one is set (see
+ * (app)/layout.tsx and /api/auth/verify-pin), layered on top of the real
+ * session rather than replacing it. Changing an existing PIN requires the
+ * current one; setting the first one doesn't, since being logged into
+ * Settings at all is already the base authorization for that.
+ */
+export async function setAppPin(
+  userId: string,
+  currentPin: string | undefined,
+  newPin: string,
+): Promise<{ ok: true } | { error: string }> {
+  const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
+
+  if (user.appPinHash) {
+    if (pinRateLimited(userId)) return { error: PIN_RATE_LIMIT_MESSAGE };
+    if (!currentPin || !(await verifyPassword(currentPin, user.appPinHash))) {
+      return { error: "Incorrect current PIN" };
+    }
+  }
+
+  const appPinHash = await hashPassword(newPin);
+  await db.user.update({ where: { id: userId }, data: { appPinHash } });
+  return { ok: true };
+}
+
+export async function disableAppPin(userId: string, currentPin: string): Promise<{ ok: true } | { error: string }> {
+  const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
+  if (!user.appPinHash) return { error: "No PIN is set" };
+  if (pinRateLimited(userId)) return { error: PIN_RATE_LIMIT_MESSAGE };
+  if (!(await verifyPassword(currentPin, user.appPinHash))) {
+    return { error: "Incorrect PIN" };
+  }
+
+  await db.user.update({ where: { id: userId }, data: { appPinHash: null } });
+  return { ok: true };
+}
+
+export async function verifyAppPin(userId: string, pin: string): Promise<{ ok: true } | { error: string }> {
+  if (pinRateLimited(userId)) return { error: PIN_RATE_LIMIT_MESSAGE };
+
+  const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
+  if (!user.appPinHash) return { ok: true };
+  if (!(await verifyPassword(pin, user.appPinHash))) {
+    return { error: "Incorrect PIN" };
+  }
+
+  return { ok: true };
 }
