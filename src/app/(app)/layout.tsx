@@ -39,9 +39,9 @@ function FrozenNotice() {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { data, error } = useSWR<LayoutData>("/api/layout", swrFetcher, {
-    // Same freshness window as the server's own unstable_cache on getAlerts
-    // — no point re-fetching the shell more often than the data actually
-    // changes underneath it.
+    // Purely a client-side dedup window (the server computes this fresh on
+    // every call, no server-side cache) — just avoids redundant simultaneous
+    // requests if multiple components mount against this same SWR key.
     dedupingInterval: 15_000,
     revalidateOnFocus: true,
   });

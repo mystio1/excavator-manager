@@ -57,7 +57,10 @@ function greeting() {
 }
 
 export default function DashboardPage() {
-  const { data } = useSWR<DashboardData>("/api/dashboard", swrFetcher, { dedupingInterval: 15_000 });
+  // No dedupingInterval override — the server computes this fresh on every
+  // call (no server-side cache), so there's no reason to hold onto a client
+  // copy longer than SWR's own short default dedup window.
+  const { data } = useSWR<DashboardData>("/api/dashboard", swrFetcher);
 
   if (!data) return <Loading />;
 
