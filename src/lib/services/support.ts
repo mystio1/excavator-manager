@@ -122,13 +122,20 @@ export async function setBusinessLimits(
 }
 
 /**
- * Wipes every bit of transactional/business data for one business — bills,
- * payments, work sessions, service history, expenses, transactions,
- * customers, machines, sites, bank accounts, bill numbering — everything
- * that feeds revenue/stats. Deliberately keeps the Business row itself, its
- * owner User account(s) (so the business can still log in), and its
- * Operator (driver) records (so real people aren't lost) — this is a reset
- * of mistaken/test data, not a delete-the-tenant operation.
+ * Wipes revenue/business-side data for one business — bills, payments,
+ * work sessions, service history, expenses, machines, customers, sites,
+ * bank accounts, bill numbering. Deliberately keeps the Business row
+ * itself, its owner User account(s) (so the business can still log in),
+ * its Operator (driver) records, AND every OperatorTransaction/
+ * TransactionCategory — an operator's full salary/money history (advances,
+ * deductions, bonuses, payments) survives untouched, since that's real
+ * money already paid or owed, not mistaken revenue. This is a reset of
+ * mistaken/test business data, not a delete-the-tenant operation.
+ *
+ * OperatorWorkRequest/OperatorAssignment (a machine's work-request and
+ * assignment history) are cleared explicitly, but would be wiped anyway as
+ * soon as their Excavator is deleted below (both have a Cascade FK to
+ * Excavator) — deleting them first is just for clean ordering.
  *
  * Order matters: Bill/WorkSession/ServiceRecord/ExcavatorExpense are
  * cleared first because Excavator/Customer/Site have Restrict (not
@@ -143,7 +150,7 @@ export async function clearBusinessData(businessCode: string) {
 
   const businessId = business.id;
 
-  const [bills, workSessions, serviceRecords, expenses, workRequests, assignments, transactions, categories, excavators, customers, sites, bankAccounts, sequences] =
+  const [bills, workSessions, serviceRecords, expenses, workRequests, assignments, excavators, customers, sites, bankAccounts, sequences] =
     await db.$transaction([
       db.bill.deleteMany({ where: { businessId } }), // cascades BillItem, Payment
       db.workSession.deleteMany({ where: { businessId } }), // cascades DailyWorkLog
@@ -151,8 +158,6 @@ export async function clearBusinessData(businessCode: string) {
       db.excavatorExpense.deleteMany({ where: { businessId } }),
       db.operatorWorkRequest.deleteMany({ where: { businessId } }),
       db.operatorAssignment.deleteMany({ where: { businessId } }),
-      db.operatorTransaction.deleteMany({ where: { businessId } }),
-      db.transactionCategory.deleteMany({ where: { businessId } }),
       db.excavator.deleteMany({ where: { businessId } }),
       db.customer.deleteMany({ where: { businessId } }),
       db.site.deleteMany({ where: { businessId } }),
@@ -167,8 +172,6 @@ export async function clearBusinessData(businessCode: string) {
     expenses: expenses.count,
     workRequests: workRequests.count,
     assignments: assignments.count,
-    transactions: transactions.count,
-    categories: categories.count,
     excavators: excavators.count,
     customers: customers.count,
     sites: sites.count,

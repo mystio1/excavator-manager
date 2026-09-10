@@ -475,8 +475,6 @@ type ClearDataCounts = {
   expenses: number;
   workRequests: number;
   assignments: number;
-  transactions: number;
-  categories: number;
   excavators: number;
   customers: number;
   sites: number;
@@ -484,11 +482,12 @@ type ClearDataCounts = {
   sequences: number;
 };
 
-/** Wipes a business's bills/customers/machines/work history/transactions —
- * everything that feeds revenue and stats — for cleaning up mistaken or
- * test data. Keeps the business itself, its owner login(s), and its
- * operators (drivers) untouched. No undo, so the confirm button stays
- * disabled until the exact business code is typed in. */
+/** Wipes a business's bills/customers/machines/work history — everything
+ * that feeds revenue and stats — for cleaning up mistaken or test data.
+ * Keeps the business itself, its owner login(s), its operators (drivers),
+ * AND every operator salary/money transaction (advances, deductions,
+ * bonuses, payments already recorded) untouched. No undo, so the confirm
+ * button stays disabled until the exact business code is typed in. */
 function ClearDataDialog({ business, token, onChanged }: { business: Business; token: string; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const [confirmCode, setConfirmCode] = useState("");
@@ -545,13 +544,14 @@ function ClearDataDialog({ business, token, onChanged }: { business: Business; t
               <li>{result.customers} customers</li>
               <li>{result.excavators} machines</li>
               <li>{result.sites} sites</li>
-              <li>{result.transactions} transactions</li>
               <li>{result.serviceRecords} service records</li>
               <li>{result.expenses} expenses</li>
               <li>{result.bankAccounts} bank accounts</li>
               <li>{result.workRequests + result.assignments} operator-machine links</li>
             </ul>
-            <p className="text-sm text-muted-foreground">Operator (driver) records and the owner login were kept.</p>
+            <p className="text-sm font-medium text-working">
+              Operators (drivers), the owner login, and every operator salary/money transaction were kept untouched.
+            </p>
             <DialogFooter>
               <Button onClick={() => setOpen(false)}>Done</Button>
             </DialogFooter>
@@ -559,9 +559,10 @@ function ClearDataDialog({ business, token, onChanged }: { business: Business; t
         ) : (
           <>
             <p className="text-sm text-muted-foreground">
-              This permanently deletes every bill, payment, work session, service record, expense, transaction,
-              customer, machine, and site for <strong>{business.name}</strong> (code {business.code}) — there&rsquo;s
-              no undo. Its operators (drivers) and owner login are kept untouched.
+              This permanently deletes every bill, payment, work session, service record, expense, customer,
+              machine, and site for <strong>{business.name}</strong> (code {business.code}) — there&rsquo;s no undo.
+              Its operators (drivers), owner login, and every operator salary/money transaction (advances,
+              deductions, bonuses, payments already recorded) are kept untouched.
             </p>
             <div className="flex flex-col gap-2">
               <Label htmlFor="confirm-code" className="text-sm">
