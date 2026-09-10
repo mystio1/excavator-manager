@@ -11,8 +11,9 @@ import { clientIp, rateLimited } from "@/lib/rateLimit";
 export async function POST(req: Request) {
   const supportPassword = process.env.SUPPORT_ACCESS_PASSWORD;
   // Disabled entirely (404s) unless deliberately configured — never ships
-  // active with no password set.
-  if (!supportPassword) return new Response("Not found", { status: 404 });
+  // active with no password set. JSON body, like every other route here —
+  // apiFetch always tries to JSON.parse the response.
+  if (!supportPassword) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   // This one password unlocks every business on the platform if
   // brute-forced, so it gets rate-limiting the rest of the app doesn't have.

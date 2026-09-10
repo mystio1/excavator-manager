@@ -42,7 +42,16 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
   const text = await res.text();
-  const body = text ? JSON.parse(text, reviveDates) : undefined;
+  let body: unknown;
+  try {
+    body = text ? JSON.parse(text, reviveDates) : undefined;
+  } catch {
+    // A non-JSON body (an HTML error page from a proxy or host, a plain-text
+    // error some route forgot to NextResponse.json(), etc.) shouldn't
+    // surface as a raw, confusing SyntaxError — fall back to the response
+    // text itself (or a generic message) as the error.
+    throw new ApiError(!res.ok && text ? text.slice(0, 200) : `Request failed (${res.status})`, res.status);
+  }
   if (!res.ok) {
     throw new ApiError((body as { error?: string } | undefined)?.error ?? `Request failed (${res.status})`, res.status);
   }

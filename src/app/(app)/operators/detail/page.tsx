@@ -38,7 +38,7 @@ type DetailData = {
 export default function OperatorDetailPage() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id") ?? "";
-  const tab = searchParams.get("tab") ?? "overview";
+  const tab = searchParams.get("tab") ?? "transactions";
   const monthParam = searchParams.get("month");
 
   const now = new Date();

@@ -120,3 +120,62 @@ export async function setBusinessLimits(
   await createAuditLog(business.id, "support.setLimits", business.id, { maxOperators, maxBillsPerDay });
   return { business: updated } as const;
 }
+
+/**
+ * Wipes every bit of transactional/business data for one business — bills,
+ * payments, work sessions, service history, expenses, transactions,
+ * customers, machines, sites, bank accounts, bill numbering — everything
+ * that feeds revenue/stats. Deliberately keeps the Business row itself, its
+ * owner User account(s) (so the business can still log in), and its
+ * Operator (driver) records (so real people aren't lost) — this is a reset
+ * of mistaken/test data, not a delete-the-tenant operation.
+ *
+ * Order matters: Bill/WorkSession/ServiceRecord/ExcavatorExpense are
+ * cleared first because Excavator/Customer/Site have Restrict (not
+ * Cascade) foreign keys from those tables — Postgres would refuse to
+ * delete an Excavator/Customer/Site still referenced by one. Everything
+ * runs in a single transaction so a failure partway through can't leave
+ * the business in a half-wiped state.
+ */
+export async function clearBusinessData(businessCode: string) {
+  const business = await db.business.findUnique({ where: { code: normalizeBusinessCode(businessCode) } });
+  if (!business) return { error: "No business found with that code" } as const;
+
+  const businessId = business.id;
+
+  const [bills, workSessions, serviceRecords, expenses, workRequests, assignments, transactions, categories, excavators, customers, sites, bankAccounts, sequences] =
+    await db.$transaction([
+      db.bill.deleteMany({ where: { businessId } }), // cascades BillItem, Payment
+      db.workSession.deleteMany({ where: { businessId } }), // cascades DailyWorkLog
+      db.serviceRecord.deleteMany({ where: { businessId } }), // cascades ServiceRecordItem
+      db.excavatorExpense.deleteMany({ where: { businessId } }),
+      db.operatorWorkRequest.deleteMany({ where: { businessId } }),
+      db.operatorAssignment.deleteMany({ where: { businessId } }),
+      db.operatorTransaction.deleteMany({ where: { businessId } }),
+      db.transactionCategory.deleteMany({ where: { businessId } }),
+      db.excavator.deleteMany({ where: { businessId } }),
+      db.customer.deleteMany({ where: { businessId } }),
+      db.site.deleteMany({ where: { businessId } }),
+      db.bankAccount.deleteMany({ where: { businessId } }),
+      db.billNumberSequence.deleteMany({ where: { businessId } }),
+    ]);
+
+  const counts = {
+    bills: bills.count,
+    workSessions: workSessions.count,
+    serviceRecords: serviceRecords.count,
+    expenses: expenses.count,
+    workRequests: workRequests.count,
+    assignments: assignments.count,
+    transactions: transactions.count,
+    categories: categories.count,
+    excavators: excavators.count,
+    customers: customers.count,
+    sites: sites.count,
+    bankAccounts: bankAccounts.count,
+    sequences: sequences.count,
+  };
+
+  await createAuditLog(business.id, "support.clearData", business.id, counts);
+  return { business, counts } as const;
+}

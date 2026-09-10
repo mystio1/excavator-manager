@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, KeyRound, LogOut, Search, Shield, Snowflake, User, X } from "lucide-react";
+import { AlertCircle, KeyRound, LogOut, Search, Shield, Snowflake, Trash2, User, X } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -257,6 +257,7 @@ function BusinessRow({ business, token, onChanged }: { business: Business; token
           <ManageLimitsDialog business={business} token={token} onChanged={onChanged} />
           <FreezeDialog business={business} token={token} onChanged={onChanged} />
           <AccessAdminDialog business={business} token={token} disabled={business.userCount === 0} />
+          <ClearDataDialog business={business} token={token} onChanged={onChanged} />
         </div>
       </CardContent>
     </Card>
@@ -281,6 +282,11 @@ function AccessAdminDialog({ business, token, disabled }: { business: Business; 
         headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({ businessCode: business.code }),
       });
+      // A full navigation, not router.push() — impersonation just swapped
+      // the session cookie to a different business entirely, and this page
+      // (and anything cached in SWR/React state from browsing the support
+      // console itself) must not carry over into that business's session.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       window.location.href = "/dashboard";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not access this business");
@@ -457,6 +463,134 @@ function ManageLimitsDialog({ business, token, onChanged }: { business: Business
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type ClearDataCounts = {
+  bills: number;
+  workSessions: number;
+  serviceRecords: number;
+  expenses: number;
+  workRequests: number;
+  assignments: number;
+  transactions: number;
+  categories: number;
+  excavators: number;
+  customers: number;
+  sites: number;
+  bankAccounts: number;
+  sequences: number;
+};
+
+/** Wipes a business's bills/customers/machines/work history/transactions —
+ * everything that feeds revenue and stats — for cleaning up mistaken or
+ * test data. Keeps the business itself, its owner login(s), and its
+ * operators (drivers) untouched. No undo, so the confirm button stays
+ * disabled until the exact business code is typed in. */
+function ClearDataDialog({ business, token, onChanged }: { business: Business; token: string; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [confirmCode, setConfirmCode] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<ClearDataCounts | null>(null);
+
+  function reset() {
+    setConfirmCode("");
+    setError("");
+    setResult(null);
+  }
+
+  async function handleClear() {
+    setPending(true);
+    setError("");
+    try {
+      const { counts } = await apiFetch<{ counts: ClearDataCounts }>("/api/support/clear-data", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ businessCode: business.code, confirmCode }),
+      });
+      setResult(counts);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not clear this business's data");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) reset();
+      }}
+    >
+      <DialogTrigger render={<Button size="sm" variant="destructive" />}>
+        <Trash2 className="size-4" />
+        Clear Data
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Clear {business.name}&rsquo;s Data?</DialogTitle>
+        </DialogHeader>
+        {result ? (
+          <>
+            <p className="text-sm text-muted-foreground">Cleared for {business.name} (code {business.code}):</p>
+            <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+              <li>{result.bills} bills</li>
+              <li>{result.workSessions} work sessions</li>
+              <li>{result.customers} customers</li>
+              <li>{result.excavators} machines</li>
+              <li>{result.sites} sites</li>
+              <li>{result.transactions} transactions</li>
+              <li>{result.serviceRecords} service records</li>
+              <li>{result.expenses} expenses</li>
+              <li>{result.bankAccounts} bank accounts</li>
+              <li>{result.workRequests + result.assignments} operator-machine links</li>
+            </ul>
+            <p className="text-sm text-muted-foreground">Operator (driver) records and the owner login were kept.</p>
+            <DialogFooter>
+              <Button onClick={() => setOpen(false)}>Done</Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-muted-foreground">
+              This permanently deletes every bill, payment, work session, service record, expense, transaction,
+              customer, machine, and site for <strong>{business.name}</strong> (code {business.code}) — there&rsquo;s
+              no undo. Its operators (drivers) and owner login are kept untouched.
+            </p>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="confirm-code" className="text-sm">
+                Type the business code (<span className="font-mono">{business.code}</span>) to confirm
+              </Label>
+              <Input
+                id="confirm-code"
+                value={confirmCode}
+                onChange={(e) => setConfirmCode(e.target.value)}
+                className="h-11 font-mono uppercase"
+                autoFocus
+                disabled={pending}
+              />
+            </div>
+            {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setOpen(false)} disabled={pending}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleClear}
+                disabled={pending || confirmCode.trim().toUpperCase() !== business.code.toUpperCase()}
+              >
+                {pending ? "Clearing..." : "Clear Data"}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
