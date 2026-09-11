@@ -12,7 +12,14 @@ export function PageHeader({
   backHref?: string;
 }) {
   return (
-    <div className="flex animate-fade-in-up flex-col gap-3 px-4 pt-5 pb-4 sm:flex-row sm:items-center sm:justify-between md:px-8 md:pt-8">
+    // print-hidden: this is a plain div, not a semantic <header> — the
+    // @media print rule that hides `header`/`nav`/`aside` never caught it,
+    // so the back button + page title (e.g. a bill's own "NG-0001") were
+    // printing right on top of the actual document. Every page uses this
+    // component, but window.print()/the native print bridge is only ever
+    // triggered from the bill detail page, so hiding it globally on print
+    // has no effect anywhere else.
+    <div className="print-hidden flex animate-fade-in-up flex-col gap-3 px-4 pt-5 pb-4 sm:flex-row sm:items-center sm:justify-between md:px-8 md:pt-8">
       <div className="flex min-w-0 items-center gap-3">
         {backHref && (
           <Link

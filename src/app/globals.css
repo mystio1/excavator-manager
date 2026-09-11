@@ -284,10 +284,20 @@
   header {
     display: none !important;
   }
+  html,
   body,
   main {
     padding: 0 !important;
     margin: 0 !important;
+    /* The app's own theme (dark mode especially) must never bleed into a
+       printed page — without this, everything outside .bill-print-area
+       keeps the on-screen dark background, which is exactly what made a
+       printed/PDF'd bill look like a screenshot of the app instead of a
+       clean document. Same fix applies whether the print comes from a
+       mobile browser's window.print() or the Android app's native
+       WebView.createPrintDocumentAdapter() bridge — both render this same
+       CSS, just through different system print pipelines. */
+    background: #fff !important;
   }
   .bill-print-area {
     color: #000 !important;
