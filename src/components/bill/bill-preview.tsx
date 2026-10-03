@@ -6,6 +6,7 @@ import type { BillLetterhead } from "@/lib/services/bills";
 export type BillPreviewItem = {
   excavatorName: string;
   machineNumber: string | null;
+  attachment?: string | null;
   siteName: string;
   fromDate: Date;
   toDate: Date;
@@ -205,6 +206,9 @@ export function BillPreview({ bill }: { bill: BillPreviewData }) {
                       {item.excavatorName}
                       {item.machineNumber && (
                         <span className="block text-[10px] text-slate-400">{item.machineNumber}</span>
+                      )}
+                      {item.attachment && (
+                        <span className="block text-[10px] font-semibold text-slate-500">{item.attachment}</span>
                       )}
                     </td>
                     <td className={cell}>

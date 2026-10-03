@@ -1,10 +1,13 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
-import useSWR from "swr";
+import Link from "next/link";
+import { Pencil, Trash2 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import useSWR, { mutate } from "swr";
 import type { getBillDetail, toBillPreviewData } from "@/lib/services/bills";
-import { swrFetcher } from "@/lib/api-client";
+import { apiFetch, swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { BillPreview } from "@/components/bill/bill-preview";
 import { formatCurrency } from "@/lib/utils/currency";
@@ -19,12 +22,20 @@ type PreviewData = ReturnType<typeof toBillPreviewData>;
 
 export default function BillDetailPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const id = searchParams.get("id") ?? "";
 
   const { data } = useSWR<{ bill: BillDetail; previewData: PreviewData }>(
     id ? `/api/bills/${id}` : null,
     swrFetcher,
   );
+
+  async function onDelete() {
+    if (!window.confirm("Delete this bill and its payments? This cannot be undone.")) return;
+    await apiFetch(`/api/bills/${id}`, { method: "DELETE" });
+    await mutate((k) => typeof k === "string" && (k.startsWith("/api/bills") || k.startsWith("/api/dashboard")));
+    router.push("/bills");
+  }
 
   if (!data) return <Loading />;
   const { bill, previewData } = data;
@@ -37,6 +48,25 @@ export default function BillDetailPage() {
         backHref="/bills"
         action={
           <div className="flex shrink-0 gap-2">
+            <Button
+              variant="outline"
+              size="lg"
+              className="h-11"
+              nativeButton={false}
+              render={<Link href={`/bills/edit?id=${bill.id}`} />}
+            >
+              <Pencil className="size-4" />
+              Edit
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-lg"
+              className="h-11 w-11 text-destructive"
+              aria-label="Delete bill"
+              onClick={onDelete}
+            >
+              <Trash2 className="size-4" />
+            </Button>
             <DownloadExcelButton billId={bill.id} />
             <PrintButton />
           </div>

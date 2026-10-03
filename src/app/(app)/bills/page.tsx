@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
-import { FileEdit, Plus, Receipt } from "lucide-react";
+import { FileEdit, Plus, Receipt, Table2 } from "lucide-react";
 import type { countBillsByType, listBills } from "@/lib/services/bills";
 import { swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
@@ -73,6 +73,17 @@ export default function BillsPage() {
         backHref={customerId ? `/customers/detail?id=${customerId}` : undefined}
         action={
           <div className="flex shrink-0 gap-2">
+            <Button
+              size="lg"
+              variant="secondary"
+              className="h-11 px-2.5 sm:px-3"
+              nativeButton={false}
+              render={<Link href="/bills/new/summary" />}
+            >
+              <Table2 className="size-5" />
+              <span className="hidden sm:inline">Summary Bill</span>
+              <span className="sm:hidden">Summary</span>
+            </Button>
             <Button
               size="lg"
               variant="secondary"

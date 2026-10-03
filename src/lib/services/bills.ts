@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import type { GenerateBillInput } from "@/lib/validation/bill";
+import type { GenerateBillInput, GenerateSummaryBillInput, UpdateBillInput } from "@/lib/validation/bill";
 import type { GenerateDirectBillInput } from "@/lib/validation/directBill";
 import type { BillPreviewData } from "@/components/bill/bill-preview";
 import type { Business, BankAccount, Prisma } from "@/generated/prisma/client";
@@ -211,6 +211,7 @@ export async function createBill(businessId: string, input: GenerateBillInput) {
               excavatorId: s.excavatorId,
               workSessionId: s.id,
               siteName: s.site.name,
+              attachment: input.attachment || null,
               fromDate: s.startDate,
               toDate: s.endDate ?? s.startDate,
               hours: s.totalHours,
@@ -226,6 +227,238 @@ export async function createBill(businessId: string, input: GenerateBillInput) {
   } catch {
     return { error: "That bill number is already used — pick a different one" } as const;
   }
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+function gstSplit(taxableValue: number, billType: string, gstPercentage: number | null | undefined) {
+  if (billType !== "GST" || !gstPercentage) return { taxTotal: 0, cgst: null, sgst: null };
+  const taxTotal = round2((taxableValue * gstPercentage) / 100);
+  const cgst = round2(taxTotal / 2);
+  return { taxTotal, cgst, sgst: taxTotal - cgst };
+}
+
+function paymentStatus(paidAmount: number, totalAmount: number) {
+  if (paidAmount <= 0) return "UNPAID";
+  return paidAmount >= totalAmount - 0.01 ? "PAID" : "PARTIAL";
+}
+
+/** Summary Bill — a normal-style bill (customer-wise, per-machine/site
+ * lines, hours × rate, optional GST) whose lines are entered directly in a
+ * spreadsheet-like grid instead of being picked from already-logged work.
+ * Lines carry no workSessionId, so nothing logged elsewhere is touched. */
+export async function createSummaryBill(businessId: string, input: GenerateSummaryBillInput) {
+  const [business, bankAccount, machines, customer] = await Promise.all([
+    db.business.findUniqueOrThrow({ where: { id: businessId } }),
+    input.bankAccountId
+      ? db.bankAccount.findFirst({ where: { id: input.bankAccountId, businessId } })
+      : Promise.resolve(null),
+    db.excavator.findMany({
+      where: { businessId, id: { in: input.items.map((i) => i.excavatorId) } },
+      select: { id: true },
+    }),
+    db.customer.findFirst({ where: { id: input.customerId, businessId }, select: { id: true } }),
+  ]);
+
+  if (!customer) return { error: "Customer not found" } as const;
+
+  const limitError = await checkDailyBillLimit(businessId, business.maxBillsPerDay);
+  if (limitError) return { error: limitError } as const;
+
+  const machineIds = new Set(machines.map((m) => m.id));
+  if (input.items.some((i) => !machineIds.has(i.excavatorId))) {
+    return { error: "One of the selected machines was not found" } as const;
+  }
+
+  const items = input.items.map((i) => ({
+    excavatorId: i.excavatorId,
+    siteName: i.siteName,
+    attachment: i.attachment || null,
+    fromDate: new Date(i.fromDate),
+    toDate: new Date(i.toDate),
+    hours: i.hours,
+    ratePerHour: i.ratePerHour,
+    amount: round2(i.hours * i.ratePerHour),
+  }));
+  const subtotal = round2(items.reduce((sum, i) => sum + i.amount, 0));
+  const taxableValue =
+    subtotal +
+    input.transportCharges +
+    input.fuelCharges +
+    input.extraCharges +
+    input.bucketCharge +
+    input.breakerCharge -
+    input.discount;
+  const { taxTotal, cgst, sgst } = gstSplit(taxableValue, input.billType, input.gstPercentage);
+  const totalAmount = round2(taxableValue + taxTotal);
+  const letterhead = buildLetterhead(business, bankAccount);
+
+  try {
+    return await db.$transaction(async (tx) => {
+      const billNumber = await resolveBillNumber(tx, businessId, input.billType, input.billNumber);
+      const bill = await tx.bill.create({
+        data: {
+          businessId,
+          billNumber,
+          billType: input.billType,
+          customerId: input.customerId,
+          bankAccountId: bankAccount?.id ?? null,
+          billDate: new Date(input.billDate),
+          subtotal,
+          transportCharges: input.transportCharges,
+          fuelCharges: input.fuelCharges,
+          extraCharges: input.extraCharges,
+          bucketCharge: input.bucketCharge,
+          breakerCharge: input.breakerCharge,
+          discount: input.discount,
+          gstPercentage: input.billType === "GST" ? input.gstPercentage : null,
+          cgst,
+          sgst,
+          igst: null,
+          buyerGstin: input.buyerGstin || null,
+          totalAmount,
+          notes: input.notes || null,
+          showCustomerPhone: input.showCustomerPhone,
+          letterhead: letterhead as object,
+          items: { create: items },
+        },
+      });
+      return { bill } as const;
+    });
+  } catch {
+    return { error: "That bill number is already used — pick a different one" } as const;
+  }
+}
+
+/** Admin edit of a generated bill — any field, any time. Totals/GST are
+ * recomputed from scratch; payments already recorded are kept and the
+ * PAID/PARTIAL/UNPAID status is re-derived against the new total. Lines
+ * keep their WorkSession link when edited in place (so those hours stay
+ * marked as billed); a removed line frees its WorkSession for rebilling. */
+export async function updateBill(businessId: string, id: string, input: UpdateBillInput) {
+  const bill = await db.bill.findFirst({ where: { id, businessId }, include: { items: true } });
+  if (!bill) return { error: "Bill not found" } as const;
+
+  const [bankAccount, customer] = await Promise.all([
+    input.bankAccountId
+      ? db.bankAccount.findFirst({ where: { id: input.bankAccountId, businessId } })
+      : Promise.resolve(null),
+    db.customer.findFirst({ where: { id: input.customerId, businessId }, select: { id: true } }),
+  ]);
+  if (!customer) return { error: "Customer not found" } as const;
+
+  const data: Prisma.BillUncheckedUpdateInput = {
+    billNumber: input.billNumber,
+    billType: input.billType,
+    customerId: input.customerId,
+    bankAccountId: bankAccount?.id ?? null,
+    billDate: new Date(input.billDate),
+    gstPercentage: input.billType === "GST" ? input.gstPercentage : null,
+    buyerGstin: input.buyerGstin || null,
+    notes: input.notes || null,
+    showCustomerPhone: input.showCustomerPhone,
+  };
+
+  // Only the bank block of the frozen letterhead follows an edit — business
+  // name/logo/etc. stay exactly as they were when the bill was generated.
+  if ((bankAccount?.id ?? null) !== bill.bankAccountId) {
+    const business = await db.business.findUniqueOrThrow({ where: { id: businessId } });
+    const fresh = buildLetterhead(business, bankAccount);
+    data.letterhead = { ...(bill.letterhead as object), bankAccount: fresh.bankAccount } as object;
+  }
+
+  let subtotal: number;
+  let taxableValue: number;
+  let totalAdjust = 0;
+  let itemsWrite: Omit<Prisma.BillItemUncheckedCreateInput, "billId">[] | null = null;
+
+  if (bill.isDirect) {
+    if (!input.excavatorId || !input.fromDate || !input.toDate) {
+      return { error: "Select a machine and the period" } as const;
+    }
+    const machine = await db.excavator.findFirst({ where: { id: input.excavatorId, businessId }, select: { id: true } });
+    if (!machine) return { error: "Machine not found" } as const;
+    subtotal = round2(round2(input.bucketHours * input.bucketRate) + round2(input.breakerHours * input.breakerRate));
+    taxableValue = round2(subtotal + input.transportCharges);
+    const dieselAdvance = round2(input.dieselLiters * input.dieselPricePerLiter);
+    totalAdjust = -dieselAdvance;
+    Object.assign(data, {
+      excavatorId: input.excavatorId,
+      fromDate: new Date(input.fromDate),
+      toDate: new Date(input.toDate),
+      bucketHours: input.bucketHours,
+      bucketRate: input.bucketRate,
+      breakerHours: input.breakerHours,
+      breakerRate: input.breakerRate,
+      dieselLiters: input.dieselLiters,
+      dieselPricePerLiter: input.dieselPricePerLiter,
+      dieselAdvance,
+      transportCharges: input.transportCharges,
+    });
+  } else {
+    if (!input.items || input.items.length === 0) return { error: "A bill needs at least one row" } as const;
+    const machines = await db.excavator.findMany({
+      where: { businessId, id: { in: input.items.map((i) => i.excavatorId) } },
+      select: { id: true },
+    });
+    const machineIds = new Set(machines.map((m) => m.id));
+    if (input.items.some((i) => !machineIds.has(i.excavatorId))) {
+      return { error: "One of the selected machines was not found" } as const;
+    }
+    const existing = new Map(bill.items.map((i) => [i.id, i]));
+    itemsWrite = input.items.map((i) => ({
+      excavatorId: i.excavatorId,
+      workSessionId: (i.id && existing.get(i.id)?.workSessionId) || null,
+      siteName: i.siteName,
+      attachment: i.attachment || null,
+      fromDate: new Date(i.fromDate),
+      toDate: new Date(i.toDate),
+      hours: i.hours,
+      ratePerHour: i.ratePerHour,
+      amount: round2(i.hours * i.ratePerHour),
+    }));
+    subtotal = round2(itemsWrite.reduce((sum, i) => sum + i.amount, 0));
+    taxableValue =
+      subtotal +
+      input.transportCharges +
+      input.fuelCharges +
+      input.extraCharges +
+      input.bucketCharge +
+      input.breakerCharge -
+      input.discount;
+    Object.assign(data, {
+      transportCharges: input.transportCharges,
+      fuelCharges: input.fuelCharges,
+      extraCharges: input.extraCharges,
+      bucketCharge: input.bucketCharge,
+      breakerCharge: input.breakerCharge,
+      discount: input.discount,
+    });
+  }
+
+  const { taxTotal, cgst, sgst } = gstSplit(taxableValue, input.billType, input.gstPercentage);
+  const totalAmount = round2(taxableValue + taxTotal + totalAdjust);
+  Object.assign(data, {
+    subtotal,
+    cgst,
+    sgst,
+    igst: null,
+    totalAmount,
+    status: paymentStatus(bill.paidAmount, totalAmount),
+  });
+
+  try {
+    await db.$transaction(async (tx) => {
+      if (itemsWrite) {
+        await tx.billItem.deleteMany({ where: { billId: bill.id } });
+        await tx.billItem.createMany({ data: itemsWrite.map((i) => ({ ...i, billId: bill.id })) });
+      }
+      await tx.bill.update({ where: { id: bill.id }, data });
+    });
+  } catch {
+    return { error: "That bill number is already used — pick a different one" } as const;
+  }
+  return { id: bill.id } as const;
 }
 
 /** Direct billing — a standalone invoice for bucket/breaker hours hired
@@ -380,6 +613,7 @@ export function toBillPreviewData(bill: NonNullable<Awaited<ReturnType<typeof ge
     items: bill.items.map((item) => ({
       excavatorName: item.excavator.name,
       machineNumber: item.excavator.machineNumber,
+      attachment: item.attachment,
       siteName: item.siteName,
       fromDate: item.fromDate,
       toDate: item.toDate,
@@ -451,5 +685,48 @@ export async function addPayment(
     }),
   ]);
 
+  return { success: true } as const;
+}
+
+async function resyncPayments(tx: Prisma.TransactionClient, billId: string) {
+  const bill = await tx.bill.findUniqueOrThrow({ where: { id: billId } });
+  const agg = await tx.payment.aggregate({ where: { billId }, _sum: { amount: true } });
+  const paidAmount = round2(agg._sum.amount ?? 0);
+  await tx.bill.update({ where: { id: billId }, data: { paidAmount, status: paymentStatus(paidAmount, bill.totalAmount) } });
+}
+
+/** Admin corrects a recorded payment (amount/date/method/notes). */
+export async function updatePayment(
+  businessId: string,
+  input: { billId: string; paymentId: string; amount: number; date: string; method?: string; notes?: string },
+) {
+  const payment = await db.payment.findFirst({ where: { id: input.paymentId, billId: input.billId, businessId } });
+  if (!payment) return { error: "Payment not found" } as const;
+  await db.$transaction(async (tx) => {
+    await tx.payment.update({
+      where: { id: payment.id },
+      data: { amount: input.amount, date: new Date(input.date), method: input.method || null, notes: input.notes || null },
+    });
+    await resyncPayments(tx, input.billId);
+  });
+  return { success: true } as const;
+}
+
+export async function deletePayment(businessId: string, billId: string, paymentId: string) {
+  const payment = await db.payment.findFirst({ where: { id: paymentId, billId, businessId } });
+  if (!payment) return { error: "Payment not found" } as const;
+  await db.$transaction(async (tx) => {
+    await tx.payment.delete({ where: { id: payment.id } });
+    await resyncPayments(tx, billId);
+  });
+  return { success: true } as const;
+}
+
+/** Deletes a bill with its lines and payments. Work records it covered
+ * become billable again (their bill lines go with it). */
+export async function deleteBill(businessId: string, id: string) {
+  const bill = await db.bill.findFirst({ where: { id, businessId }, select: { id: true } });
+  if (!bill) return { error: "Bill not found" } as const;
+  await db.bill.delete({ where: { id } });
   return { success: true } as const;
 }

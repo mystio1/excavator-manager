@@ -12,6 +12,8 @@ import { AddDailyLogDialog } from "./add-daily-log-dialog";
 import { StopWorkDialog } from "./stop-work-dialog";
 import { OperatorWorkRequestCard } from "./operator-work-request-card";
 import { DeleteReadingButton } from "./delete-reading-button";
+import { EditReadingButton } from "./edit-reading-button";
+import { EditSessionButton } from "./edit-session-button";
 
 const LOG_STATUS_BADGE: Record<string, { label: string; className: string }> = {
   APPROVED: { label: "Approved", className: "bg-working text-working-foreground" },
@@ -26,15 +28,31 @@ type DailyLog = {
   status: string;
   source: string;
   operatorName: string | null;
+  startTime: string | null;
+  stopTime: string | null;
+  breakMinutes: number | null;
+  startHourMeter: number | null;
+  endHourMeter: number | null;
+  dieselLiters: number | null;
+  notes: string | null;
+  attachment: string | null;
 };
 
 type ActiveWork = {
   id: string;
+  customerId: string;
+  operatorId: string;
   customer: { name: string };
   site: { name: string };
   startDate: Date;
+  endDate: Date | null;
   startHourMeter: number;
+  endHourMeter: number | null;
   totalHours: number;
+  dieselLiters: number | null;
+  attachment: string | null;
+  notes: string | null;
+  status: string;
   dailyLogs: DailyLog[];
 } | null;
 
@@ -81,6 +99,7 @@ function DailyLogRow({ excavatorId, log }: { excavatorId: string; log: DailyLog 
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-semibold">{formatHours(log.hoursWorked)}</span>
           <Badge className={badge.className}>{badge.label}</Badge>
+          <EditReadingButton log={log} invalidateKey={`/api/excavators/${excavatorId}`} />
           <DeleteReadingButton logId={log.id} invalidateKey={`/api/excavators/${excavatorId}`} />
         </div>
       </div>
@@ -158,6 +177,10 @@ export function CurrentWorkTab({
     <div className="flex flex-col gap-4">
       <Card>
         <CardContent className="flex flex-col gap-3">
+          <div className="-mb-1 flex items-center justify-between">
+            <p className="text-sm font-semibold">Current Job</p>
+            <EditSessionButton session={activeWork} invalidateKey={`/api/excavators/${excavatorId}`} />
+          </div>
           <div className="grid grid-cols-2 gap-y-2 text-sm">
             <p className="text-muted-foreground">Customer</p>
             <p className="text-right font-semibold">{activeWork.customer.name}</p>

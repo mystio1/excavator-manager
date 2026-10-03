@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { calcHoursFromClock, calcHoursFromMeter } from "@/lib/utils/hours";
 import { findOrCreateSite } from "@/lib/services/sites";
-import type { DailyLogInput, StartWorkInput, StopWorkInput } from "@/lib/validation/workSession";
+import type { DailyLogInput, StartWorkInput, StopWorkInput, UpdateWorkSessionInput } from "@/lib/validation/workSession";
 
 /**
  * Starts a job (customer/site/hours) on a machine. The operator is never
@@ -268,6 +268,81 @@ export async function rejectDailyLog(businessId: string, logId: string) {
   return { ok: true } as const;
 }
 
+/** Admin edits any reading — pending, approved or rejected, active or
+ * completed session. Re-derives hours from the new values, re-sums the
+ * session's totalHours, and keeps the session's diesel total in step (only
+ * an APPROVED log's diesel ever counted toward it). The machine's live
+ * hour meter only follows when the log belongs to the ACTIVE session. */
+export async function updateDailyLog(businessId: string, logId: string, input: Omit<DailyLogInput, "workSessionId">) {
+  const log = await db.dailyWorkLog.findFirst({
+    where: { id: logId, workSession: { businessId } },
+    include: { workSession: true },
+  });
+  if (!log) return { error: "Reading not found" } as const;
+
+  const date = new Date(input.date);
+  if (date.getTime() !== log.date.getTime()) {
+    const duplicate = await db.dailyWorkLog.findFirst({
+      where: {
+        workSessionId: log.workSessionId,
+        date,
+        status: { in: ["APPROVED", "PENDING"] },
+        id: { not: log.id },
+      },
+    });
+    if (duplicate) return { error: "Another reading already exists for that date" } as const;
+  }
+
+  const hoursWorked = computeHours(input);
+  if (hoursWorked <= 0) {
+    return { error: "Working hours must be greater than 0 — check the times or readings" } as const;
+  }
+
+  await db.dailyWorkLog.update({
+    where: { id: log.id },
+    data: {
+      date,
+      startTime: input.startTime || null,
+      stopTime: input.stopTime || null,
+      breakMinutes: input.breakMinutes ?? null,
+      startHourMeter: input.startHourMeter ?? null,
+      endHourMeter: input.endHourMeter ?? null,
+      hoursWorked,
+      operatorName: input.operatorName || null,
+      dieselLiters: input.dieselLiters ?? null,
+      notes: input.notes || null,
+      attachment: input.attachment || null,
+    },
+  });
+
+  await recomputeTotalHours(log.workSessionId);
+
+  if (log.status === "APPROVED") {
+    const diff = (input.dieselLiters ?? 0) - (log.dieselLiters ?? 0);
+    if (diff !== 0) {
+      await db.workSession.update({
+        where: { id: log.workSessionId },
+        data: { dieselLiters: Math.max(0, (log.workSession.dieselLiters ?? 0) + diff) },
+      });
+    }
+    if (input.attachment) {
+      await db.workSession.update({ where: { id: log.workSessionId }, data: { attachment: input.attachment } });
+    }
+    if (log.workSession.status === "ACTIVE") {
+      const latest = await db.dailyWorkLog.findFirst({
+        where: { workSessionId: log.workSessionId, status: "APPROVED" },
+        orderBy: { date: "desc" },
+      });
+      const meter = latest ? (latest.endHourMeter ?? latest.startHourMeter) : null;
+      if (meter != null) {
+        await db.excavator.update({ where: { id: log.workSession.excavatorId }, data: { currentHourMeter: meter } });
+      }
+    }
+  }
+
+  return { hoursWorked } as const;
+}
+
 /** Admin deletes a specific reading (e.g. one entered by mistake) from a
  * machine's history — any status, active or completed session. Always
  * re-sums totalHours from what remains. Only rewinds
@@ -322,6 +397,92 @@ export async function deleteDailyLog(businessId: string, logId: string) {
     }
   }
 
+  return { ok: true } as const;
+}
+
+/** Admin edits any job — active or completed — customer, site, operator,
+ * dates, meter readings, hours, diesel, tool, notes. Hours follow the
+ * approved daily readings when there are any; otherwise the typed value (or
+ * the meter difference) is used. Bills already generated keep their own
+ * snapshot, so nothing billed is rewritten. */
+export async function updateWorkSession(businessId: string, id: string, input: UpdateWorkSessionInput) {
+  const session = await db.workSession.findFirst({ where: { id, businessId } });
+  if (!session) return { error: "Work record not found" } as const;
+
+  const [customer, operator] = await Promise.all([
+    db.customer.findFirst({ where: { id: input.customerId, businessId }, select: { id: true } }),
+    db.operator.findFirst({ where: { id: input.operatorId, businessId }, select: { id: true } }),
+  ]);
+  if (!customer) return { error: "Customer not found" } as const;
+  if (!operator) return { error: "Operator not found" } as const;
+
+  if (input.endDate && new Date(input.endDate) < new Date(input.startDate)) {
+    return { error: "End date must be on or after the start date" } as const;
+  }
+  if (input.endHourMeter != null && input.endHourMeter < input.startHourMeter) {
+    return { error: "End reading can't be less than the start reading" } as const;
+  }
+
+  const site = await findOrCreateSite(businessId, input.siteName);
+  const approvedLogs = await db.dailyWorkLog.count({ where: { workSessionId: id, status: "APPROVED" } });
+
+  let totalHours = session.totalHours;
+  if (approvedLogs === 0) {
+    if (input.totalHours != null) totalHours = input.totalHours;
+    else if (input.endHourMeter != null) totalHours = calcHoursFromMeter(input.startHourMeter, input.endHourMeter);
+  }
+
+  await db.workSession.update({
+    where: { id },
+    data: {
+      customerId: input.customerId,
+      operatorId: input.operatorId,
+      siteId: site.id,
+      startDate: new Date(input.startDate),
+      endDate: input.endDate ? new Date(input.endDate) : session.status === "COMPLETED" ? session.endDate : null,
+      startHourMeter: input.startHourMeter,
+      endHourMeter: input.endHourMeter ?? null,
+      totalHours,
+      dieselLiters: input.dieselLiters ?? null,
+      attachment: input.attachment || null,
+      notes: input.notes || null,
+    },
+  });
+  if (approvedLogs > 0) await recomputeTotalHours(id);
+
+  // Keep the machine's live meter in step when the corrected job is the
+  // machine's latest one.
+  if (session.status === "COMPLETED" && input.endHourMeter != null) {
+    const newer = await db.workSession.findFirst({
+      where: { excavatorId: session.excavatorId, startDate: { gt: new Date(input.startDate) } },
+      select: { id: true },
+    });
+    if (!newer) {
+      await db.excavator.update({ where: { id: session.excavatorId }, data: { currentHourMeter: input.endHourMeter } });
+    }
+  }
+
+  return { ok: true } as const;
+}
+
+/** Removes a job (and its readings). Refused once any bill line references
+ * it — edit or delete that bill first. */
+export async function deleteWorkSession(businessId: string, id: string) {
+  const session = await db.workSession.findFirst({
+    where: { id, businessId },
+    include: { _count: { select: { billItems: true } } },
+  });
+  if (!session) return { error: "Work record not found" } as const;
+  if (session._count.billItems > 0) {
+    return { error: "This work is already on a bill — edit or delete that bill first" } as const;
+  }
+  await db.$transaction([
+    db.dailyWorkLog.deleteMany({ where: { workSessionId: id } }),
+    db.workSession.delete({ where: { id } }),
+  ]);
+  if (session.status === "ACTIVE") {
+    await db.excavator.update({ where: { id: session.excavatorId }, data: { status: "IDLE" } });
+  }
   return { ok: true } as const;
 }
 

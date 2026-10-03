@@ -13,6 +13,8 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/native-select";
 import { StatusBadge } from "@/components/status-badge";
 import { DeleteReadingButton } from "./delete-reading-button";
+import { EditReadingButton } from "./edit-reading-button";
+import { EditSessionButton } from "./edit-session-button";
 
 type CustomerOption = { id: string; name: string; companyName: string | null };
 type OperatorOption = { id: string; name: string };
@@ -113,7 +115,13 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
           <CardContent className="flex flex-col gap-1">
             <div className="flex items-start justify-between gap-2">
               <p className="font-bold">{session.customer.name}</p>
-              {session.status === "ACTIVE" && <StatusBadge status="WORKING" />}
+              <div className="flex items-center gap-1">
+                {session.status === "ACTIVE" && <StatusBadge status="WORKING" />}
+                <EditSessionButton
+                  session={session}
+                  invalidateKey={`/api/excavators/${excavatorId}/work-history${query.toString() ? `?${query.toString()}` : ""}`}
+                />
+              </div>
             </div>
             <p className="text-sm text-muted-foreground">{session.site.name}</p>
             <p className="text-sm">{formatDateRange(session.startDate, session.endDate)}</p>
@@ -148,6 +156,10 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
                     </span>
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-semibold">{formatHours(log.hoursWorked)}</span>
+                      <EditReadingButton
+                        log={log}
+                        invalidateKey={`/api/excavators/${excavatorId}/work-history${query.toString() ? `?${query.toString()}` : ""}`}
+                      />
                       <DeleteReadingButton
                         logId={log.id}
                         invalidateKey={`/api/excavators/${excavatorId}/work-history${query.toString() ? `?${query.toString()}` : ""}`}

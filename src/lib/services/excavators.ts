@@ -16,7 +16,7 @@ export async function listExcavators(businessId: string) {
   const [excavators, { defaultServiceIntervalHrs: defaultInterval, maintenanceAlertThresholdHrs }] = await Promise.all([
     db.excavator.findMany({
       where: { businessId, isArchived: false },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       include: {
         workSessions: {
           where: { status: "ACTIVE" },
@@ -91,7 +91,7 @@ export async function getMachinePerformanceSummary(businessId: string) {
           select: { totalHours: true },
         },
       },
-      orderBy: { name: "asc" },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     }),
     db.billItem.findMany({
       where: { bill: { businessId, billDate: { gte: start, lte: end } } },
@@ -123,9 +123,11 @@ export async function getMachinePerformanceSummary(businessId: string) {
 }
 
 export async function createExcavator(businessId: string, input: AddExcavatorInput) {
+  const last = await db.excavator.aggregate({ where: { businessId }, _max: { sortOrder: true } });
   return db.excavator.create({
     data: {
       businessId,
+      sortOrder: (last._max.sortOrder ?? 0) + 1,
       name: input.name,
       machineNumber: input.machineNumber || null,
       brand: input.brand || null,
@@ -243,7 +245,29 @@ export async function setExcavatorSite(businessId: string, excavatorId: string, 
 export async function listExcavatorOptions(businessId: string) {
   return db.excavator.findMany({
     where: { businessId, isArchived: false },
-    select: { id: true, name: true, machineNumber: true, currentHourMeter: true, status: true },
-    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      machineNumber: true,
+      currentHourMeter: true,
+      status: true,
+      currentSite: { select: { name: true } },
+    },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
+}
+
+/** Saves the admin's custom machine order. `orderedIds` is the full list of
+ * the business's active machines in the desired order. */
+export async function reorderExcavators(businessId: string, orderedIds: string[]) {
+  const owned = await db.excavator.findMany({
+    where: { businessId, id: { in: orderedIds } },
+    select: { id: true },
+  });
+  const ownedIds = new Set(owned.map((e) => e.id));
+  const ids = orderedIds.filter((id) => ownedIds.has(id));
+  await db.$transaction(
+    ids.map((id, index) => db.excavator.update({ where: { id }, data: { sortOrder: index + 1 } })),
+  );
+  return { count: ids.length };
 }

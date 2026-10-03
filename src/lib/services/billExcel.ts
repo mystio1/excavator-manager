@@ -273,7 +273,7 @@ export function buildBillWorkbook(bill: BillPreviewData): ExcelJS.Workbook {
       const bg = i % 2 === 0 ? "FFFFFFFF" : "FFF8FAFC";
       writeItemRow(
         [
-          [1, `${item.excavatorName}${item.machineNumber ? ` (${item.machineNumber})` : ""}`, "left"],
+          [1, `${item.excavatorName}${item.machineNumber ? ` (${item.machineNumber})` : ""}${item.attachment ? ` – ${item.attachment}` : ""}`, "left"],
           [2, `${item.siteName}\n${formatDate(item.fromDate)} – ${formatDate(item.toDate)}`, "left"],
           [3, item.hours, "right"],
           [4, formatCurrency(item.ratePerHour), "right"],

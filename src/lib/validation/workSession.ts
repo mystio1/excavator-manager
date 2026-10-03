@@ -54,3 +54,22 @@ export const stopWorkSchema = z.object({
 });
 
 export type StopWorkInput = z.infer<typeof stopWorkSchema>;
+
+/** Admin correction of a whole job (any status). Hours are only taken from
+ * here when the job has no approved daily readings — otherwise they stay
+ * derived from those readings. */
+export const updateWorkSessionSchema = z.object({
+  customerId: z.string().min(1, "Select a customer"),
+  operatorId: z.string().min(1, "Select an operator"),
+  siteName: z.string().trim().min(1, "Enter a site"),
+  startDate: z.string().min(1, "Select a start date"),
+  endDate: z.string().optional(),
+  startHourMeter: z.coerce.number().min(0, "Must be 0 or more"),
+  endHourMeter: z.coerce.number().min(0).optional(),
+  totalHours: z.coerce.number().min(0).optional(),
+  dieselLiters: z.coerce.number().min(0).optional(),
+  attachment: z.string().trim().optional(),
+  notes: z.string().trim().optional(),
+});
+
+export type UpdateWorkSessionInput = z.infer<typeof updateWorkSessionSchema>;

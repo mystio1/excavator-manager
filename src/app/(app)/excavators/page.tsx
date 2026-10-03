@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { MachineCard } from "@/components/machine-card";
 import { MachinePerformanceList } from "@/components/machine-performance-list";
 import { EmptyState } from "@/components/empty-state";
+import { ReorderMachines } from "./reorder-machines";
 import Loading from "../loading";
 
 type ExcavatorsData = {
@@ -46,6 +47,9 @@ export default function ExcavatorsPage() {
           />
         ) : (
           <>
+            <div className="flex justify-end">
+              <ReorderMachines key={excavators.map((e) => e.id).join(",")} machines={excavators} />
+            </div>
             <MachinePerformanceList machines={machinePerformance} />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {excavators.map((ex) => (

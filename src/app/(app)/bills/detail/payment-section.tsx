@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSWRConfig } from "swr";
-import { Plus } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
 import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
@@ -64,14 +64,7 @@ export function PaymentSection({
 
         {payments.length === 0 && <p className="text-sm text-muted-foreground">No payments recorded yet.</p>}
         {payments.map((p) => (
-          <div key={p.id} className="flex items-center justify-between border-b py-2 text-sm last:border-0">
-            <div>
-              <p className="font-medium">{formatDate(p.date)}</p>
-              {p.method && <p className="text-muted-foreground">{p.method}</p>}
-              {p.notes && <p className="text-muted-foreground">{p.notes}</p>}
-            </div>
-            <p className="font-semibold text-working">{formatCurrency(p.amount)}</p>
-          </div>
+          <PaymentRow key={p.id} billId={billId} payment={p} />
         ))}
 
         {showForm && (
@@ -117,5 +110,87 @@ export function PaymentSection({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function PaymentRow({ billId, payment: p }: { billId: string; payment: Payment }) {
+  const { mutate } = useSWRConfig();
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
+    await apiFetch(`/api/bills/${billId}/payments/${p.id}`, { method: "PATCH", body: JSON.stringify(body) });
+    await mutate((k) => typeof k === "string" && (k.startsWith("/api/bills") || k.startsWith("/api/dashboard")));
+  });
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const ok = await run({
+      amount: Number(fd.get("amount")),
+      date: fd.get("date"),
+      method: fd.get("method") || undefined,
+      notes: fd.get("notes") || undefined,
+    });
+    if (ok) setEditing(false);
+  }
+
+  async function onDelete() {
+    if (!window.confirm("Delete this payment?")) return;
+    setBusy(true);
+    try {
+      await apiFetch(`/api/bills/${billId}/payments/${p.id}`, { method: "DELETE" });
+      await mutate((k) => typeof k === "string" && (k.startsWith("/api/bills") || k.startsWith("/api/dashboard")));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <form onSubmit={onSubmit} className="flex flex-col gap-3 rounded-lg border border-dashed p-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Input name="amount" type="number" min="1" step="any" defaultValue={p.amount} required className="h-11" />
+          <Input name="date" type="date" defaultValue={new Date(p.date).toISOString().slice(0, 10)} required className="h-11" />
+          <Input name="method" placeholder="Method" defaultValue={p.method ?? ""} className="h-11" />
+          <Input name="notes" placeholder="Notes" defaultValue={p.notes ?? ""} className="h-11" />
+        </div>
+        {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+        <div className="flex gap-2">
+          <Button type="submit" disabled={pending}>
+            {pending ? "Saving..." : "Save"}
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-2 border-b py-2 text-sm last:border-0">
+      <div className="min-w-0">
+        <p className="font-medium">{formatDate(p.date)}</p>
+        {p.method && <p className="text-muted-foreground">{p.method}</p>}
+        {p.notes && <p className="text-muted-foreground">{p.notes}</p>}
+      </div>
+      <div className="flex items-center gap-1">
+        <p className="mr-1 font-semibold text-working">{formatCurrency(p.amount)}</p>
+        <Button type="button" size="icon-sm" variant="ghost" aria-label="Edit payment" onClick={() => setEditing(true)}>
+          <Pencil className="size-4" />
+        </Button>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Delete payment"
+          className="text-muted-foreground hover:text-destructive"
+          onClick={onDelete}
+          disabled={busy}
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      </div>
+    </div>
   );
 }

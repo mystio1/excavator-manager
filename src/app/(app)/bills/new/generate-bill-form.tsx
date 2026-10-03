@@ -62,8 +62,7 @@ export function GenerateBillForm({
   const [transportCharges, setTransportCharges] = useState(0);
   const [fuelCharges, setFuelCharges] = useState(0);
   const [extraCharges, setExtraCharges] = useState(0);
-  const [bucketCharge, setBucketCharge] = useState(0);
-  const [breakerCharge, setBreakerCharge] = useState(0);
+  const [attachment, setAttachment] = useState("");
   const [discount, setDiscount] = useState(0);
   const [billType, setBillType] = useState<"GST" | "NON_GST">("NON_GST");
   const [gstPercentage, setGstPercentage] = useState(18);
@@ -79,7 +78,7 @@ export function GenerateBillForm({
   const totals = useMemo(() => {
     const subtotal = Math.round(totalHours * ratePerHour * 100) / 100;
     const taxable =
-      subtotal + transportCharges + fuelCharges + extraCharges + bucketCharge + breakerCharge - discount;
+      subtotal + transportCharges + fuelCharges + extraCharges - discount;
     const tax = billType === "GST" ? Math.round(((taxable * gstPercentage) / 100) * 100) / 100 : 0;
     return { subtotal, taxable, tax, total: Math.round((taxable + tax) * 100) / 100 };
   }, [
@@ -88,8 +87,6 @@ export function GenerateBillForm({
     transportCharges,
     fuelCharges,
     extraCharges,
-    bucketCharge,
-    breakerCharge,
     discount,
     billType,
     gstPercentage,
@@ -109,8 +106,7 @@ export function GenerateBillForm({
       transportCharges: Number(fd.get("transportCharges")) || 0,
       fuelCharges: Number(fd.get("fuelCharges")) || 0,
       extraCharges: Number(fd.get("extraCharges")) || 0,
-      bucketCharge: Number(fd.get("bucketCharge")) || 0,
-      breakerCharge: Number(fd.get("breakerCharge")) || 0,
+      attachment: attachment || undefined,
       discount: Number(fd.get("discount")) || 0,
       billType,
       billNumber: fd.get("billNumber") || undefined,
@@ -199,6 +195,14 @@ export function GenerateBillForm({
               />
             </div>
             <div className="flex flex-col gap-2">
+              <Label className="text-sm">Attachment (Optional)</Label>
+              <NativeSelect value={attachment} onChange={(e) => setAttachment(e.target.value)} className="h-11">
+                <option value="">None</option>
+                <option value="Bucket">Bucket</option>
+                <option value="Breaker">Breaker</option>
+              </NativeSelect>
+            </div>
+            <div className="flex flex-col gap-2">
               <Label className="text-sm">Bill Date</Label>
               <Input name="billDate" type="date" defaultValue={today} required className="h-11" />
             </div>
@@ -243,39 +247,6 @@ export function GenerateBillForm({
                 min="0"
                 value={discount || ""}
                 onChange={(e) => setDiscount(Number(e.target.value) || 0)}
-                className="h-11"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="flex flex-col gap-4">
-          <p className="text-base font-semibold">Tool Charges</p>
-          <p className="text-sm text-muted-foreground">
-            Bill extra for a specific attachment used during this work, if any.
-          </p>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              <Label className="text-sm">Bucket Charge</Label>
-              <Input
-                name="bucketCharge"
-                type="number"
-                min="0"
-                value={bucketCharge || ""}
-                onChange={(e) => setBucketCharge(Number(e.target.value) || 0)}
-                className="h-11"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label className="text-sm">Breaker Charge</Label>
-              <Input
-                name="breakerCharge"
-                type="number"
-                min="0"
-                value={breakerCharge || ""}
-                onChange={(e) => setBreakerCharge(Number(e.target.value) || 0)}
                 className="h-11"
               />
             </div>
@@ -409,18 +380,6 @@ export function GenerateBillForm({
               <span className="tabular-nums">
                 {formatCurrency(transportCharges + fuelCharges + extraCharges)}
               </span>
-            </div>
-          )}
-          {bucketCharge > 0 && (
-            <div className="flex justify-between text-muted-foreground">
-              <span>Bucket Charge</span>
-              <span className="tabular-nums">{formatCurrency(bucketCharge)}</span>
-            </div>
-          )}
-          {breakerCharge > 0 && (
-            <div className="flex justify-between text-muted-foreground">
-              <span>Breaker Charge</span>
-              <span className="tabular-nums">{formatCurrency(breakerCharge)}</span>
             </div>
           )}
           {discount > 0 && (
