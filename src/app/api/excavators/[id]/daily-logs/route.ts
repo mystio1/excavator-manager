@@ -1,19 +1,18 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
+import { failureResponse } from "@/lib/api-error";
+import { json, parseBody, withApi } from "@/lib/with-api";
 import { addDailyLog } from "@/lib/services/workSessions";
 import { dailyLogSchema } from "@/lib/validation/workSession";
 
-export async function POST(req: Request) {
+export const POST = withApi("excavators.addDailyLog", async (req, { params }: { params: Promise<{ id: string }> }) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
+  const { id } = await params;
 
-  const parsed = dailyLogSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
+  const input = await parseBody(req, dailyLogSchema);
+  // `excavatorId` pins the work session to the machine named in the URL.
+  const result = await addDailyLog(auth.session.businessId, auth.actor, input, { excavatorId: id });
+  if ("error" in result) return failureResponse(result);
 
-  const result = await addDailyLog(auth.session.businessId, parsed.data);
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
-
-  return NextResponse.json(result);
-}
+  return json(result);
+});

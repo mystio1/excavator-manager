@@ -1,41 +1,43 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
+import { errorResponse, failureResponse } from "@/lib/api-error";
 import { deleteBill, getBillDetail, toBillPreviewData, updateBill } from "@/lib/services/bills";
-import { updateBillSchema } from "@/lib/validation/bill";
+import { parseExpectedVersion, updateBillSchema } from "@/lib/validation/bill";
+import { json, parseBody, withApi } from "@/lib/with-api";
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+type Ctx = { params: Promise<{ id: string }> };
+
+export const GET = withApi("bills.get", async (_req, { params }: Ctx) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { id } = await params;
 
   const bill = await getBillDetail(auth.session.businessId, id);
-  if (!bill) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (!bill) return errorResponse("NOT_FOUND", "Bill not found");
 
-  return NextResponse.json({ bill, previewData: toBillPreviewData(bill) });
-}
+  return json({ bill, previewData: toBillPreviewData(bill) });
+});
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export const PATCH = withApi("bills.update", async (req, { params }: Ctx) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { id } = await params;
 
-  const parsed = updateBillSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
+  const input = await parseBody(req, updateBillSchema);
 
-  const result = await updateBill(auth.session.businessId, id, parsed.data);
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
+  const result = await updateBill(auth.session.businessId, auth.actor, id, input);
+  if ("error" in result) return failureResponse(result);
 
-  return NextResponse.json(result);
-}
+  return json(result);
+});
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = withApi("bills.delete", async (req, { params }: Ctx) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { id } = await params;
 
-  const result = await deleteBill(auth.session.businessId, id);
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
-  return NextResponse.json(result);
-}
+  const result = await deleteBill(auth.session.businessId, auth.actor, id, {
+    expectedVersion: parseExpectedVersion(req),
+  });
+  if ("error" in result) return failureResponse(result);
+  return json(result);
+});

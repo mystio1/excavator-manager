@@ -1,16 +1,25 @@
 import { cache } from "react";
 import { db } from "@/lib/db";
+import { Decimal, ZERO, dec, round2 } from "@/lib/money";
 
-type MonthTotals = { bonus: number; deductions: number; paid: number };
+// All salary arithmetic is exact (Decimal / NUMERIC) — see money.ts. The
+// figures handed back to callers are plain numbers rounded to 2 dp (the same
+// shape the UI always received), converted only at the very end.
+type MonthTotals = { bonus: Decimal; deductions: Decimal; paid: Decimal };
+
+const emptyTotals = (): MonthTotals => ({ bonus: ZERO, deductions: ZERO, paid: ZERO });
+
+/** Exact Decimal → the 2 dp number the API/UI works with. */
+const toMoney = (value: Decimal) => round2(value).toNumber();
 
 function monthKey(date: Date) {
   return `${date.getFullYear()}-${date.getMonth()}`;
 }
 
-function applyTransaction(entry: MonthTotals, tx: { businessEffect: string; deductFromSalary: boolean; amount: number }) {
-  if (tx.businessEffect === "SALARY_PAYMENT") entry.paid += tx.amount;
-  else if (tx.businessEffect === "BONUS_INCENTIVE") entry.bonus += tx.amount;
-  else if (tx.deductFromSalary) entry.deductions += tx.amount;
+function applyTransaction(entry: MonthTotals, tx: { businessEffect: string; deductFromSalary: boolean; amount: Decimal }) {
+  if (tx.businessEffect === "SALARY_PAYMENT") entry.paid = entry.paid.plus(tx.amount);
+  else if (tx.businessEffect === "BONUS_INCENTIVE") entry.bonus = entry.bonus.plus(tx.amount);
+  else if (tx.deductFromSalary) entry.deductions = entry.deductions.plus(tx.amount);
 }
 
 /**
@@ -23,16 +32,16 @@ function applyTransaction(entry: MonthTotals, tx: { businessEffect: string; dedu
  * every later month's total until it's actually settled.
  */
 function carriedForwardBalance(
-  baseSalary: number,
+  baseSalary: Decimal,
   salaryStartsFrom: Date,
   monthStart: Date,
   byMonth: Map<string, MonthTotals>,
 ) {
   let cursor = new Date(salaryStartsFrom.getFullYear(), salaryStartsFrom.getMonth(), 1);
-  let balance = 0;
+  let balance = ZERO;
   while (cursor < monthStart) {
-    const entry = byMonth.get(monthKey(cursor)) ?? { bonus: 0, deductions: 0, paid: 0 };
-    balance += baseSalary + entry.bonus - entry.deductions - entry.paid;
+    const entry = byMonth.get(monthKey(cursor)) ?? emptyTotals();
+    balance = balance.plus(baseSalary).plus(entry.bonus).minus(entry.deductions).minus(entry.paid);
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
   }
   return balance;
@@ -67,34 +76,34 @@ export async function computeSalaryForMonth(businessId: string, operatorId: stri
 
   const allTransactions = await db.operatorTransaction.findMany({
     where: { businessId, operatorId, date: { gte: rangeStart, lt: end } },
-    orderBy: { date: "asc" },
+    orderBy: [{ date: "asc" }, { id: "asc" }],
     include: { category: { select: { name: true } } },
   });
 
   const byMonth = new Map<string, MonthTotals>();
   for (const tx of allTransactions) {
     const key = monthKey(tx.date);
-    const entry = byMonth.get(key) ?? { bonus: 0, deductions: 0, paid: 0 };
+    const entry = byMonth.get(key) ?? emptyTotals();
     applyTransaction(entry, tx);
     byMonth.set(key, entry);
   }
 
-  const baseSalary = operator.defaultMonthlySalary;
+  const baseSalary = dec(operator.defaultMonthlySalary);
   const carriedForward = carriedForwardBalance(baseSalary, salaryStartsFrom, start, byMonth);
 
-  const thisMonth = byMonth.get(monthKey(start)) ?? { bonus: 0, deductions: 0, paid: 0 };
+  const thisMonth = byMonth.get(monthKey(start)) ?? emptyTotals();
   const transactions = allTransactions.filter((tx) => tx.date >= start && tx.date < end);
 
-  const payable = Math.round((baseSalary + thisMonth.bonus - thisMonth.deductions - thisMonth.paid + carriedForward) * 100) / 100;
+  const payable = baseSalary.plus(thisMonth.bonus).minus(thisMonth.deductions).minus(thisMonth.paid).plus(carriedForward);
 
   return {
     operatorName: operator.name,
-    baseSalary,
-    bonus: Math.round(thisMonth.bonus * 100) / 100,
-    deductions: Math.round(thisMonth.deductions * 100) / 100,
-    alreadyPaid: Math.round(thisMonth.paid * 100) / 100,
-    carriedForward: Math.round(carriedForward * 100) / 100,
-    payable,
+    baseSalary: toMoney(baseSalary),
+    bonus: toMoney(thisMonth.bonus),
+    deductions: toMoney(thisMonth.deductions),
+    alreadyPaid: toMoney(thisMonth.paid),
+    carriedForward: toMoney(carriedForward),
+    payable: toMoney(payable),
     transactions,
   };
 }
@@ -121,6 +130,21 @@ export type AccrualBreakdown = {
   total: number;
 };
 
+/** Exact accrual: `totalExact` keeps the un-rounded partial-cycle amount so
+ * the final payable is rounded ONCE, exactly like the original float math did
+ * (rounding each part separately could shift a paisa). */
+type Accrual = {
+  fullCycles: number;
+  fullCyclesAmount: Decimal;
+  cycleStart: Date;
+  cycleEnd: Date;
+  cycleDays: number;
+  elapsedDays: number;
+  dailyRate: Decimal;
+  partialExact: Decimal;
+  totalExact: Decimal;
+};
+
 /**
  * Base salary earned from `joinDate` through `asOf`, accrued day by day
  * instead of by whole calendar months — this is the "not monthly full
@@ -134,11 +158,21 @@ export type AccrualBreakdown = {
  * tab's "Detail" breakdown) can show exactly how the number was reached
  * instead of restating the total in prose.
  */
-function accrueBaseSalary(joinDate: Date, asOf: Date, baseSalary: number): AccrualBreakdown {
+function accrueBaseSalary(joinDate: Date, asOf: Date, baseSalary: Decimal): Accrual {
   const join = new Date(joinDate.getFullYear(), joinDate.getMonth(), joinDate.getDate());
   const today = new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate());
   if (today <= join) {
-    return { fullCycles: 0, fullCyclesAmount: 0, cycleStart: join, cycleEnd: join, cycleDays: 0, elapsedDays: 0, dailyRate: 0, partialAmount: 0, total: 0 };
+    return {
+      fullCycles: 0,
+      fullCyclesAmount: ZERO,
+      cycleStart: join,
+      cycleEnd: join,
+      cycleDays: 0,
+      elapsedDays: 0,
+      dailyRate: ZERO,
+      partialExact: ZERO,
+      totalExact: ZERO,
+    };
   }
 
   let fullCycles = 0;
@@ -152,11 +186,37 @@ function accrueBaseSalary(joinDate: Date, asOf: Date, baseSalary: number): Accru
 
   const cycleDays = Math.round((cycleEnd.getTime() - cycleStart.getTime()) / 86_400_000);
   const elapsedDays = Math.round((today.getTime() - cycleStart.getTime()) / 86_400_000);
-  const dailyRate = cycleDays > 0 ? baseSalary / cycleDays : 0;
-  const fullCyclesAmount = fullCycles * baseSalary;
-  const partialAmount = dailyRate * elapsedDays;
+  const dailyRate = cycleDays > 0 ? baseSalary.div(cycleDays) : ZERO;
+  const fullCyclesAmount = baseSalary.times(fullCycles);
+  // One division (base × days ÷ cycle) instead of (base ÷ cycle) × days keeps
+  // the most precision before the single final rounding.
+  const partialExact = cycleDays > 0 ? baseSalary.times(elapsedDays).div(cycleDays) : ZERO;
 
-  return { fullCycles, fullCyclesAmount, cycleStart, cycleEnd, cycleDays, elapsedDays, dailyRate, partialAmount, total: fullCyclesAmount + partialAmount };
+  return {
+    fullCycles,
+    fullCyclesAmount,
+    cycleStart,
+    cycleEnd,
+    cycleDays,
+    elapsedDays,
+    dailyRate,
+    partialExact,
+    totalExact: fullCyclesAmount.plus(partialExact),
+  };
+}
+
+function presentAccrual(accrual: Accrual): AccrualBreakdown {
+  return {
+    fullCycles: accrual.fullCycles,
+    fullCyclesAmount: toMoney(accrual.fullCyclesAmount),
+    cycleStart: accrual.cycleStart,
+    cycleEnd: accrual.cycleEnd,
+    cycleDays: accrual.cycleDays,
+    elapsedDays: accrual.elapsedDays,
+    dailyRate: toMoney(accrual.dailyRate),
+    partialAmount: toMoney(accrual.partialExact),
+    total: toMoney(accrual.totalExact),
+  };
 }
 
 /**
@@ -181,22 +241,23 @@ export async function getLifetimeSalarySummary(businessId: string, operatorId: s
     where: { businessId, operatorId, date: { gte: salaryStartsFrom, lt: rangeEnd } },
   });
 
-  const totals: MonthTotals = { bonus: 0, deductions: 0, paid: 0 };
+  const totals = emptyTotals();
   for (const tx of transactions) applyTransaction(totals, tx);
 
-  const accrual = accrueBaseSalary(salaryStartsFrom, now, operator.defaultMonthlySalary);
-  const totalPayable = accrual.total + totals.bonus - totals.deductions;
+  const baseSalary = dec(operator.defaultMonthlySalary);
+  const accrual = accrueBaseSalary(salaryStartsFrom, now, baseSalary);
+  const totalPayable = accrual.totalExact.plus(totals.bonus).minus(totals.deductions);
 
   return {
     joiningDate: salaryStartsFrom,
     asOf: now,
-    baseSalary: operator.defaultMonthlySalary,
-    accrual,
-    bonus: Math.round(totals.bonus * 100) / 100,
-    deductions: Math.round(totals.deductions * 100) / 100,
-    totalPayable: Math.round(totalPayable * 100) / 100,
-    totalPaid: Math.round(totals.paid * 100) / 100,
-    remaining: Math.round((totalPayable - totals.paid) * 100) / 100,
+    baseSalary: toMoney(baseSalary),
+    accrual: presentAccrual(accrual),
+    bonus: toMoney(totals.bonus),
+    deductions: toMoney(totals.deductions),
+    totalPayable: toMoney(totalPayable),
+    totalPaid: toMoney(totals.paid),
+    remaining: toMoney(totalPayable.minus(totals.paid)),
   };
 }
 
@@ -228,16 +289,18 @@ export async function getLifetimeSalaryBreakdown(businessId: string) {
   const byOperator = new Map<string, MonthTotals>();
   for (const tx of transactions) {
     if (tx.date < (startByOperator.get(tx.operatorId) ?? earliestStart)) continue;
-    const entry = byOperator.get(tx.operatorId) ?? { bonus: 0, deductions: 0, paid: 0 };
+    const entry = byOperator.get(tx.operatorId) ?? emptyTotals();
     applyTransaction(entry, tx);
     byOperator.set(tx.operatorId, entry);
   }
 
   return operators.map((op) => {
-    const totals = byOperator.get(op.id) ?? { bonus: 0, deductions: 0, paid: 0 };
+    const totals = byOperator.get(op.id) ?? emptyTotals();
     const salaryStartsFrom = startByOperator.get(op.id)!;
-    const totalPayable = accrueBaseSalary(salaryStartsFrom, now, op.defaultMonthlySalary).total + totals.bonus - totals.deductions;
-    return { operatorId: op.id, remaining: Math.round((totalPayable - totals.paid) * 100) / 100 };
+    const totalPayable = accrueBaseSalary(salaryStartsFrom, now, dec(op.defaultMonthlySalary)).totalExact
+      .plus(totals.bonus)
+      .minus(totals.deductions);
+    return { operatorId: op.id, remaining: toMoney(totalPayable.minus(totals.paid)) };
   });
 }
 
@@ -248,13 +311,10 @@ export async function getLifetimeSalaryBreakdown(businessId: string) {
  * getProfitOverview both need this same per-operator breakdown for the
  * current month; cache()'d so both, invoked concurrently from the
  * dashboard's top-level Promise.all, share one computation instead of
- * running it twice.
+ * running it twice. (Kept as exact Decimals here so nothing is summed as a
+ * float; the exported wrappers convert at the boundary.)
  */
-export const getSalaryBreakdownForMonth = cache(async function getSalaryBreakdownForMonth(
-  businessId: string,
-  year: number,
-  month: number,
-) {
+const salaryBreakdownExact = cache(async function salaryBreakdownExact(businessId: string, year: number, month: number) {
   const start = new Date(year, month, 1);
   const end = new Date(year, month + 1, 1);
 
@@ -278,7 +338,7 @@ export const getSalaryBreakdownForMonth = cache(async function getSalaryBreakdow
   const byOperatorMonth = new Map<string, Map<string, MonthTotals>>();
   for (const tx of transactions) {
     const byMonth = byOperatorMonth.get(tx.operatorId) ?? new Map<string, MonthTotals>();
-    const entry = byMonth.get(monthKey(tx.date)) ?? { bonus: 0, deductions: 0, paid: 0 };
+    const entry = byMonth.get(monthKey(tx.date)) ?? emptyTotals();
     applyTransaction(entry, tx);
     byMonth.set(monthKey(tx.date), entry);
     byOperatorMonth.set(tx.operatorId, byMonth);
@@ -287,24 +347,37 @@ export const getSalaryBreakdownForMonth = cache(async function getSalaryBreakdow
   return operators.map((op) => {
     const byMonth = byOperatorMonth.get(op.id) ?? new Map<string, MonthTotals>();
     const salaryStartsFrom = op.joiningDate ?? op.createdAt;
-    const carriedForward = carriedForwardBalance(op.defaultMonthlySalary, salaryStartsFrom, start, byMonth);
-    const thisMonth = byMonth.get(monthKey(start)) ?? { bonus: 0, deductions: 0, paid: 0 };
-    const payable =
-      Math.round((op.defaultMonthlySalary + thisMonth.bonus - thisMonth.deductions - thisMonth.paid + carriedForward) * 100) / 100;
-    return { operatorId: op.id, baseSalary: op.defaultMonthlySalary, bonus: Math.round(thisMonth.bonus * 100) / 100, payable };
+    const baseSalary = dec(op.defaultMonthlySalary);
+    const carriedForward = carriedForwardBalance(baseSalary, salaryStartsFrom, start, byMonth);
+    const thisMonth = byMonth.get(monthKey(start)) ?? emptyTotals();
+    const payable = baseSalary.plus(thisMonth.bonus).minus(thisMonth.deductions).minus(thisMonth.paid).plus(carriedForward);
+    return { operatorId: op.id, baseSalary, bonus: thisMonth.bonus, payable };
   });
 });
+
+export async function getSalaryBreakdownForMonth(businessId: string, year: number, month: number) {
+  const breakdown = await salaryBreakdownExact(businessId, year, month);
+  return breakdown.map((op) => ({
+    operatorId: op.operatorId,
+    baseSalary: toMoney(op.baseSalary),
+    bonus: toMoney(op.bonus),
+    payable: toMoney(op.payable),
+  }));
+}
 
 /** Sum of every operator's current-month remaining payable (already
  * includes any carried-forward balance from earlier months) — feeds the
  * Dashboard's "Operator Salary Due" card. */
 export async function getTotalSalaryDue(businessId: string) {
   const now = new Date();
-  const breakdown = await getSalaryBreakdownForMonth(businessId, now.getFullYear(), now.getMonth());
+  const breakdown = await salaryBreakdownExact(businessId, now.getFullYear(), now.getMonth());
 
-  let total = 0;
+  // Each operator's payable is rounded to the paisa before summing, matching
+  // the per-operator figures shown elsewhere.
+  let total = ZERO;
   for (const op of breakdown) {
-    if (op.payable > 0) total += op.payable;
+    const payable = round2(op.payable);
+    if (payable.gt(0)) total = total.plus(payable);
   }
-  return Math.round(total * 100) / 100;
+  return toMoney(total);
 }

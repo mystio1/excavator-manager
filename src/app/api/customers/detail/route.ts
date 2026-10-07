@@ -1,22 +1,29 @@
-import { NextResponse } from "next/server";
+import { errorResponse } from "@/lib/api-error";
 import { requireBusinessApi } from "@/lib/api-auth";
 import { getCustomerDetail } from "@/lib/services/customers";
+import { customerDetailQuerySchema } from "@/lib/validation/customer";
+import { json, withApi } from "@/lib/with-api";
 
-export async function GET(req: Request) {
+export const GET = withApi("customers.detail", async (req) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
 
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get("id");
-  if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
-
-  const detail = await getCustomerDetail(auth.session.businessId, id, {
-    excavatorId: searchParams.get("excavatorId") ?? undefined,
-    siteName: searchParams.get("site") ?? undefined,
-    from: searchParams.get("from") ?? undefined,
-    to: searchParams.get("to") ?? undefined,
+  const params = new URL(req.url).searchParams;
+  const query = customerDetailQuerySchema.parse({
+    id: params.get("id") ?? undefined,
+    excavatorId: params.get("excavatorId") ?? undefined,
+    site: params.get("site") ?? undefined,
+    from: params.get("from") ?? undefined,
+    to: params.get("to") ?? undefined,
   });
-  if (!detail) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  return NextResponse.json({ detail });
-}
+  const detail = await getCustomerDetail(auth.session.businessId, query.id, {
+    excavatorId: query.excavatorId,
+    siteName: query.site,
+    from: query.from,
+    to: query.to,
+  });
+  if (!detail) return errorResponse("NOT_FOUND", "Customer not found");
+
+  return json({ detail });
+});

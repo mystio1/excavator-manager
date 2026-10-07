@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api-client";
 import { useApiForm } from "@/lib/use-api-form";
+import { PASSWORD_MIN_LENGTH, PASSWORD_RULES_HINT } from "@/lib/password-policy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,7 +30,9 @@ export function ResetPasswordForm({ token }: { token: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">Set a New Password</CardTitle>
+        <CardTitle role="heading" aria-level={1} className="text-2xl">
+          Set a New Password
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
@@ -42,10 +45,15 @@ export function ResetPasswordForm({ token }: { token: string }) {
               name="password"
               type="password"
               required
-              minLength={6}
+              minLength={PASSWORD_MIN_LENGTH}
+              autoComplete="new-password"
+              aria-describedby="password-rules"
               className="h-12 text-base"
               autoFocus
             />
+            <p id="password-rules" className="text-xs text-muted-foreground">
+              {PASSWORD_RULES_HINT}
+            </p>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="confirmPassword" className="text-base">
@@ -56,12 +64,13 @@ export function ResetPasswordForm({ token }: { token: string }) {
               name="confirmPassword"
               type="password"
               required
-              minLength={6}
+              minLength={PASSWORD_MIN_LENGTH}
+              autoComplete="new-password"
               className="h-12 text-base"
             />
           </div>
           {error && (
-            <p className="text-sm font-medium text-destructive">
+            <p role="alert" className="text-sm font-medium text-destructive">
               {error}
               {error.includes("expired") && (
                 <>

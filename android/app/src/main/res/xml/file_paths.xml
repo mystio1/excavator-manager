@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <!-- Only the two app-private directories the plugins write to are shareable
+         through the FileProvider (the Capacitor template's blanket
+         external-path/cache-path "." entries were removed). -->
     <!-- Where UpdateInstallerPlugin downloads release APKs -->
     <external-files-path name="updates" path="updates/" />
     <!-- Where FileSaverPlugin saves files (e.g. bill Excel exports) for viewing/sharing -->

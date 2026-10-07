@@ -1,14 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
-import { FileEdit, Plus, Receipt, Table2 } from "lucide-react";
+import { FileEdit, Loader2, Plus, Receipt, Table2 } from "lucide-react";
 import type { countBillsByType, listBills } from "@/lib/services/bills";
-import { swrFetcher } from "@/lib/api-client";
+import { apiFetch, swrFetcher } from "@/lib/api-client";
+import type { Plain } from "@/lib/plain";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
+import { FormAlert } from "@/components/bill/editor/form-parts";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
 import { BillsList } from "./bills-list";
@@ -21,10 +23,15 @@ const FILTERS = [
   { id: "self", shortLabel: "Self Made", label: "Self Generated" },
 ] as const;
 
+type BillRow = Plain<Awaited<ReturnType<typeof listBills>>["items"][number]>;
 type BillsData = {
-  bills: Awaited<ReturnType<typeof listBills>>;
+  bills: BillRow[];
   counts: Awaited<ReturnType<typeof countBillsByType>>;
+  nextCursor: string | null;
 };
+
+/** Bills are loaded this many at a time; "Load more" fetches the next page. */
+const PAGE_SIZE = 50;
 
 export default function BillsPage() {
   const searchParams = useSearchParams();
@@ -32,20 +39,55 @@ export default function BillsPage() {
   const filterParam = searchParams.get("filter");
   const activeFilter = FILTERS.find((f) => f.id === filterParam) ?? FILTERS[0];
 
-  // The filter tabs (All / By App / Self Made) split the exact same rows by
-  // `isDirect` — every bill returned here already carries that field — so
-  // fetching once and filtering client-side makes switching tabs instant
-  // instead of a fresh network round-trip per tab (that used to key the
-  // SWR cache by filter too, so every tab not yet visited re-fetched).
-  const apiPath = `/api/bills${customerId ? `?customerId=${customerId}` : ""}`;
-  const { data } = useSWR<BillsData>(apiPath, swrFetcher, { dedupingInterval: 15_000 });
+  // Search text: typed immediately, sent to the server a moment after the user
+  // stops typing. Filtering and search happen on the SERVER so they cover every
+  // bill, not just the pages already loaded (pagination made client-side
+  // filtering incomplete).
+  const [queryInput, setQueryInput] = useState("");
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(queryInput.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [queryInput]);
 
-  const bills = useMemo(() => {
-    if (!data) return undefined;
-    if (activeFilter.id === "all") return data.bills;
-    const wantDirect = activeFilter.id === "self";
-    return data.bills.filter((bill) => bill.isDirect === wantDirect);
-  }, [data, activeFilter.id]);
+  const apiPath =
+    `/api/bills?limit=${PAGE_SIZE}` +
+    (customerId ? `&customerId=${encodeURIComponent(customerId)}` : "") +
+    (activeFilter.id !== "all" ? `&filter=${activeFilter.id}` : "") +
+    (query ? `&q=${encodeURIComponent(query)}` : "");
+  // keepPreviousData: while a new filter/search loads, keep showing the current
+  // list (and keep the search box mounted and focused) instead of a full-page spinner.
+  const { data, isValidating } = useSWR<BillsData>(apiPath, swrFetcher, {
+    dedupingInterval: 15_000,
+    keepPreviousData: true,
+  });
+
+  // Pages after the first are held locally. They are tied to the exact first-
+  // page response they continue (`forData`), so a revalidation (a payment, an
+  // edit, a delete) or a different customer silently drops them instead of
+  // showing stale rows.
+  const [more, setMore] = useState<{ forData: BillsData; bills: BillRow[]; nextCursor: string | null } | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const extra = data && more && more.forData === data ? more : null;
+  const nextCursor = data ? (extra ? extra.nextCursor : data.nextCursor) : null;
+
+  const bills = data ? (extra ? [...data.bills, ...extra.bills] : data.bills) : undefined;
+
+  async function loadMore() {
+    if (!nextCursor || !data) return;
+    setLoadingMore(true);
+    setLoadError(null);
+    try {
+      const page = await apiFetch<BillsData>(`${apiPath}&cursor=${encodeURIComponent(nextCursor)}`);
+      setMore({ forData: data, bills: [...(extra?.bills ?? []), ...page.bills], nextCursor: page.nextCursor });
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Could not load more bills");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   const filterHref = (filterId: string) => {
     const params = new URLSearchParams();
@@ -62,6 +104,7 @@ export default function BillsPage() {
     const params = new URLSearchParams();
     if (customerId) params.set("customerId", customerId);
     if (activeFilter.id !== "all") params.set("filter", activeFilter.id);
+    if (query) params.set("q", query);
     const qs = params.toString();
     return qs ? `?${qs}` : "";
   })();
@@ -72,36 +115,36 @@ export default function BillsPage() {
         title="Saved Bills"
         backHref={customerId ? `/customers/detail?id=${customerId}` : undefined}
         action={
-          <div className="flex shrink-0 gap-2">
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
             <Button
               size="lg"
               variant="secondary"
-              className="h-11 px-2.5 sm:px-3"
+              className="h-11 px-2 text-amber-800 sm:px-3 dark:text-secondary-foreground"
               nativeButton={false}
               render={<Link href="/bills/new/summary" />}
             >
-              <Table2 className="size-5" />
+              <Table2 aria-hidden className="size-5" />
               <span className="hidden sm:inline">Summary Bill</span>
               <span className="sm:hidden">Summary</span>
             </Button>
             <Button
               size="lg"
               variant="secondary"
-              className="h-11 px-2.5 sm:px-3"
+              className="h-11 px-2 text-amber-800 sm:px-3 dark:text-secondary-foreground"
               nativeButton={false}
               render={<Link href={customerId ? `/bills/new/direct?customerId=${customerId}` : "/bills/new/direct"} />}
             >
-              <FileEdit className="size-5" />
+              <FileEdit aria-hidden className="size-5" />
               <span className="hidden sm:inline">Direct Bill</span>
               <span className="sm:hidden">Direct</span>
             </Button>
             <Button
               size="lg"
-              className="h-11 px-2.5 sm:px-3"
+              className="h-11 px-2 sm:px-3"
               nativeButton={false}
               render={<Link href={customerId ? `/bills/new?customerId=${customerId}` : "/bills/new"} />}
             >
-              <Plus className="size-5" />
+              <Plus aria-hidden className="size-5" />
               <span className="hidden sm:inline">Generate Bill</span>
               <span className="sm:hidden">Bill</span>
             </Button>
@@ -117,20 +160,21 @@ export default function BillsPage() {
               <Link
                 key={f.id}
                 href={filterHref(f.id)}
+                aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "flex flex-col items-center justify-center gap-0.5 rounded-md py-2 text-center font-semibold transition-colors",
-                  isActive ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
+                  "flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md py-2 text-center font-semibold transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                  isActive ? "bg-card text-foreground shadow-sm" : "text-foreground/70",
                 )}
               >
                 <span className="hidden sm:inline">{f.label}</span>
                 <span className="sm:hidden">{f.shortLabel}</span>
-                <span className="text-xs font-normal text-muted-foreground">{count}</span>
+                <span className="text-xs font-normal">{count}</span>
               </Link>
             );
           })}
         </div>
 
-        {bills.length === 0 ? (
+        {bills.length === 0 && !nextCursor && !query && activeFilter.id === "all" ? (
           <EmptyState
             icon={Receipt}
             title="No Bills Yet"
@@ -143,7 +187,13 @@ export default function BillsPage() {
             <div className="self-start">
               <ExportRegisterButton query={exportQuery} />
             </div>
-            <BillsList bills={bills} />
+            <BillsList bills={bills} query={queryInput} onQueryChange={setQueryInput} searching={isValidating || queryInput.trim() !== query} />
+            {nextCursor && (
+              <Button type="button" variant="secondary" size="lg" className="h-11 text-amber-800 dark:text-secondary-foreground" disabled={loadingMore} onClick={loadMore}>
+                {loadingMore ? <Loader2 aria-label="Loading" className="size-4 animate-spin" /> : "Load more"}
+              </Button>
+            )}
+            {loadError && <FormAlert>{loadError}</FormAlert>}
           </>
         )}
       </div>

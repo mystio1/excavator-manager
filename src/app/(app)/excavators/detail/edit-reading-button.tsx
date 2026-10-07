@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import { Pencil } from "lucide-react";
-import { apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch } from "@/lib/api-client";
 import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 
 export type EditableLog = {
   id: string;
+  /** Optimistic-concurrency token: sent back as expectedVersion on save. */
+  version: number;
   date: string | Date;
   startTime: string | null;
   stopTime: string | null;
@@ -34,9 +36,36 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
   const [mode, setMode] = useState<"meter" | "time">(
     log.startHourMeter != null && log.endHourMeter != null ? "meter" : "time",
   );
+  // The version the dialog was opened with (see EditSessionButton).
+  const [loadedVersion, setLoadedVersion] = useState(log.version);
+  const [conflict, setConflict] = useState(false);
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
-    await apiFetch(`/api/daily-logs/${log.id}`, { method: "PATCH", body: JSON.stringify(body) });
+    setConflict(false);
+    try {
+      await apiFetch(`/api/daily-logs/${log.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ ...body, expectedVersion: loadedVersion }),
+      });
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "RESOURCE_MODIFIED") setConflict(true);
+      throw e;
+    }
   });
+
+  function onOpenChange(next: boolean) {
+    if (next) {
+      setLoadedVersion(log.version);
+      setConflict(false);
+    }
+    setOpen(next);
+  }
+
+  /** After a conflict: fetch the latest data and close, so reopening shows it. */
+  async function reloadLatest() {
+    await mutate(invalidateKey);
+    await mutate((key) => typeof key === "string" && key.startsWith("/api/excavators"));
+    setOpen(false);
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -63,7 +92,7 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
   const dateValue = new Date(log.date).toISOString().slice(0, 10);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger
         render={
           <Button
@@ -83,8 +112,8 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
         </DialogHeader>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label className="text-base">Date</Label>
-            <Input name="date" type="date" defaultValue={dateValue} required className="h-12 text-base" />
+            <Label htmlFor="date" className="text-base">Date</Label>
+            <Input id="date" name="date" type="date" defaultValue={dateValue} required className="h-12 text-base" />
           </div>
 
           <div className="flex gap-2 rounded-lg bg-muted p-1">
@@ -92,9 +121,10 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
               <button
                 key={m}
                 type="button"
+                aria-pressed={mode === m}
                 onClick={() => setMode(m)}
                 className={cn(
-                  "flex-1 rounded-md py-2 text-sm font-semibold",
+                  "min-h-10 flex-1 rounded-md py-2 text-sm font-semibold",
                   mode === m ? "bg-background shadow-sm" : "text-muted-foreground",
                 )}
               >
@@ -106,51 +136,56 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
           {mode === "meter" ? (
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-2">
-                <Label className="text-base">Start Meter</Label>
-                <Input name="startHourMeter" type="number" step="0.1" min="0" defaultValue={log.startHourMeter ?? ""} className="h-12 text-base" />
+                <Label htmlFor="startHourMeter" className="text-base">Start Meter</Label>
+                <Input id="startHourMeter" name="startHourMeter" type="number" step="0.1" min="0" defaultValue={log.startHourMeter ?? ""} className="h-12 text-base" />
               </div>
               <div className="flex flex-col gap-2">
-                <Label className="text-base">End Meter</Label>
-                <Input name="endHourMeter" type="number" step="0.1" min="0" defaultValue={log.endHourMeter ?? ""} className="h-12 text-base" />
+                <Label htmlFor="endHourMeter" className="text-base">End Meter</Label>
+                <Input id="endHourMeter" name="endHourMeter" type="number" step="0.1" min="0" defaultValue={log.endHourMeter ?? ""} className="h-12 text-base" />
               </div>
             </div>
           ) : (
             <>
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
-                  <Label className="text-base">Start Time</Label>
-                  <Input name="startTime" type="time" defaultValue={log.startTime ?? ""} className="h-12 text-base" />
+                  <Label htmlFor="startTime" className="text-base">Start Time</Label>
+                  <Input id="startTime" name="startTime" type="time" defaultValue={log.startTime ?? ""} className="h-12 text-base" />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label className="text-base">Stop Time</Label>
-                  <Input name="stopTime" type="time" defaultValue={log.stopTime ?? ""} className="h-12 text-base" />
+                  <Label htmlFor="stopTime" className="text-base">Stop Time</Label>
+                  <Input id="stopTime" name="stopTime" type="time" defaultValue={log.stopTime ?? ""} className="h-12 text-base" />
                 </div>
               </div>
               <div className="flex flex-col gap-2">
-                <Label className="text-base">Break (Minutes)</Label>
-                <Input name="breakMinutes" type="number" step="1" min="0" defaultValue={log.breakMinutes ?? 0} className="h-12 text-base" />
+                <Label htmlFor="breakMinutes" className="text-base">Break (Minutes)</Label>
+                <Input id="breakMinutes" name="breakMinutes" type="number" step="1" min="0" defaultValue={log.breakMinutes ?? 0} className="h-12 text-base" />
               </div>
             </>
           )}
 
           <div className="flex flex-col gap-2">
-            <Label className="text-base">Operator Name (Optional)</Label>
-            <Input name="operatorName" defaultValue={log.operatorName ?? ""} className="h-12 text-base" />
+            <Label htmlFor="operatorName" className="text-base">Operator Name (Optional)</Label>
+            <Input id="operatorName" name="operatorName" defaultValue={log.operatorName ?? ""} className="h-12 text-base" />
           </div>
 
           <AttachmentPicker name="attachment" label="Attachment / Tool Used (Optional)" defaultValue={log.attachment ?? undefined} />
 
           <div className="flex flex-col gap-2">
-            <Label className="text-base">Diesel Taken (L) (Optional)</Label>
-            <Input name="dieselLiters" type="number" step="0.1" min="0" defaultValue={log.dieselLiters ?? ""} className="h-12 text-base" />
+            <Label htmlFor="dieselLiters" className="text-base">Diesel Taken (L) (Optional)</Label>
+            <Input id="dieselLiters" name="dieselLiters" type="number" step="0.1" min="0" defaultValue={log.dieselLiters ?? ""} className="h-12 text-base" />
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label className="text-base">Note (Optional)</Label>
-            <Input name="notes" defaultValue={log.notes ?? ""} className="h-12 text-base" />
+            <Label htmlFor="notes" className="text-base">Note (Optional)</Label>
+            <Input id="notes" name="notes" defaultValue={log.notes ?? ""} className="h-12 text-base" />
           </div>
 
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
+          {conflict && (
+            <Button type="button" variant="outline" className="h-11" onClick={reloadLatest}>
+              Reload latest version
+            </Button>
+          )}
 
           <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
             <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>

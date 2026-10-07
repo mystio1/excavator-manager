@@ -1,16 +1,21 @@
-import { NextResponse } from "next/server";
+import { failureResponse } from "@/lib/api-error";
 import { requireSupportApi } from "@/lib/supportTokens";
 import { setBusinessLimits } from "@/lib/services/support";
+import { supportLimitsSchema } from "@/lib/validation/support";
+import { json, parseBody, withApi } from "@/lib/with-api";
 
-export async function POST(req: Request) {
-  const auth = requireSupportApi(req);
+export const POST = withApi("support.limits", async (req) => {
+  const auth = await requireSupportApi(req);
   if (auth.error) return auth.error;
 
-  const body = await req.json().catch(() => ({}));
-  const businessCode = typeof body?.businessCode === "string" ? body.businessCode : "";
+  const input = await parseBody(req, supportLimitsSchema);
 
-  const result = await setBusinessLimits(businessCode, { maxOperators: body?.maxOperators, maxBillsPerDay: body?.maxBillsPerDay });
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
+  const result = await setBusinessLimits(
+    input.businessCode,
+    { maxOperators: input.maxOperators, maxBillsPerDay: input.maxBillsPerDay },
+    { supportSessionId: auth.session.id, reason: input.reason },
+  );
+  if ("error" in result) return failureResponse(result);
 
-  return NextResponse.json({ business: result.business });
-}
+  return json({ business: result.business });
+});

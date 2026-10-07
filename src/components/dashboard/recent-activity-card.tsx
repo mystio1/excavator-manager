@@ -17,7 +17,7 @@ export function RecentActivityCard({ events }: { events: ActivityEvent[] }) {
         <SectionTitle icon={History}>Recent Activity</SectionTitle>
         {events.length > VISIBLE_COUNT && (
           <Dialog>
-            <DialogTrigger render={<Button variant="ghost" size="sm" className="text-primary" />}>
+            <DialogTrigger render={<Button variant="ghost" size="sm" className="text-primary-text" />}>
               See More
             </DialogTrigger>
             <DialogContent className="max-h-[85vh] overflow-y-auto">

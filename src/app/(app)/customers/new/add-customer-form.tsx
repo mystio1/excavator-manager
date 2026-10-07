@@ -67,7 +67,7 @@ export function AddCustomerForm() {
             </Label>
             <Input id="gstNumber" name="gstNumber" className="h-12 text-base" />
           </div>
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
           <Button type="submit" size="lg" className="h-12 text-base" disabled={pending}>
             {pending ? "Saving..." : "Save Customer"}
           </Button>

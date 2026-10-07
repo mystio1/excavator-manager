@@ -1,35 +1,30 @@
-import { NextResponse } from "next/server";
-import { z } from "zod";
 import { requireBusinessApi } from "@/lib/api-auth";
+import { failureResponse } from "@/lib/api-error";
 import { deletePayment, updatePayment } from "@/lib/services/bills";
+import { parseExpectedVersion, updatePaymentSchema } from "@/lib/validation/bill";
+import { json, parseBody, withApi } from "@/lib/with-api";
 
-const schema = z.object({
-  amount: z.coerce.number().min(1, "Enter an amount greater than 0"),
-  date: z.string().min(1),
-  method: z.string().trim().optional(),
-  notes: z.string().trim().optional(),
+type Ctx = { params: Promise<{ id: string; paymentId: string }> };
+
+export const PATCH = withApi("bills.payments.update", async (req, { params }: Ctx) => {
+  const auth = await requireBusinessApi();
+  if (auth.error) return auth.error;
+  const { id, paymentId } = await params;
+
+  const input = await parseBody(req, updatePaymentSchema);
+  const result = await updatePayment(auth.session.businessId, auth.actor, { billId: id, paymentId, ...input });
+  if ("error" in result) return failureResponse(result);
+  return json(result);
 });
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; paymentId: string }> }) {
+export const DELETE = withApi("bills.payments.delete", async (req, { params }: Ctx) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { id, paymentId } = await params;
 
-  const parsed = schema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
-  const result = await updatePayment(auth.session.businessId, { billId: id, paymentId, ...parsed.data });
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
-  return NextResponse.json(result);
-}
-
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; paymentId: string }> }) {
-  const auth = await requireBusinessApi();
-  if (auth.error) return auth.error;
-  const { id, paymentId } = await params;
-
-  const result = await deletePayment(auth.session.businessId, id, paymentId);
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
-  return NextResponse.json(result);
-}
+  const result = await deletePayment(auth.session.businessId, auth.actor, id, paymentId, {
+    expectedVersion: parseExpectedVersion(req),
+  });
+  if ("error" in result) return failureResponse(result);
+  return json(result);
+});

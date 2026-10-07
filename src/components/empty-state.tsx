@@ -18,7 +18,7 @@ export function EmptyState({
 }) {
   return (
     <div className="flex animate-fade-in-up flex-col items-center gap-3 py-14 text-center">
-      <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+      <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary-text">
         {Icon ? <Icon className="size-8" /> : <ExcavatorLogo className="size-8" />}
       </div>
       <div>

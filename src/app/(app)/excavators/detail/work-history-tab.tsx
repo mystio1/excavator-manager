@@ -2,8 +2,10 @@
 
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
+import useSWRInfinite, { unstable_serialize } from "swr/infinite";
 import type { listWorkHistory } from "@/lib/services/workSessions";
 import { swrFetcher } from "@/lib/api-client";
+import type { Plain } from "@/lib/plain";
 import { formatDate, formatDateRange } from "@/lib/utils/dates";
 import { formatHours } from "@/lib/utils/hours";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +20,10 @@ import { EditSessionButton } from "./edit-session-button";
 
 type CustomerOption = { id: string; name: string; companyName: string | null };
 type OperatorOption = { id: string; name: string };
+type HistoryPage = Plain<Awaited<ReturnType<typeof listWorkHistory>>>;
+
+/** Page size for the History tab; the server returns `nextCursor` while more remain. */
+const PAGE_SIZE = 50;
 
 export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
   const searchParams = useSearchParams();
@@ -42,11 +48,20 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
   if (filters.from) query.set("from", filters.from);
   if (filters.to) query.set("to", filters.to);
 
-  const { data: historyData } = useSWR<{ history: Awaited<ReturnType<typeof listWorkHistory>> }>(
-    `/api/excavators/${excavatorId}/work-history${query.toString() ? `?${query.toString()}` : ""}`,
-    swrFetcher,
-  );
-  const history = historyData?.history ?? [];
+  // Cursor pagination: each page's URL carries the previous page's nextCursor.
+  const getKey = (_pageIndex: number, previousPage: HistoryPage | null) => {
+    if (previousPage && !previousPage.nextCursor) return null;
+    const page = new URLSearchParams(query);
+    page.set("limit", String(PAGE_SIZE));
+    if (previousPage?.nextCursor) page.set("cursor", previousPage.nextCursor);
+    return `/api/excavators/${excavatorId}/work-history?${page.toString()}`;
+  };
+  const { data: pages, size, setSize, isValidating } = useSWRInfinite<HistoryPage>(getKey, swrFetcher);
+  // The edit/delete buttons revalidate every loaded page through this key.
+  const invalidateKey = unstable_serialize(getKey);
+  const history = pages?.flatMap((p) => p.history) ?? [];
+  const hasMore = pages ? pages[pages.length - 1]?.nextCursor != null : false;
+  const loadingMore = isValidating && size > (pages?.length ?? 0);
   const customers = customersData?.customers ?? [];
   const operators = operatorsData?.operators ?? [];
 
@@ -57,7 +72,7 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
           <form method="get" className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <input type="hidden" name="tab" value="history" />
             <input type="hidden" name="id" value={excavatorId} />
-            <NativeSelect name="customerId" defaultValue={filters.customerId} className="h-11">
+            <NativeSelect name="customerId" aria-label="Customer" defaultValue={filters.customerId} className="h-11">
               <option value="">All Customers</option>
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -65,7 +80,7 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
                 </option>
               ))}
             </NativeSelect>
-            <NativeSelect name="operatorId" defaultValue={filters.operatorId} className="h-11">
+            <NativeSelect name="operatorId" aria-label="Operator" defaultValue={filters.operatorId} className="h-11">
               <option value="">All Operators</option>
               {operators.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -119,7 +134,7 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
                 {session.status === "ACTIVE" && <StatusBadge status="WORKING" />}
                 <EditSessionButton
                   session={session}
-                  invalidateKey={`/api/excavators/${excavatorId}/work-history${query.toString() ? `?${query.toString()}` : ""}`}
+                  invalidateKey={invalidateKey}
                 />
               </div>
             </div>
@@ -158,11 +173,12 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
                       <span className="text-xs font-semibold">{formatHours(log.hoursWorked)}</span>
                       <EditReadingButton
                         log={log}
-                        invalidateKey={`/api/excavators/${excavatorId}/work-history${query.toString() ? `?${query.toString()}` : ""}`}
+                        invalidateKey={invalidateKey}
                       />
                       <DeleteReadingButton
                         logId={log.id}
-                        invalidateKey={`/api/excavators/${excavatorId}/work-history${query.toString() ? `?${query.toString()}` : ""}`}
+                        version={log.version}
+                        invalidateKey={invalidateKey}
                       />
                     </div>
                   </div>
@@ -172,6 +188,12 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
           </CardContent>
         </Card>
       ))}
+
+      {hasMore && (
+        <Button type="button" variant="outline" className="h-11" disabled={loadingMore} onClick={() => setSize(size + 1)}>
+          {loadingMore ? "Loading..." : "Load more"}
+        </Button>
+      )}
     </div>
   );
 }

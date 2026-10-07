@@ -37,6 +37,11 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-title"
+      // A card's title is the heading of its region: level 2 under the page's
+      // h1. Callers that nest it elsewhere (a dialog, a sub-card) override
+      // aria-level.
+      role="heading"
+      aria-level={2}
       className={cn(
         "font-heading text-base leading-snug font-medium group-data-[size=sm]/card:text-sm",
         className

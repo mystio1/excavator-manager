@@ -7,6 +7,15 @@
  */
 const RESEND_API_URL = "https://api.resend.com/emails";
 
+/** A hung mail provider must not pin a request (or the after-response task) forever. */
+const SEND_TIMEOUT_MS = 10_000;
+
+/** The URL is built server-side from APP_URL + a hex token, so it can't carry
+ * markup — escaped anyway, since it is interpolated into HTML. */
+function escapeHtml(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 export async function sendPasswordResetEmail(to: string, resetUrl: string) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM_EMAIL;
@@ -20,6 +29,7 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string) {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
+    signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
     body: JSON.stringify({
       from,
       to,
@@ -33,7 +43,7 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string) {
           <div style="border: 1px solid #eee; border-top: none; border-radius: 0 0 12px 12px; padding: 24px;">
             <p style="font-size: 16px;">We received a request to reset your password.</p>
             <p>
-              <a href="${resetUrl}" style="display: inline-block; background: #f4a910; color: #1a1207; font-weight: 700; text-decoration: none; padding: 12px 24px; border-radius: 10px; margin: 8px 0;">
+              <a href="${escapeHtml(resetUrl)}" style="display: inline-block; background: #f4a910; color: #1a1207; font-weight: 700; text-decoration: none; padding: 12px 24px; border-radius: 10px; margin: 8px 0;">
                 Reset Password
               </a>
             </p>

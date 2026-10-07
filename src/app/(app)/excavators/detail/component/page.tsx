@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import type { getComponentHistory } from "@/lib/services/serviceRecords";
 import { swrFetcher } from "@/lib/api-client";
+import type { Plain } from "@/lib/plain";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatDate } from "@/lib/utils/dates";
@@ -13,7 +14,7 @@ import Loading from "../../../loading";
 
 type ComponentData = {
   component: { id: string; name: string; category: string };
-  history: Awaited<ReturnType<typeof getComponentHistory>>;
+  history: Plain<Awaited<ReturnType<typeof getComponentHistory>>>;
 };
 
 export default function ComponentHistoryPage() {

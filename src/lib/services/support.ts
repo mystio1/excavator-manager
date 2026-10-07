@@ -1,29 +1,21 @@
+import { fail } from "@/lib/api-error";
+import { recordAudit } from "@/lib/audit";
 import { db } from "@/lib/db";
+import { SUPPORT_ACTOR } from "@/lib/supportTokens";
+import { lockBusiness } from "@/lib/tx";
 import { normalizeBusinessCode } from "@/lib/utils/businessCode";
 
-async function createAuditLog(
-  businessId: string,
-  action: string,
-  entityId: string,
-  details: Record<string, unknown> = {},
-) {
-  const owner = await db.user.findFirst({ where: { businessId, role: "OWNER" }, orderBy: { createdAt: "asc" } });
-  await db.auditLog.create({
-    data: {
-      businessId,
-      userId: owner?.id ?? null,
-      userName: owner?.name ?? "(no admin account)",
-      action,
-      entityId,
-      details: details as object,
-    },
-  });
-}
+/** Context every support mutation records in its audit entry. `supportSessionId`
+ * ties the entry to the console session that did it (there is one shared support
+ * credential, so there is no individual to name — see SUPPORT_ACTOR). */
+export type SupportOpts = { supportSessionId?: string; reason?: string | null };
+
+const supportDetails = (opts?: SupportOpts) => (opts?.supportSessionId ? { supportSessionId: opts.supportSessionId } : {});
 
 /** Every business on the platform, with the same at-a-glance stats the
  * support console's business directory shows. Not scoped by businessId —
  * this is the one legitimate cross-tenant read in the whole app, gated
- * entirely by the caller having already verified a support token. */
+ * entirely by the caller having already verified a support session. */
 export async function listBusinessesForSupport() {
   const businesses = await db.business.findMany({ orderBy: { name: "asc" } });
 
@@ -59,17 +51,21 @@ export async function listBusinessesForSupport() {
 
 /** The user impersonate signs in as — always the business's longest-standing
  * owner account, matching listBusinessesForSupport's userCount (every User
- * row, not just one). Returns null if the business has no owner account
+ * row, not just one). Returns a failure if the business has no owner account
  * left to access (shouldn't normally happen, but a business is never left
- * completely inaccessible from support's perspective by construction). */
+ * completely inaccessible from support's perspective by construction).
+ *
+ * Read-only on purpose: the "support.impersonate" audit entry is written by
+ * authenticateSupportImpersonation (services/auth.ts), the one place every
+ * impersonated sign-in must pass through — including a direct call to the
+ * NextAuth callback that never touches this route. */
 export async function findImpersonationTarget(businessCode: string) {
   const business = await db.business.findUnique({ where: { code: normalizeBusinessCode(businessCode) } });
-  if (!business) return { error: "No business found with that code" } as const;
+  if (!business) return fail("NOT_FOUND", "No business found with that code");
 
   const owner = await db.user.findFirst({ where: { businessId: business.id, role: "OWNER" }, orderBy: { createdAt: "asc" } });
-  if (!owner) return { error: "This business has no admin account to access" } as const;
+  if (!owner) return fail("NOT_FOUND", "This business has no admin account to access");
 
-  await createAuditLog(business.id, "support.impersonate", owner.id);
   return { business, owner } as const;
 }
 
@@ -78,13 +74,31 @@ export async function findImpersonationTarget(businessCode: string) {
  * signed-in owner the next time their client polls /api/layout (this app
  * has no real-time push channel, so it isn't instant the way the reference
  * app's SSE-based freeze is — the next poll interval, typically well under
- * a minute, is the ceiling here). */
-export async function setBusinessFrozen(businessCode: string, frozen: boolean) {
+ * a minute, is the ceiling here). Audited (actor SUPPORT) in the same
+ * transaction as the change. */
+export async function setBusinessFrozen(businessCode: string, frozen: boolean, opts?: SupportOpts) {
   const business = await db.business.findUnique({ where: { code: normalizeBusinessCode(businessCode) } });
-  if (!business) return { error: "No business found with that code" } as const;
+  if (!business) return fail("NOT_FOUND", "No business found with that code");
 
-  const updated = await db.business.update({ where: { id: business.id }, data: { frozen } });
-  await createAuditLog(business.id, frozen ? "support.freeze" : "support.unfreeze", business.id);
+  const updated = await db.$transaction(async (tx) => {
+    // Lock, then read the CURRENT state: freeze and unfreeze arriving together must each audit the state
+    // they actually changed (the unlocked read above could be stale by the time we write).
+    await lockBusiness(tx, business.id);
+    const current = await tx.business.findUniqueOrThrow({ where: { id: business.id }, select: { frozen: true } });
+    const row = await tx.business.update({ where: { id: business.id }, data: { frozen } });
+    await recordAudit(tx, {
+      businessId: business.id,
+      actor: SUPPORT_ACTOR,
+      action: frozen ? "support.freeze" : "support.unfreeze",
+      entityType: "Business",
+      entityId: business.id,
+      before: { frozen: current.frozen },
+      after: { frozen: row.frozen },
+      reason: opts?.reason,
+      details: supportDetails(opts),
+    });
+    return row;
+  });
   return { business: updated } as const;
 }
 
@@ -99,13 +113,14 @@ function parseLimit(value: unknown, label: string): number | null {
 
 /** null/blank means unlimited. Enforced at operator creation (see
  * createOperator in operators.ts) and bill creation (see createBill and
- * createDirectBill in bills.ts) respectively. */
+ * createDirectBill in bills.ts) respectively. Audited (actor SUPPORT). */
 export async function setBusinessLimits(
   businessCode: string,
   input: { maxOperators?: unknown; maxBillsPerDay?: unknown },
+  opts?: SupportOpts,
 ) {
   const business = await db.business.findUnique({ where: { code: normalizeBusinessCode(businessCode) } });
-  if (!business) return { error: "No business found with that code" } as const;
+  if (!business) return fail("NOT_FOUND", "No business found with that code");
 
   let maxOperators: number | null;
   let maxBillsPerDay: number | null;
@@ -113,11 +128,26 @@ export async function setBusinessLimits(
     maxOperators = parseLimit(input.maxOperators, "Max operators");
     maxBillsPerDay = parseLimit(input.maxBillsPerDay, "Max bills per day");
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Invalid limit" } as const;
+    return fail("VALIDATION_FAILED", err instanceof Error ? err.message : "Invalid limit");
   }
 
-  const updated = await db.business.update({ where: { id: business.id }, data: { maxOperators, maxBillsPerDay } });
-  await createAuditLog(business.id, "support.setLimits", business.id, { maxOperators, maxBillsPerDay });
+  const updated = await db.$transaction(async (tx) => {
+    await lockBusiness(tx, business.id);
+    const current = await tx.business.findUniqueOrThrow({ where: { id: business.id }, select: { maxOperators: true, maxBillsPerDay: true } });
+    const row = await tx.business.update({ where: { id: business.id }, data: { maxOperators, maxBillsPerDay } });
+    await recordAudit(tx, {
+      businessId: business.id,
+      actor: SUPPORT_ACTOR,
+      action: "support.setLimits",
+      entityType: "Business",
+      entityId: business.id,
+      before: { maxOperators: current.maxOperators, maxBillsPerDay: current.maxBillsPerDay },
+      after: { maxOperators, maxBillsPerDay },
+      reason: opts?.reason,
+      details: supportDetails(opts),
+    });
+    return row;
+  });
   return { business: updated } as const;
 }
 
@@ -132,6 +162,10 @@ export async function setBusinessLimits(
  * money already paid or owed, not mistaken revenue. This is a reset of
  * mistaken/test business data, not a delete-the-tenant operation.
  *
+ * AuditLog is never touched (the table is append-only at the database level
+ * too): the trail of what happened to this business survives the wipe, and
+ * the wipe itself is recorded in it.
+ *
  * OperatorWorkRequest/OperatorAssignment (a machine's work-request and
  * assignment history) are cleared explicitly, but would be wiped anyway as
  * soon as their Excavator is deleted below (both have a Cascade FK to
@@ -144,41 +178,56 @@ export async function setBusinessLimits(
  * runs in a single transaction so a failure partway through can't leave
  * the business in a half-wiped state.
  */
-export async function clearBusinessData(businessCode: string) {
+export async function clearBusinessData(businessCode: string, opts?: SupportOpts) {
   const business = await db.business.findUnique({ where: { code: normalizeBusinessCode(businessCode) } });
-  if (!business) return { error: "No business found with that code" } as const;
+  if (!business) return fail("NOT_FOUND", "No business found with that code");
 
   const businessId = business.id;
 
-  const [bills, workSessions, serviceRecords, expenses, workRequests, assignments, excavators, customers, sites, bankAccounts, sequences] =
-    await db.$transaction([
-      db.bill.deleteMany({ where: { businessId } }), // cascades BillItem, Payment
-      db.workSession.deleteMany({ where: { businessId } }), // cascades DailyWorkLog
-      db.serviceRecord.deleteMany({ where: { businessId } }), // cascades ServiceRecordItem
-      db.excavatorExpense.deleteMany({ where: { businessId } }),
-      db.operatorWorkRequest.deleteMany({ where: { businessId } }),
-      db.operatorAssignment.deleteMany({ where: { businessId } }),
-      db.excavator.deleteMany({ where: { businessId } }),
-      db.customer.deleteMany({ where: { businessId } }),
-      db.site.deleteMany({ where: { businessId } }),
-      db.bankAccount.deleteMany({ where: { businessId } }),
-      db.billNumberSequence.deleteMany({ where: { businessId } }),
-    ]);
+  const counts = await db.$transaction(
+    async (tx) => {
+      const bills = await tx.bill.deleteMany({ where: { businessId } }); // cascades BillItem, Payment
+      const workSessions = await tx.workSession.deleteMany({ where: { businessId } }); // cascades DailyWorkLog
+      const serviceRecords = await tx.serviceRecord.deleteMany({ where: { businessId } }); // cascades ServiceRecordItem
+      const expenses = await tx.excavatorExpense.deleteMany({ where: { businessId } });
+      const workRequests = await tx.operatorWorkRequest.deleteMany({ where: { businessId } });
+      const assignments = await tx.operatorAssignment.deleteMany({ where: { businessId } });
+      const excavators = await tx.excavator.deleteMany({ where: { businessId } });
+      const customers = await tx.customer.deleteMany({ where: { businessId } });
+      const sites = await tx.site.deleteMany({ where: { businessId } });
+      const bankAccounts = await tx.bankAccount.deleteMany({ where: { businessId } });
+      const sequences = await tx.billNumberSequence.deleteMany({ where: { businessId } });
+      // Stored responses of earlier creates: replaying one after the data it
+      // points at is gone would hand a client a bill that no longer exists.
+      await tx.idempotencyKey.deleteMany({ where: { businessId } });
 
-  const counts = {
-    bills: bills.count,
-    workSessions: workSessions.count,
-    serviceRecords: serviceRecords.count,
-    expenses: expenses.count,
-    workRequests: workRequests.count,
-    assignments: assignments.count,
-    excavators: excavators.count,
-    customers: customers.count,
-    sites: sites.count,
-    bankAccounts: bankAccounts.count,
-    sequences: sequences.count,
-  };
+      const result = {
+        bills: bills.count,
+        workSessions: workSessions.count,
+        serviceRecords: serviceRecords.count,
+        expenses: expenses.count,
+        workRequests: workRequests.count,
+        assignments: assignments.count,
+        excavators: excavators.count,
+        customers: customers.count,
+        sites: sites.count,
+        bankAccounts: bankAccounts.count,
+        sequences: sequences.count,
+      };
 
-  await createAuditLog(business.id, "support.clearData", business.id, counts);
+      await recordAudit(tx, {
+        businessId,
+        actor: SUPPORT_ACTOR,
+        action: "support.clearData",
+        entityType: "Business",
+        entityId: businessId,
+        reason: opts?.reason,
+        details: { ...result, ...supportDetails(opts) },
+      });
+      return result;
+    },
+    { timeout: 60_000, maxWait: 10_000 },
+  );
+
   return { business, counts } as const;
 }

@@ -103,7 +103,7 @@ export function AddExcavatorForm({ defaultServiceIntervalHrs }: { defaultService
               Leave blank to use your default of every {defaultServiceIntervalHrs} hours.
             </p>
           </div>
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
           <Button type="submit" size="lg" className="h-12 text-base" disabled={pending}>
             {pending ? "Saving..." : "Save Machine"}
           </Button>

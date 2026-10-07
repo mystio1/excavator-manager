@@ -1,29 +1,30 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
+import { failureResponse } from "@/lib/api-error";
+import { json, parseBody, withApi } from "@/lib/with-api";
 import { deleteWorkSession, updateWorkSession } from "@/lib/services/workSessions";
-import { updateWorkSessionSchema } from "@/lib/validation/workSession";
+import { expectedVersionFromQuery, updateWorkSessionSchema } from "@/lib/validation/workSession";
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+type Ctx = { params: Promise<{ id: string }> };
+
+export const PATCH = withApi("workSessions.update", async (req, { params }: Ctx) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { id } = await params;
 
-  const parsed = updateWorkSessionSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
+  const input = await parseBody(req, updateWorkSessionSchema);
+  const result = await updateWorkSession(auth.session.businessId, auth.actor, id, input);
+  if ("error" in result) return failureResponse(result);
+  return json(result);
+});
 
-  const result = await updateWorkSession(auth.session.businessId, id, parsed.data);
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
-  return NextResponse.json(result);
-}
-
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = withApi("workSessions.delete", async (req, { params }: Ctx) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { id } = await params;
 
-  const result = await deleteWorkSession(auth.session.businessId, id);
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
-  return NextResponse.json(result);
-}
+  const result = await deleteWorkSession(auth.session.businessId, auth.actor, id, {
+    expectedVersion: expectedVersionFromQuery(req),
+  });
+  if ("error" in result) return failureResponse(result);
+  return json(result);
+});

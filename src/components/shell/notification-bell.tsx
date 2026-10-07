@@ -14,14 +14,14 @@ export function NotificationBell({ alerts }: { alerts: Alert[] }) {
         render={
           <button
             type="button"
-            aria-label="Alerts"
+            aria-label={alerts.length > 0 ? `Alerts, ${alerts.length} new` : "Alerts"}
             className="relative flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           />
         }
       >
         <Bell className="size-[18px]" />
         {alerts.length > 0 && (
-          <span className="absolute top-1 right-1 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white">
+          <span aria-hidden="true" className="absolute top-1 right-1 flex size-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">
             {alerts.length > 9 ? "9+" : alerts.length}
           </span>
         )}
@@ -55,7 +55,10 @@ export function NotificationBell({ alerts }: { alerts: Alert[] }) {
                 >
                   <Icon className="size-4 shrink-0" />
                 </span>
-                <span className="flex-1">{alert.message}</span>
+                <span className="flex-1">
+                  <span className="sr-only">{alert.level === "danger" ? "Urgent: " : "Reminder: "}</span>
+                  {alert.message}
+                </span>
               </Link>
             );
           })}

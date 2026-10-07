@@ -124,7 +124,7 @@ export function SiteAnalysisExplorer({
         <CardContent className="flex flex-col gap-3 sm:flex-row">
           <div className="flex-1">
             <p className="mb-1.5 text-sm font-semibold text-muted-foreground">Site</p>
-            <NativeSelect value={siteId} onChange={(e) => setSiteId(e.target.value)} className="h-11">
+            <NativeSelect aria-label="Site" value={siteId} onChange={(e) => setSiteId(e.target.value)} className="h-11">
               <option value="">All Sites</option>
               {siteOptions.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -135,7 +135,7 @@ export function SiteAnalysisExplorer({
           </div>
           <div className="flex-1">
             <p className="mb-1.5 text-sm font-semibold text-muted-foreground">Customer</p>
-            <NativeSelect value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="h-11">
+            <NativeSelect aria-label="Customer" value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="h-11">
               <option value="">All Customers</option>
               {customerOptions.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -157,7 +157,7 @@ export function SiteAnalysisExplorer({
               <button
                 type="button"
                 onClick={() => setSelectedMachineIds({})}
-                className="text-sm font-semibold text-primary"
+                className="text-sm font-semibold text-primary-text"
               >
                 Clear
               </button>
@@ -220,7 +220,7 @@ export function SiteAnalysisExplorer({
             <p className="text-muted-foreground">Diesel Received</p>
             <p className="text-right font-semibold">{stats.totalDiesel} L</p>
             <p className="text-muted-foreground">Avg. Diesel Usage</p>
-            <p className="text-right font-bold text-primary">{stats.avgLitersPerHour} L/hr</p>
+            <p className="text-right font-bold text-primary-text">{stats.avgLitersPerHour} L/hr</p>
           </div>
         </CardContent>
       </Card>
@@ -231,7 +231,7 @@ export function SiteAnalysisExplorer({
             Readings ({filtered.length})
           </p>
           {filtered.length > 0 && (
-            <div className="flex gap-3 text-sm font-semibold text-primary">
+            <div className="flex gap-3 text-sm font-semibold text-primary-text">
               <button type="button" onClick={() => toggleAll(true)}>
                 Select All
               </button>

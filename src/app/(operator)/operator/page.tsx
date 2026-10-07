@@ -8,6 +8,7 @@ import { formatDate, formatDateTime } from "@/lib/utils/dates";
 import { formatHours } from "@/lib/utils/hours";
 import { ot, type OperatorLang } from "@/lib/i18n/operator";
 import { ExcavatorLogo } from "@/components/excavator-logo";
+import { usePageTitle } from "@/components/page-title";
 import { SubmitReadingDialog } from "../submit-reading-dialog";
 import { StartWorkDialog } from "../start-work-dialog";
 import { EndWorkDialog } from "../end-work-dialog";
@@ -52,11 +53,12 @@ type HomeData = {
 
 export default function OperatorHomePage() {
   const { data } = useSWR<HomeData>("/api/operator/home", swrFetcher);
+  usePageTitle(data?.excavator?.name);
 
   if (!data) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 p-10">
-        <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+        <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary-text">
           <ExcavatorLogo animated className="size-8" />
         </div>
       </div>
@@ -84,7 +86,9 @@ export default function OperatorHomePage() {
       <div className="flex flex-col gap-3 p-4">
         <OperatorLanguageSwitcher lang={lang} />
         <Card>
-          <CardContent className="py-10 text-center text-muted-foreground">{t("home.notAssigned")}</CardContent>
+          <CardContent className="py-10 text-center text-muted-foreground">
+            <h1>{t("home.notAssigned")}</h1>
+          </CardContent>
         </Card>
       </div>
     );
@@ -98,10 +102,10 @@ export default function OperatorHomePage() {
         <OperatorLanguageSwitcher lang={lang} />
         <Card>
           <CardContent className="flex flex-col gap-2">
-            <p className="text-lg font-bold">
+            <h1 className="text-lg font-bold">
               {excavator.name}
               {excavator.machineNumber ? ` (${excavator.machineNumber})` : ""}
-            </p>
+            </h1>
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">{t("home.currentHourMeter")}</span>
               <span className="font-semibold">{formatHours(excavator.currentHourMeter)}</span>
@@ -148,10 +152,10 @@ export default function OperatorHomePage() {
       <OperatorLanguageSwitcher lang={lang} />
       <Card>
         <CardContent className="flex flex-col gap-2">
-          <p className="text-lg font-bold">
+          <h1 className="text-lg font-bold">
             {excavator.name}
             {excavator.machineNumber ? ` (${excavator.machineNumber})` : ""}
-          </p>
+          </h1>
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">{t("home.currentHourMeter")}</span>
             <span className="font-semibold">{formatHours(excavator.currentHourMeter)}</span>

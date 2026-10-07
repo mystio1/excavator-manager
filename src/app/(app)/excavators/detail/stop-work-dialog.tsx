@@ -17,17 +17,21 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+import { todayLocal } from "@/lib/utils/dates";
 export function StopWorkDialog({
   excavatorId,
   workSessionId,
+  version,
   currentHourMeter,
 }: {
   excavatorId: string;
   workSessionId: string;
+  /** The job's version as loaded: stopping a job someone else just changed is a conflict. */
+  version?: number;
   currentHourMeter: number;
 }) {
   const { mutate } = useSWRConfig();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const [open, setOpen] = useState(false);
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch(`/api/excavators/${excavatorId}/stop-work`, { method: "POST", body: JSON.stringify(body) });
@@ -38,6 +42,7 @@ export function StopWorkDialog({
     const fd = new FormData(e.currentTarget);
     const ok = await run({
       workSessionId,
+      expectedVersion: version,
       endDate: fd.get("endDate"),
       endHourMeter: Number(fd.get("endHourMeter")),
       dieselLiters: fd.get("dieselLiters") || undefined,
@@ -105,7 +110,7 @@ export function StopWorkDialog({
             <Input id="stopWorkNotes" name="notes" className="h-12 text-base" />
           </div>
 
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
           <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
             <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>

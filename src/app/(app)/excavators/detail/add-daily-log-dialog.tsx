@@ -19,6 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+import { todayLocal } from "@/lib/utils/dates";
 export function AddDailyLogDialog({
   excavatorId,
   workSessionId,
@@ -30,7 +31,7 @@ export function AddDailyLogDialog({
 }) {
   const { mutate } = useSWRConfig();
   const [mode, setMode] = useState<"meter" | "time">("meter");
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const [open, setOpen] = useState(false);
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch(`/api/excavators/${excavatorId}/daily-logs`, { method: "POST", body: JSON.stringify(body) });
@@ -79,9 +80,10 @@ export function AddDailyLogDialog({
           <div className="flex gap-2 rounded-lg bg-muted p-1">
             <button
               type="button"
+              aria-pressed={mode === "meter"}
               onClick={() => setMode("meter")}
               className={cn(
-                "flex-1 rounded-md py-2 text-sm font-semibold",
+                "min-h-10 flex-1 rounded-md py-2 text-sm font-semibold",
                 mode === "meter" ? "bg-background shadow-sm" : "text-muted-foreground",
               )}
             >
@@ -89,9 +91,10 @@ export function AddDailyLogDialog({
             </button>
             <button
               type="button"
+              aria-pressed={mode === "time"}
               onClick={() => setMode("time")}
               className={cn(
-                "flex-1 rounded-md py-2 text-sm font-semibold",
+                "min-h-10 flex-1 rounded-md py-2 text-sm font-semibold",
                 mode === "time" ? "bg-background shadow-sm" : "text-muted-foreground",
               )}
             >
@@ -183,7 +186,7 @@ export function AddDailyLogDialog({
             <Input id="notes" name="notes" className="h-12 text-base" />
           </div>
 
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
           <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
             <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>

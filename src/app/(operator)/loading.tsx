@@ -5,7 +5,7 @@ import { ExcavatorLogo } from "@/components/excavator-logo";
 export default function Loading() {
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
-      <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+      <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary-text">
         <ExcavatorLogo animated className="size-9" />
       </div>
       <p className="text-sm font-medium text-muted-foreground">Loading…</p>

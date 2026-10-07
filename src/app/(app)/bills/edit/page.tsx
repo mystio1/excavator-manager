@@ -1,14 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import type { getBillDetail } from "@/lib/services/bills";
 import { swrFetcher } from "@/lib/api-client";
+import type { Plain } from "@/lib/plain";
 import { PageHeader } from "@/components/page-header";
 import { BillEditorForm, type BillFormInitial, type BillFormOptions } from "@/components/bill/bill-editor-form";
 import Loading from "../../loading";
 
-type BillDetail = NonNullable<Awaited<ReturnType<typeof getBillDetail>>>;
+type BillDetail = Plain<NonNullable<Awaited<ReturnType<typeof getBillDetail>>>>;
 
 const day = (d: string | Date | null | undefined) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 
@@ -18,11 +20,23 @@ export default function EditBillPage() {
 
   const { data: options } = useSWR<BillFormOptions>("/api/bills/new/summary", swrFetcher);
   const { data: detail } = useSWR<{ bill: BillDetail }>(id ? `/api/bills/${id}` : null, swrFetcher);
+  const { mutate } = useSWRConfig();
+  // Bumping the key restarts the form from freshly loaded data (used after a
+  // "changed by someone else" conflict).
+  const [formKey, setFormKey] = useState(0);
+
+  async function reloadLatest() {
+    await mutate(`/api/bills/${id}`);
+    setFormKey((k) => k + 1);
+  }
 
   if (!options || !detail) return <Loading />;
   const { bill } = detail;
 
   const initial: BillFormInitial = {
+    // The version this data was loaded at; the form sends it back as
+    // expectedVersion so a change made elsewhere is reported, not overwritten.
+    version: bill.version,
     customerId: bill.customerId,
     billDate: day(bill.billDate),
     billNumber: bill.billNumber,
@@ -63,7 +77,15 @@ export default function EditBillPage() {
     <div>
       <PageHeader title={`Edit ${bill.billNumber}`} backHref={`/bills/detail?id=${bill.id}`} />
       <div className="px-4 pb-6 md:px-8">
-        <BillEditorForm options={options} mode="edit" billId={bill.id} isDirect={bill.isDirect} initial={initial} />
+        <BillEditorForm
+          key={formKey}
+          options={options}
+          mode="edit"
+          billId={bill.id}
+          isDirect={bill.isDirect}
+          initial={initial}
+          onReloadLatest={reloadLatest}
+        />
       </div>
     </div>
   );

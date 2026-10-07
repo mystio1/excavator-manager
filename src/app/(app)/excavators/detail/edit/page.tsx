@@ -4,11 +4,12 @@ import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import type { getExcavatorDetail } from "@/lib/services/excavators";
 import { swrFetcher } from "@/lib/api-client";
+import type { Plain } from "@/lib/plain";
 import { PageHeader } from "@/components/page-header";
 import { EditExcavatorForm } from "./edit-excavator-form";
 import Loading from "../../../loading";
 
-type ExcavatorDetail = NonNullable<Awaited<ReturnType<typeof getExcavatorDetail>>>;
+type ExcavatorDetail = Plain<NonNullable<Awaited<ReturnType<typeof getExcavatorDetail>>>>;
 type DetailData = { detail: ExcavatorDetail };
 type BusinessSettings = { defaultServiceIntervalHrs: number };
 

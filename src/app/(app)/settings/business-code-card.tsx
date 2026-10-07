@@ -92,7 +92,7 @@ export function BusinessCodeCard({ code }: { code: string }) {
                   className="h-11 uppercase"
                 />
               </div>
-              {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+              {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
               <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
                 <Button type="submit" variant="destructive" size="lg" className="h-11 w-full" disabled={pending}>
                   {pending ? "Regenerating..." : "Yes, Regenerate"}

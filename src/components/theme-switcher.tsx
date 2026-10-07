@@ -40,17 +40,20 @@ export function ThemeSwitcher() {
         <CardTitle className="text-base">Appearance</CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="mb-2 text-sm font-semibold text-muted-foreground">Mode</p>
-        <div className="grid grid-cols-3 gap-2 rounded-lg bg-muted p-1">
+        <p id="theme-mode-label" className="mb-2 text-sm font-semibold text-muted-foreground">
+          Mode
+        </p>
+        <div role="group" aria-labelledby="theme-mode-label" className="grid grid-cols-3 gap-2 rounded-lg bg-muted p-1">
           {MODE_OPTIONS.map((m) => {
             const Icon = m.icon;
             return (
               <button
                 key={m.id}
                 type="button"
+                aria-pressed={mode === m.id}
                 onClick={() => chooseMode(m.id)}
                 className={cn(
-                  "flex items-center justify-center gap-1.5 rounded-md py-2 text-sm font-semibold transition-colors",
+                  "flex min-h-9 items-center justify-center gap-1.5 rounded-md py-2 text-sm font-semibold transition-colors",
                   mode === m.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
                 )}
               >

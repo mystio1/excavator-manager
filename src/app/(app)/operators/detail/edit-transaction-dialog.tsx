@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import { Pencil } from "lucide-react";
-import { apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch } from "@/lib/api-client";
 import { useApiForm } from "@/lib/use-api-form";
+import type { Plain } from "@/lib/plain";
 import type { listTransactions } from "@/lib/services/operatorTransactions";
 import { BUSINESS_EFFECTS } from "@/lib/validation/operatorTransaction";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,9 @@ import {
 } from "@/components/ui/dialog";
 import { TransactionFormFields } from "./transaction-form-fields";
 
-type Transaction = Awaited<ReturnType<typeof listTransactions>>[number];
+type Transaction = Plain<Awaited<ReturnType<typeof listTransactions>>[number]>;
+
+const refreshDetail = (key: unknown) => typeof key === "string" && key.startsWith("/api/operators/detail");
 
 export function EditTransactionDialog({
   transaction,
@@ -29,13 +32,29 @@ export function EditTransactionDialog({
 }) {
   const { mutate } = useSWRConfig();
   const [open, setOpen] = useState(false);
+  // True once the server says someone else changed this transaction since it
+  // was loaded (409 RESOURCE_MODIFIED) — the user must reload before saving.
+  const [stale, setStale] = useState(false);
 
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
-    await apiFetch(`/api/operators/${transaction.operatorId}/transactions/${transaction.id}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    });
+    setStale(false);
+    try {
+      await apiFetch(`/api/operators/${transaction.operatorId}/transactions/${transaction.id}`, {
+        method: "PATCH",
+        // expectedVersion: refuse (409) instead of overwriting a newer change.
+        body: JSON.stringify({ ...body, expectedVersion: transaction.version }),
+      });
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "RESOURCE_MODIFIED") setStale(true);
+      throw err;
+    }
   });
+
+  async function reload() {
+    await mutate(refreshDetail);
+    setStale(false);
+    setOpen(false);
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -50,7 +69,7 @@ export function EditTransactionDialog({
       businessEffect: fd.get("businessEffect"),
     });
     if (ok) {
-      await mutate((key) => typeof key === "string" && key.startsWith("/api/operators/detail"));
+      await mutate(refreshDetail);
       setOpen(false);
     }
   }
@@ -63,7 +82,7 @@ export function EditTransactionDialog({
             type="button"
             size="icon-sm"
             variant="ghost"
-            className="text-muted-foreground hover:text-primary"
+            className="text-muted-foreground hover:text-primary-text"
             aria-label="Edit transaction"
           />
         }
@@ -85,12 +104,18 @@ export function EditTransactionDialog({
             defaultBusinessEffect={transaction.businessEffect as (typeof BUSINESS_EFFECTS)[number]}
           />
 
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
           <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-            <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
-              {pending ? "Saving..." : "Save Changes"}
-            </Button>
+            {stale ? (
+              <Button type="button" size="lg" className="h-12 w-full text-base" onClick={reload}>
+                Reload latest
+              </Button>
+            ) : (
+              <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
+                {pending ? "Saving..." : "Save Changes"}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>

@@ -4,13 +4,19 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api-client";
 import { useApiForm } from "@/lib/use-api-form";
+import { useClearClientCache } from "@/lib/use-clear-client-cache";
+import { PASSWORD_MIN_LENGTH, PASSWORD_RULES_HINT } from "@/lib/password-policy";
 import { ExcavatorLogo } from "@/components/excavator-logo";
 import { Building2, User, Phone, Mail, Lock, KeyRound, ArrowRight } from "lucide-react";
+import { usePageTitle } from "@/components/page-title";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const clearClientCache = useClearClientCache();
+  usePageTitle("Create account");
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch("/api/auth/register", { method: "POST", body: JSON.stringify(body) });
+    await clearClientCache(); // never show a previous account's cached data
     router.push("/dashboard");
   });
 
@@ -37,13 +43,13 @@ export default function RegisterPage() {
         <p className="text-base font-black text-white leading-tight">
           Excavator <span className="text-amber-400">Manager</span>
         </p>
-        <p className="text-[11px] font-medium text-slate-300/80">Smart Fleet Management</p>
+        <p className="text-[11px] font-medium text-slate-200">Smart Fleet Management</p>
       </div>
 
       {/* Heading */}
       <div className="mb-4 text-left">
         <h2 className="text-2xl font-black text-white tracking-tight">Create Business</h2>
-        <p className="text-xs sm:text-sm text-slate-300/85 mt-0.5">
+        <p className="text-xs sm:text-sm text-slate-200 mt-0.5">
           Set up your fleet management account
         </p>
       </div>
@@ -57,6 +63,7 @@ export default function RegisterPage() {
             type="text"
             required
             autoFocus
+            aria-label="Business Name"
             placeholder="Business Name"
             className="w-full h-11 pl-11 pr-4 rounded-xl bg-slate-900/70 border border-slate-700/80 hover:border-slate-500 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/25 text-white placeholder:text-slate-400 text-sm outline-none transition-all"
           />
@@ -69,6 +76,7 @@ export default function RegisterPage() {
             name="ownerName"
             type="text"
             required
+            aria-label="Your Name (Owner / Manager)"
             placeholder="Your Name (Owner / Manager)"
             className="w-full h-11 pl-11 pr-4 rounded-xl bg-slate-900/70 border border-slate-700/80 hover:border-slate-500 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/25 text-white placeholder:text-slate-400 text-sm outline-none transition-all"
           />
@@ -82,6 +90,7 @@ export default function RegisterPage() {
               name="phone"
               type="tel"
               required
+              aria-label="Mobile Number"
               placeholder="Mobile Number"
               className="w-full h-11 pl-10 pr-3 rounded-xl bg-slate-900/70 border border-slate-700/80 hover:border-slate-500 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/25 text-white placeholder:text-slate-400 text-sm outline-none transition-all"
             />
@@ -94,23 +103,32 @@ export default function RegisterPage() {
               name="email"
               type="email"
               required
+              aria-label="Email"
               placeholder="Email"
               className="w-full h-11 pl-10 pr-3 rounded-xl bg-slate-900/70 border border-slate-700/80 hover:border-slate-500 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/25 text-white placeholder:text-slate-400 text-sm outline-none transition-all"
             />
           </div>
         </div>
 
-        <div className="relative">
-          <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4.5 text-slate-400 pointer-events-none" />
-          <input
-            id="password"
-            name="password"
-            type="password"
-            required
-            minLength={6}
-            placeholder="Password (min 6 chars)"
-            className="w-full h-11 pl-11 pr-4 rounded-xl bg-slate-900/70 border border-slate-700/80 hover:border-slate-500 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/25 text-white placeholder:text-slate-400 text-sm outline-none transition-all"
-          />
+        <div className="flex flex-col gap-1">
+          <div className="relative">
+            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4.5 text-slate-400 pointer-events-none" />
+            <input
+              id="password"
+              name="password"
+              type="password"
+              required
+              minLength={PASSWORD_MIN_LENGTH}
+              autoComplete="new-password"
+              aria-label="Password"
+              placeholder={`Password (min ${PASSWORD_MIN_LENGTH} chars)`}
+              aria-describedby="password-rules"
+              className="w-full h-11 pl-11 pr-4 rounded-xl bg-slate-900/70 border border-slate-700/80 hover:border-slate-500 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/25 text-white placeholder:text-slate-400 text-sm outline-none transition-all"
+            />
+          </div>
+          <p id="password-rules" className="px-1 text-[11px] text-slate-200">
+            {PASSWORD_RULES_HINT}
+          </p>
         </div>
 
         <div className="relative">
@@ -120,13 +138,14 @@ export default function RegisterPage() {
             name="businessCode"
             type="text"
             maxLength={20}
+            aria-label="Business Code (Optional)"
             placeholder="Business Code (Optional)"
             className="w-full h-11 pl-11 pr-4 rounded-xl bg-slate-900/70 border border-slate-700/80 hover:border-slate-500 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/25 text-white placeholder:text-slate-400 text-sm uppercase outline-none transition-all"
           />
         </div>
 
         {error && (
-          <div className="rounded-xl bg-red-500/20 border border-red-500/40 px-3 py-2 text-xs font-medium text-red-200">
+          <div role="alert" className="rounded-xl bg-red-500/20 border border-red-500/40 px-3 py-2 text-xs font-medium text-red-200">
             {error}
           </div>
         )}
@@ -146,7 +165,7 @@ export default function RegisterPage() {
         </button>
       </form>
 
-      <p className="mt-4 text-center text-xs sm:text-sm text-slate-300/90">
+      <p className="mt-4 text-center text-xs sm:text-sm text-slate-200">
         Already have an account?{" "}
         <Link
           href="/login"

@@ -7,6 +7,7 @@ import { AlertTriangle, Pencil } from "lucide-react";
 import type { getExcavatorDetail } from "@/lib/services/excavators";
 import type { listSiteOptions } from "@/lib/services/sites";
 import { swrFetcher } from "@/lib/api-client";
+import type { Plain } from "@/lib/plain";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -21,8 +22,8 @@ import { SiteCard } from "./site-card";
 import { DeleteExcavatorButton } from "./delete-excavator-button";
 import Loading from "../../loading";
 
-type ExcavatorDetail = NonNullable<Awaited<ReturnType<typeof getExcavatorDetail>>>;
-type DetailData = { detail: ExcavatorDetail; siteOptions: Awaited<ReturnType<typeof listSiteOptions>> };
+type ExcavatorDetail = Plain<NonNullable<Awaited<ReturnType<typeof getExcavatorDetail>>>>;
+type DetailData = { detail: ExcavatorDetail; siteOptions: Plain<Awaited<ReturnType<typeof listSiteOptions>>> };
 
 export default function ExcavatorDetailPage() {
   const searchParams = useSearchParams();

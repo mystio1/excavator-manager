@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import type { BillPreviewData } from "@/components/bill/bill-preview";
-import type { listBills } from "@/lib/services/bills";
+import type { BillListRow } from "@/lib/services/bills";
+import { dec, lineAmount, sum } from "@/lib/money";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/dates";
 import { amountInWords } from "@/lib/utils/numberToWords";
@@ -213,8 +214,9 @@ export function buildBillWorkbook(bill: BillPreviewData): ExcelJS.Workbook {
   row++;
 
   const isDirect = bill.isDirect === true;
-  const bucketAmount = (bill.bucketHours ?? 0) * (bill.bucketRate ?? 0);
-  const breakerAmount = (bill.breakerHours ?? 0) * (bill.breakerRate ?? 0);
+  // Hours × rate in exact decimals (rounded to paise like the stored subtotal).
+  const bucketAmount = lineAmount(bill.bucketHours, bill.bucketRate).toNumber();
+  const breakerAmount = lineAmount(bill.breakerHours, bill.breakerRate).toNumber();
 
   const writeItemRow = (
     values: [number, unknown, "left" | "right"][],
@@ -391,7 +393,7 @@ export function buildBillWorkbook(bill: BillPreviewData): ExcelJS.Workbook {
   return workbook;
 }
 
-type RegisterRow = Awaited<ReturnType<typeof listBills>>[number];
+type RegisterRow = BillListRow;
 
 const REGISTER_HEADERS = ["Bill No.", "Date", "Customer", "Type", "Site(s)", "Total", "Paid", "Pending", "Status"];
 const REGISTER_LAST_COL = REGISTER_HEADERS.length;
@@ -401,7 +403,7 @@ const REGISTER_LAST_COL = REGISTER_HEADERS.length;
  * an accountant instead of downloading every bill individually. */
 export function buildBillsRegisterWorkbook(
   bills: RegisterRow[],
-  meta: { businessName: string; from?: string; to?: string },
+  meta: { businessName: string; from?: string; to?: string; truncatedAt?: number },
 ): ExcelJS.Workbook {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = meta.businessName;
@@ -438,6 +440,14 @@ export function buildBillsRegisterWorkbook(
   subtitleCell.value = `${range} — generated ${formatDate(new Date())}`;
   subtitleCell.font = { italic: true, size: 10, color: { argb: MUTED } };
 
+  if (meta.truncatedAt) {
+    // A partial register must never look complete.
+    sheet.mergeCells(3, 1, 3, REGISTER_LAST_COL);
+    const notice = sheet.getCell(3, 1);
+    notice.value = `INCOMPLETE: only the first ${meta.truncatedAt} bills are listed. Narrow the date range or filters and export again.`;
+    notice.font = { bold: true, size: 10, color: { argb: "FFB91C1C" } };
+  }
+
   const headerRow = 4;
   REGISTER_HEADERS.forEach((h, i) => {
     const cell = sheet.getCell(headerRow, i + 1);
@@ -449,13 +459,9 @@ export function buildBillsRegisterWorkbook(
   });
 
   let row = headerRow + 1;
-  let totalAmount = 0;
-  let totalPaid = 0;
 
   bills.forEach((bill, i) => {
-    const pending = bill.totalAmount - bill.paidAmount;
-    totalAmount += bill.totalAmount;
-    totalPaid += bill.paidAmount;
+    const pending = dec(bill.totalAmount).minus(bill.paidAmount);
     const sites = [...new Set(bill.items.map((item) => item.siteName))].join(", ");
     const bg = i % 2 === 0 ? "FFFFFFFF" : "FFF8FAFC";
 
@@ -465,9 +471,9 @@ export function buildBillsRegisterWorkbook(
       [3, bill.customer.companyName ? `${bill.customer.name} (${bill.customer.companyName})` : bill.customer.name, "left"],
       [4, bill.billType === "GST" ? "GST" : "Non-GST", "left"],
       [5, sites || "—", "left"],
-      [6, formatCurrency(bill.totalAmount), "right"],
-      [7, formatCurrency(bill.paidAmount), "right"],
-      [8, formatCurrency(pending), "right"],
+      [6, formatCurrency(bill.totalAmount.toNumber()), "right"],
+      [7, formatCurrency(bill.paidAmount.toNumber()), "right"],
+      [8, formatCurrency(pending.toNumber()), "right"],
       [9, bill.status, "right"],
     ];
     values.forEach(([col, value, align]) => {
@@ -476,7 +482,7 @@ export function buildBillsRegisterWorkbook(
       cell.alignment = { horizontal: align, vertical: "top" };
       cell.fill = solidFill(bg);
       cell.border = thinBorder();
-      if (col === 8 && pending > 0.01) cell.font = { color: { argb: RED } };
+      if (col === 8 && pending.gt("0.01")) cell.font = { color: { argb: RED } };
       if (col === 9) {
         cell.font = { color: { argb: bill.status === "PAID" ? "FF15803D" : bill.status === "PARTIAL" ? "FFA16207" : RED } };
       }
@@ -491,10 +497,13 @@ export function buildBillsRegisterWorkbook(
   totalLabelCell.font = { bold: true };
   totalLabelCell.alignment = { horizontal: "right" };
 
+  // Column totals are exact decimal sums (never a running float total).
+  const totalAmount = sum(bills.map((b) => b.totalAmount));
+  const totalPaid = sum(bills.map((b) => b.paidAmount));
   const summaryCells: [number, string, string?][] = [
-    [6, formatCurrency(totalAmount)],
-    [7, formatCurrency(totalPaid)],
-    [8, formatCurrency(totalAmount - totalPaid), RED],
+    [6, formatCurrency(totalAmount.toNumber())],
+    [7, formatCurrency(totalPaid.toNumber())],
+    [8, formatCurrency(totalAmount.minus(totalPaid).toNumber()), RED],
   ];
   summaryCells.forEach(([col, value, color]) => {
     const cell = sheet.getCell(row, col);

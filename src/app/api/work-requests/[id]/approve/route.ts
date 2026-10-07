@@ -1,20 +1,18 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
+import { failureResponse } from "@/lib/api-error";
 import { approveWorkRequest } from "@/lib/services/operatorWorkRequests";
-import { approveWorkRequestSchema } from "@/lib/validation/operatorWorkRequest";
+import { approveWorkRequestBodySchema } from "@/lib/validation/operatorWorkRequest";
+import { json, parseBody, withApi } from "@/lib/with-api";
 
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export const POST = withApi("workRequest.approve", async (req, { params }: { params: Promise<{ id: string }> }) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { id } = await params;
 
-  const parsed = approveWorkRequestSchema.safeParse({ ...(await req.json()), requestId: id });
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
+  // The request always comes from the URL, never the body.
+  const body = await parseBody(req, approveWorkRequestBodySchema);
+  const result = await approveWorkRequest(auth.session.businessId, auth.actor, { ...body, requestId: id });
+  if ("error" in result) return failureResponse(result);
 
-  const result = await approveWorkRequest(auth.session.businessId, parsed.data);
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
-
-  return NextResponse.json(result);
-}
+  return json(result);
+});

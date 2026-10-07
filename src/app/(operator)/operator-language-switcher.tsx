@@ -26,15 +26,17 @@ export function OperatorLanguageSwitcher({ lang }: { lang: OperatorLang }) {
   }
 
   return (
-    <div className={cn("mb-1 flex justify-center gap-1.5", pending && "opacity-60")}>
+    <div role="group" aria-label="Language" className={cn("mb-1 flex justify-center gap-1.5", pending && "opacity-60")}>
       {OPERATOR_LANGUAGES.map((l) => (
         <button
           key={l.id}
           type="button"
           disabled={pending}
+          lang={l.id}
+          aria-pressed={lang === l.id}
           onClick={() => choose(l.id)}
           className={cn(
-            "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
+            "min-h-8 rounded-full px-3 py-1 text-xs font-semibold transition-colors",
             lang === l.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
           )}
         >

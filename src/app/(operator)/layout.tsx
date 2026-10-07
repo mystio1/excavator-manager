@@ -26,18 +26,19 @@ export default function OperatorLayout({ children }: { children: React.ReactNode
 
   if (!data) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+      <div role="status" className="flex min-h-screen flex-col items-center justify-center gap-4">
+        <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary-text">
           <ExcavatorLogo animated className="size-9" />
         </div>
+        <span className="sr-only">Loading…</span>
       </div>
     );
   }
 
   if (data.frozen) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
+        <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary-text">
           <Snowflake className="size-9" />
         </div>
         <h1 className="text-xl font-bold">Account Temporarily Frozen</h1>
@@ -47,7 +48,7 @@ export default function OperatorLayout({ children }: { children: React.ReactNode
         <Button onClick={logout} disabled={pending} variant="secondary">
           {pending ? "Logging out..." : "Log Out"}
         </Button>
-      </div>
+      </main>
     );
   }
 

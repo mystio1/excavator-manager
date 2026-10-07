@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
 import { listSiteAnalysisReadings } from "@/lib/services/operatorWorkRequests";
 import { listSiteOptions } from "@/lib/services/sites";
 import { listCustomerOptions } from "@/lib/services/customers";
+import { json, withApi } from "@/lib/with-api";
 
-export async function GET() {
+export const GET = withApi("site-analysis.get", async () => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { businessId } = auth.session;
@@ -15,5 +15,5 @@ export async function GET() {
     listCustomerOptions(businessId),
   ]);
 
-  return NextResponse.json({ readings, siteOptions, customerOptions });
-}
+  return json({ readings, siteOptions, customerOptions });
+});

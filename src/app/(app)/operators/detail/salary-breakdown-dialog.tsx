@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { Info } from "lucide-react";
+import type { Plain } from "@/lib/plain";
 import type { getLifetimeSalarySummary } from "@/lib/services/salary";
 import { formatCurrency, formatCurrencyPrecise } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/dates";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
-type LifetimeSalary = Awaited<ReturnType<typeof getLifetimeSalarySummary>>;
+type LifetimeSalary = Plain<Awaited<ReturnType<typeof getLifetimeSalarySummary>>>;
 
 /** Shows the exact arithmetic behind the Overview tab's "Since Joining"
  * numbers — every figure here comes straight from getLifetimeSalarySummary,
@@ -20,7 +21,7 @@ export function SalaryBreakdownDialog({ lifetimeSalary }: { lifetimeSalary: Life
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm" variant="ghost" className="self-start text-primary" />}>
+      <DialogTrigger render={<Button size="sm" variant="ghost" className="self-start text-primary-text" />}>
         <Info className="size-4" />
         Detail
       </DialogTrigger>

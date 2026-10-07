@@ -20,6 +20,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+import { todayLocal } from "@/lib/utils/dates";
 type CatalogItem = { id: string; name: string; category: string };
 type PrevItem = { serviceItemId: string; name: string; category: string; action: string; notes: string | null };
 type Row = { checked: boolean; action: string; cost: string; brand: string; notes: string };
@@ -43,7 +44,7 @@ export function AddServiceDialog({
 }) {
   const { mutate } = useSWRConfig();
   const [open, setOpen] = useState(false);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   const [catalog, setCatalog] = useState<CatalogItem[]>(initialCatalog);
   const flaggedIds = useMemo(() => new Set(flagged.map((f) => f.serviceItemId)), [flagged]);
@@ -122,12 +123,12 @@ export function AddServiceDialog({
           <form id="add-service-form" onSubmit={onSubmit} className="contents">
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
-              <Label className="text-sm">Service Date</Label>
-              <Input name="serviceDate" type="date" defaultValue={today} required className="h-11" />
+              <Label htmlFor="serviceDate" className="text-sm">Service Date</Label>
+              <Input id="serviceDate" name="serviceDate" type="date" defaultValue={today} required className="h-11" />
             </div>
             <div className="flex flex-col gap-2">
-              <Label className="text-sm">Machine Hours</Label>
-              <Input
+              <Label htmlFor="hourMeterAtService" className="text-sm">Machine Hours</Label>
+              <Input id="hourMeterAtService"
                 name="hourMeterAtService"
                 type="number"
                 step="0.1"
@@ -220,6 +221,7 @@ export function AddServiceDialog({
                         {row.checked && (
                           <div className="mt-2 grid grid-cols-2 gap-2 pl-6.5">
                             <NativeSelect
+                              aria-label={`Action for ${item.name}`}
                               value={row.action}
                               onChange={(e) => updateRow(item.id, { action: e.target.value })}
                               className="h-10 text-sm"
@@ -234,18 +236,21 @@ export function AddServiceDialog({
                               type="number"
                               min="0"
                               placeholder="Cost"
+                              aria-label={`Cost for ${item.name}`}
                               value={row.cost}
                               onChange={(e) => updateRow(item.id, { cost: e.target.value })}
                               className="h-10 text-sm"
                             />
                             <Input
                               placeholder="Brand (optional)"
+                              aria-label={`Brand for ${item.name}`}
                               value={row.brand}
                               onChange={(e) => updateRow(item.id, { brand: e.target.value })}
                               className="h-10 text-sm"
                             />
                             <Input
                               placeholder="Notes (optional)"
+                              aria-label={`Notes for ${item.name}`}
                               value={row.notes}
                               onChange={(e) => updateRow(item.id, { notes: e.target.value })}
                               className="h-10 text-sm"
@@ -268,7 +273,7 @@ export function AddServiceDialog({
             }}
           />
 
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
           <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
             <Button
@@ -313,7 +318,7 @@ function AddComponentInline({
       <button
         type="button"
         onClick={() => setShow(true)}
-        className="flex items-center gap-1.5 self-start text-sm font-semibold text-primary"
+        className="flex items-center gap-1.5 self-start text-sm font-semibold text-primary-text"
       >
         <Plus className="size-4" />
         Add New Component
@@ -325,8 +330,8 @@ function AddComponentInline({
     <div className="flex flex-col gap-2 rounded-lg border border-dashed p-3">
       <form onSubmit={onSubmit} className="flex flex-col gap-2">
         <div className="grid grid-cols-2 gap-2">
-          <Input name="name" placeholder="Component name" className="h-10 text-sm" />
-          <NativeSelect name="category" defaultValue="Other" className="h-10 text-sm">
+          <Input name="name" placeholder="Component name" aria-label="Component name" className="h-10 text-sm" />
+          <NativeSelect name="category" aria-label="Component category" defaultValue="Other" className="h-10 text-sm">
             {COMPONENT_CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -343,7 +348,7 @@ function AddComponentInline({
           </Button>
         </div>
       </form>
-      {error && <p className="text-xs font-medium text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-xs font-medium text-destructive">{error}</p>}
     </div>
   );
 }

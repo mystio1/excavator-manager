@@ -31,7 +31,10 @@ export function AlertBanner({ alerts }: { alerts: Alert[] }) {
             >
               <Icon className="size-4 shrink-0" />
             </span>
-            <span className="flex-1">{alert.message}</span>
+            <span className="flex-1">
+              <span className="sr-only">{alert.level === "danger" ? "Urgent: " : "Reminder: "}</span>
+              {alert.message}
+            </span>
             <ChevronRight className="size-4 shrink-0 opacity-60" />
           </Link>
         );

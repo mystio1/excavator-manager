@@ -1,20 +1,17 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
+import { failureResponse } from "@/lib/api-error";
 import { rejectWorkRequest } from "@/lib/services/operatorWorkRequests";
-import { rejectWorkRequestSchema } from "@/lib/validation/operatorWorkRequest";
+import { rejectWorkRequestBodySchema } from "@/lib/validation/operatorWorkRequest";
+import { json, parseBody, withApi } from "@/lib/with-api";
 
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export const POST = withApi("workRequest.reject", async (req, { params }: { params: Promise<{ id: string }> }) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { id } = await params;
 
-  const parsed = rejectWorkRequestSchema.safeParse({ ...(await req.json()), requestId: id });
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
+  const body = await parseBody(req, rejectWorkRequestBodySchema);
+  const result = await rejectWorkRequest(auth.session.businessId, auth.actor, { ...body, requestId: id });
+  if ("error" in result) return failureResponse(result);
 
-  const result = await rejectWorkRequest(auth.session.businessId, parsed.data);
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
-
-  return NextResponse.json(result);
-}
+  return json(result);
+});

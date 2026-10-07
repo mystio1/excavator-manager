@@ -2,8 +2,8 @@
 // APK. Runs in the same repo as the live Render deployment, so it has to
 // temporarily remove the two things static export can't contain — the API
 // Route Handlers (they read the request/cookies, which `output: "export"`
-// doesn't support) and proxy.ts (Proxy/middleware isn't supported by static
-// export either) — then restore them no matter how the build turns out, so
+// doesn't support), proxy.ts (Proxy/middleware isn't supported by static
+// export either) and instrumentation.ts (a server-side hook) — then restore them no matter how the build turns out, so
 // the working tree is never left half-modified.
 import { existsSync } from "node:fs";
 import { cp, rm } from "node:fs/promises";
@@ -12,6 +12,8 @@ import { spawn } from "node:child_process";
 const MOVES = [
   ["src/app/api", "src/app/_api.android-build-excluded"],
   ["src/proxy.ts", "src/proxy.ts.android-build-excluded"],
+  // Server-only hooks (request error logging) — meaningless in a static bundle.
+  ["src/instrumentation.ts", "src/instrumentation.ts.android-build-excluded"],
 ];
 
 // Plain rename() fails with EPERM on Windows while `next dev` is running

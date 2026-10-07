@@ -116,8 +116,8 @@ export function BusinessProfileForm({
               />
             </div>
           </div>
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
-          {success && !error && <p className="text-sm font-medium text-working">Saved.</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
+          {success && !error && <p role="status" className="text-sm font-medium text-working">Saved.</p>}
           <Button type="submit" size="lg" className="h-11 self-start" disabled={pending}>
             {pending ? "Saving..." : "Save Business Profile"}
           </Button>

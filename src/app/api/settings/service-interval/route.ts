@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
 import { db } from "@/lib/db";
+import { json, withApi } from "@/lib/with-api";
 
 /** Just the one field the Edit Machine form needs as a placeholder — not
  * the full settings page, which has its own richer endpoint. */
-export async function GET() {
+export const GET = withApi("settings.service-interval", async () => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
 
@@ -12,5 +12,5 @@ export async function GET() {
     where: { id: auth.session.businessId },
     select: { defaultServiceIntervalHrs: true },
   });
-  return NextResponse.json(business);
-}
+  return json(business);
+});

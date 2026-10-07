@@ -1,19 +1,16 @@
-import { NextResponse } from "next/server";
 import { requireOperatorApi } from "@/lib/api-auth";
+import { failureResponse } from "@/lib/api-error";
 import { endOperatorWork } from "@/lib/services/operatorWorkRequests";
 import { endOperatorWorkSchema } from "@/lib/validation/operatorWorkRequest";
+import { json, parseBody, withApi } from "@/lib/with-api";
 
-export async function POST(req: Request) {
+export const POST = withApi("operator.work.end", async (req) => {
   const auth = await requireOperatorApi();
   if (auth.error) return auth.error;
 
-  const parsed = endOperatorWorkSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
+  const input = await parseBody(req, endOperatorWorkSchema);
+  const result = await endOperatorWork(auth.session.businessId, auth.session.operatorId, auth.actor, input);
+  if ("error" in result) return failureResponse(result);
 
-  const result = await endOperatorWork(auth.session.operatorId, parsed.data);
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
-
-  return NextResponse.json(result);
-}
+  return json(result);
+});

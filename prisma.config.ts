@@ -6,10 +6,15 @@ import { defineConfig } from "prisma/config";
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
-    path: "prisma/migrations",
+    path: process.env.PRISMA_MIGRATIONS_PATH ?? "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // The Prisma CLI (migrate deploy / validate / generate) may run as a different,
+    // more privileged database role than the running app: set MIGRATE_DATABASE_URL
+    // to the schema-owner connection (Render's pre-deploy command) and keep
+    // DATABASE_URL on a DML-only role. Unset, both use DATABASE_URL — nothing
+    // changes. The app itself never reads MIGRATE_DATABASE_URL (src/lib/db.ts).
+    url: process.env["MIGRATE_DATABASE_URL"] || process.env["DATABASE_URL"],
     // Only needed by `prisma migrate dev` (creates/drops a scratch DB to
     // detect drift) — `migrate deploy`, used in CI/Render, doesn't touch this.
     shadowDatabaseUrl: process.env["SHADOW_DATABASE_URL"],

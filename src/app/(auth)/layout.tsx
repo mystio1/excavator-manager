@@ -37,7 +37,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="relative min-h-screen lg:h-screen w-full flex flex-col justify-between overflow-x-hidden lg:overflow-hidden text-white select-none">
       {/* Background Images - Ultra Sharp with Soft, Cinematic Cross-Fade */}
-      <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+      <div aria-hidden="true" className="fixed inset-0 -z-10 overflow-hidden">
         {/* Day Background */}
         <div
           className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
@@ -46,7 +46,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         >
           <Image
             src="/login-bg.jpg"
-            alt="Excavator quarry landscape daytime"
+            alt=""
             fill
             priority
             unoptimized
@@ -72,7 +72,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         >
           <Image
             src="/login-bg-night.jpg"
-            alt="Excavator quarry landscape nighttime"
+            alt=""
             fill
             priority
             unoptimized
@@ -105,14 +105,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
         {/* Soft Sliding Theme Switch Capsule Pill */}
         <div
-          onClick={() => toggleTheme(!isDark)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") toggleTheme(!isDark);
-          }}
-          aria-label="Toggle light or dark theme"
-          className="relative flex items-center bg-slate-900/70 backdrop-blur-md border border-white/30 rounded-full p-1 shadow-xl w-[70px] h-9 cursor-pointer"
+          role="group"
+          aria-label="Theme"
+          className="relative flex items-center bg-slate-900/70 backdrop-blur-md border border-white/30 rounded-full p-1 shadow-xl w-[70px] h-9"
         >
           {/* Smooth Sliding Yellow Indicator */}
           <div
@@ -124,11 +119,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           {/* Sun Icon (Day) */}
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleTheme(false);
-            }}
+            onClick={() => toggleTheme(false)}
             aria-label="Light mode"
+            aria-pressed={!isDark}
             className={`relative z-10 flex items-center justify-center size-7 rounded-full transition-colors duration-300 ${
               !isDark ? "text-black font-bold" : "text-slate-300 hover:text-white"
             }`}
@@ -139,11 +132,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           {/* Moon Icon (Night) */}
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleTheme(true);
-            }}
+            onClick={() => toggleTheme(true)}
             aria-label="Dark mode"
+            aria-pressed={isDark}
             className={`relative z-10 flex items-center justify-center size-7 rounded-full transition-colors duration-300 ${
               isDark ? "text-black font-bold" : "text-slate-300 hover:text-white"
             }`}

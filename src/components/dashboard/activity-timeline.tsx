@@ -13,7 +13,7 @@ const ICONS = {
 const ICON_CLASS = {
   "work-started": "bg-working/15 text-working",
   "work-stopped": "bg-muted text-muted-foreground",
-  bill: "bg-primary/10 text-primary",
+  bill: "bg-primary/10 text-primary-text",
   payment: "bg-working/15 text-working",
 } as const;
 

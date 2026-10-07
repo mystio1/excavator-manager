@@ -17,8 +17,10 @@ export type DownloadProgress = {
  * browsers and via the Cloudflare tunnel).
  */
 export interface UpdateInstallerPlugin {
-  /** Streams the APK to app-private storage, verifying its SHA-256 if `expectedSha256` is given. */
-  downloadApk(options: { url: string; expectedSha256?: string }): Promise<{ path: string }>;
+  /** Streams the APK to app-private storage and verifies its SHA-256. The checksum is
+   * mandatory (the native plugin refuses a download without one) and the URL must be an
+   * HTTPS GitHub release asset. */
+  downloadApk(options: { url: string; expectedSha256: string }): Promise<{ path: string }>;
   /** Launches Android's own package-installer confirmation screen for a downloaded APK. */
   installApk(options: { path: string }): Promise<{ started: boolean }>;
   /** Whether this app currently has the "install unknown apps" permission (always true below Android 8). */

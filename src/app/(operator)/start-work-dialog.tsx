@@ -127,7 +127,7 @@ export function StartWorkDialog({
             <Textarea id="notes" name="notes" placeholder={t("startWork.notePlaceholder")} className="min-h-20" />
           </div>
 
-          {error && <p className="text-sm font-medium text-destructive">{otMsg(lang, error)}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{otMsg(lang, error)}</p>}
 
           <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
             <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>

@@ -30,14 +30,14 @@ export function AppLockScreen({ onUnlocked }: { onUnlocked: () => void }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6">
-      <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-6">
+      <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary-text">
         <ExcavatorLogo className="size-9" />
       </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-xl">
-            <LockKeyhole className="size-5 text-primary" />
+          <CardTitle role="heading" aria-level={1} className="flex items-center gap-2 text-xl">
+            <LockKeyhole className="size-5 text-primary-text" />
             Enter PIN
           </CardTitle>
         </CardHeader>
@@ -57,7 +57,7 @@ export function AppLockScreen({ onUnlocked }: { onUnlocked: () => void }) {
                 className="h-12 text-base"
               />
             </div>
-            {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
             <Button type="submit" size="lg" className="h-12 text-base" disabled={pending}>
               {pending ? "Checking..." : "Unlock"}
             </Button>
@@ -66,12 +66,12 @@ export function AppLockScreen({ onUnlocked }: { onUnlocked: () => void }) {
             type="button"
             onClick={logout}
             disabled={loggingOut}
-            className="mt-4 w-full text-center text-sm font-medium text-muted-foreground underline underline-offset-4"
+            className="mt-4 min-h-8 w-full text-center text-sm font-medium text-muted-foreground underline underline-offset-4"
           >
             {loggingOut ? "Logging out..." : "Forgot PIN? Log out"}
           </button>
         </CardContent>
       </Card>
-    </div>
+    </main>
   );
 }

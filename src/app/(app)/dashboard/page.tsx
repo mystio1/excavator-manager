@@ -21,6 +21,7 @@ import type {
   getRecentActivity,
   getTopCustomersByRevenue,
 } from "@/lib/services/dashboard";
+import type { Plain } from "@/lib/plain";
 import { swrFetcher } from "@/lib/api-client";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/currency";
 import { SummaryCard } from "@/components/dashboard/summary-card";
@@ -32,21 +33,22 @@ import { PaymentCollectionStatus } from "@/components/dashboard/payment-collecti
 import { TopCustomers } from "@/components/dashboard/top-customers";
 import { RecentActivityCard } from "@/components/dashboard/recent-activity-card";
 import { SectionTitle } from "@/components/dashboard/section-title";
+import { usePageTitle } from "@/components/page-title";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import Loading from "../loading";
 
-type Summary = Awaited<ReturnType<typeof getDashboardSummary>>;
+type Summary = Plain<Awaited<ReturnType<typeof getDashboardSummary>>>;
 type DashboardData = {
   cards: Summary["cards"];
   alerts: Summary["alerts"];
   ownerName: Summary["ownerName"];
-  hoursTrend: Awaited<ReturnType<typeof getMonthlyHoursTrend>>;
-  revenueTrend: Awaited<ReturnType<typeof getMonthlyRevenueTrend>>;
-  activity: Awaited<ReturnType<typeof getRecentActivity>>;
-  machineHours: Awaited<ReturnType<typeof getMachineHoursDetail>>;
-  paymentCollection: Awaited<ReturnType<typeof getPaymentCollectionStatus>>;
-  profit: Awaited<ReturnType<typeof getProfitOverview>>;
-  topCustomers: Awaited<ReturnType<typeof getTopCustomersByRevenue>>;
+  hoursTrend: Plain<Awaited<ReturnType<typeof getMonthlyHoursTrend>>>;
+  revenueTrend: Plain<Awaited<ReturnType<typeof getMonthlyRevenueTrend>>>;
+  activity: Plain<Awaited<ReturnType<typeof getRecentActivity>>>;
+  machineHours: Plain<Awaited<ReturnType<typeof getMachineHoursDetail>>>;
+  paymentCollection: Plain<Awaited<ReturnType<typeof getPaymentCollectionStatus>>>;
+  profit: Plain<Awaited<ReturnType<typeof getProfitOverview>>>;
+  topCustomers: Plain<Awaited<ReturnType<typeof getTopCustomersByRevenue>>>;
 };
 
 function greeting() {
@@ -61,6 +63,7 @@ export default function DashboardPage() {
   // call (no server-side cache), so there's no reason to hold onto a client
   // copy longer than SWR's own short default dedup window.
   const { data } = useSWR<DashboardData>("/api/dashboard", swrFetcher);
+  usePageTitle("Dashboard");
 
   if (!data) return <Loading />;
 
@@ -72,8 +75,8 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-6 px-4 py-5 md:px-8 md:py-8">
       {/* Greeting */}
       <div className="animate-fade-in-up">
-        <h1 className="bg-gradient-to-r from-primary to-golden bg-clip-text text-3xl font-extrabold tracking-tight text-transparent sm:text-4xl">
-          {greeting()}, {firstName} 👋
+        <h1 className="bg-gradient-to-r from-primary-text to-[#c2710a] bg-clip-text text-3xl dark:from-primary dark:to-golden font-extrabold tracking-tight text-transparent sm:text-4xl">
+          {greeting()}, {firstName} <span aria-hidden="true">👋</span>
         </h1>
         <p className="mt-1 text-sm text-muted-foreground sm:text-base">
           Here&rsquo;s what&rsquo;s happening with your excavator business today.

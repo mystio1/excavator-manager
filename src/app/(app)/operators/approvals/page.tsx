@@ -6,7 +6,9 @@ import { CheckCircle2 } from "lucide-react";
 import type { listPendingLogs } from "@/lib/services/workSessions";
 import type { listPendingWorkRequests } from "@/lib/services/operatorWorkRequests";
 import type { listCustomerOptions } from "@/lib/services/customers";
+import type { listPendingJoinRequests } from "@/lib/services/operators";
 import { apiFetch, swrFetcher } from "@/lib/api-client";
+import type { Plain } from "@/lib/plain";
 import { ApproveWorkRequestDialog } from "../../excavators/detail/approve-work-request-dialog";
 import { RejectWorkRequestDialog } from "../../excavators/detail/reject-work-request-dialog";
 import { PageHeader } from "@/components/page-header";
@@ -14,22 +16,32 @@ import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/empty-state";
 import { formatDate, formatDateTime } from "@/lib/utils/dates";
 import { formatHours } from "@/lib/utils/hours";
+import { JoinRequestCard } from "./join-request-card";
 import Loading from "../../loading";
 
 type ApprovalsData = {
-  logs: Awaited<ReturnType<typeof listPendingLogs>>;
-  workRequests: Awaited<ReturnType<typeof listPendingWorkRequests>>;
-  customers: Awaited<ReturnType<typeof listCustomerOptions>>;
+  logs: Plain<Awaited<ReturnType<typeof listPendingLogs>>>;
+  workRequests: Plain<Awaited<ReturnType<typeof listPendingWorkRequests>>>;
+  customers: Plain<Awaited<ReturnType<typeof listCustomerOptions>>>;
+  // Absent from an older server's response.
+  joinRequests?: Plain<Awaited<ReturnType<typeof listPendingJoinRequests>>>;
 };
 
-function LogApproveReject({ logId }: { logId: string }) {
+function LogApproveReject({ logId, version }: { logId: string; version: number }) {
   const { mutate } = useSWRConfig();
   const [pending, setPending] = useState<"approve" | "reject" | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function respond(action: "approve" | "reject") {
     setPending(action);
+    setError(null);
     try {
-      await apiFetch(`/api/daily-logs/${logId}/${action}`, { method: "POST" });
+      // expectedVersion turns a double review / concurrent edit into a clear
+      // 409 instead of a silent success.
+      await apiFetch(`/api/daily-logs/${logId}/${action}?expectedVersion=${version}`, { method: "POST" });
+      await mutate("/api/approvals");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update this reading");
       await mutate("/api/approvals");
     } finally {
       setPending(null);
@@ -37,23 +49,30 @@ function LogApproveReject({ logId }: { logId: string }) {
   }
 
   return (
-    <div className="flex gap-2 pt-1">
-      <button
-        type="button"
-        disabled={pending !== null}
-        onClick={() => respond("approve")}
-        className="flex-1 rounded-lg bg-working py-2.5 text-sm font-semibold text-working-foreground disabled:opacity-60"
-      >
-        {pending === "approve" ? "Approving…" : "Approve"}
-      </button>
-      <button
-        type="button"
-        disabled={pending !== null}
-        onClick={() => respond("reject")}
-        className="flex-1 rounded-lg bg-destructive/10 py-2.5 text-sm font-semibold text-destructive disabled:opacity-60"
-      >
-        {pending === "reject" ? "Rejecting…" : "Reject"}
-      </button>
+    <div className="flex flex-col gap-2 pt-1">
+      {error && (
+        <p role="alert" className="text-sm font-medium text-destructive">
+          {error}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={pending !== null}
+          onClick={() => respond("approve")}
+          className="flex-1 rounded-lg bg-working py-2.5 text-sm font-semibold text-working-foreground disabled:opacity-60"
+        >
+          {pending === "approve" ? "Approving…" : "Approve"}
+        </button>
+        <button
+          type="button"
+          disabled={pending !== null}
+          onClick={() => respond("reject")}
+          className="flex-1 rounded-lg bg-destructive/10 py-2.5 text-sm font-semibold text-destructive disabled:opacity-60"
+        >
+          {pending === "reject" ? "Rejecting…" : "Reject"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -63,18 +82,22 @@ export default function PendingApprovalsPage() {
 
   if (!data) return <Loading />;
   const { logs, workRequests, customers } = data;
+  const joinRequests = data.joinRequests ?? [];
 
   return (
     <div>
       <PageHeader title="Pending Approvals" />
       <div className="flex flex-col gap-3 px-4 pb-6 md:px-8">
-        {logs.length === 0 && workRequests.length === 0 && (
+        {logs.length === 0 && workRequests.length === 0 && joinRequests.length === 0 && (
           <EmptyState
             icon={CheckCircle2}
             title="All Caught Up"
-            description="No operator-submitted readings or jobs are waiting for approval."
+            description="No operator join requests, readings or jobs are waiting for approval."
           />
         )}
+        {joinRequests.map((req) => (
+          <JoinRequestCard key={req.id} request={req} />
+        ))}
         {workRequests.map((req) => (
           <Card key={req.id} className="border-primary/40 bg-primary/5">
             <CardContent className="flex flex-col gap-2">
@@ -190,7 +213,7 @@ export default function PendingApprovalsPage() {
                   </>
                 )}
               </div>
-              <LogApproveReject logId={log.id} />
+              <LogApproveReject logId={log.id} version={log.version} />
             </CardContent>
           </Card>
         ))}

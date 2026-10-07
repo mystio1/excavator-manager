@@ -1,27 +1,39 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
+import { ApiHttpError, failureResponse } from "@/lib/api-error";
 import { archiveOperator, updateOperator } from "@/lib/services/operators";
-import { addOperatorSchema } from "@/lib/validation/operator";
+import { updateOperatorSchema } from "@/lib/validation/operator";
+import { json, parseBody, withApi } from "@/lib/with-api";
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+type Ctx = { params: Promise<{ id: string }> };
+
+export const PATCH = withApi("operators.update", async (req, { params }: Ctx) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { id } = await params;
 
-  const parsed = addOperatorSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
+  const input = await parseBody(req, updateOperatorSchema);
+  const result = await updateOperator(auth.session.businessId, auth.actor, id, input);
+  if ("error" in result) return failureResponse(result);
+  return json({ ok: true, version: result.version });
+});
+
+/** Soft-delete. Optional `?expectedVersion=` guards against archiving a record
+ * that changed since the caller loaded it (older apps omit it). */
+export const DELETE = withApi("operators.archive", async (req, { params }: Ctx) => {
+  const auth = await requireBusinessApi();
+  if (auth.error) return auth.error;
+  const { id } = await params;
+
+  const raw = new URL(req.url).searchParams.get("expectedVersion");
+  let expectedVersion: number | undefined;
+  if (raw !== null) {
+    expectedVersion = Number(raw);
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+      throw new ApiHttpError("BAD_REQUEST", "expectedVersion must be a non-negative integer");
+    }
   }
 
-  await updateOperator(auth.session.businessId, id, parsed.data);
-  return NextResponse.json({ ok: true });
-}
-
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireBusinessApi();
-  if (auth.error) return auth.error;
-  const { id } = await params;
-
-  await archiveOperator(auth.session.businessId, id);
-  return NextResponse.json({ ok: true });
-}
+  const result = await archiveOperator(auth.session.businessId, auth.actor, id, expectedVersion);
+  if ("error" in result) return failureResponse(result);
+  return json({ ok: true });
+});

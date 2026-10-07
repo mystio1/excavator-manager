@@ -1,17 +1,13 @@
-import { NextResponse } from "next/server";
 import { requireOperatorApi } from "@/lib/api-auth";
 import { updateOperatorOwnLanguage } from "@/lib/services/operators";
 import { operatorLanguageSchema } from "@/lib/validation/settings";
+import { json, parseBody, withApi } from "@/lib/with-api";
 
-export async function POST(req: Request) {
+export const POST = withApi("operator.language.update", async (req) => {
   const auth = await requireOperatorApi();
   if (auth.error) return auth.error;
 
-  const parsed = operatorLanguageSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
-
-  await updateOperatorOwnLanguage(auth.session.operatorId, parsed.data.operatorLanguage);
-  return NextResponse.json({ ok: true });
-}
+  const input = await parseBody(req, operatorLanguageSchema);
+  await updateOperatorOwnLanguage(auth.session.operatorId, input.operatorLanguage);
+  return json({ ok: true });
+});

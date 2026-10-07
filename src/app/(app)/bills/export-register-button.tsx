@@ -12,7 +12,7 @@ export function ExportRegisterButton({ query }: { query: string }) {
 
   if (isNative) {
     return (
-      <Button type="button" onClick={downloadNative} disabled={pending} size="lg" variant="secondary" className="h-11 px-2.5 sm:px-3">
+      <Button type="button" onClick={downloadNative} disabled={pending} size="lg" variant="secondary" className="h-11 px-2.5 text-amber-800 sm:px-3 dark:text-secondary-foreground">
         <FileSpreadsheet className="size-5" />
         <span className="hidden sm:inline">Export to Excel</span>
         <span className="sm:hidden">Excel</span>
@@ -21,7 +21,7 @@ export function ExportRegisterButton({ query }: { query: string }) {
   }
 
   return (
-    <Button render={<a href={href} download />} nativeButton={false} size="lg" variant="secondary" className="h-11 px-2.5 sm:px-3">
+    <Button render={<a href={href} download />} nativeButton={false} size="lg" variant="secondary" className="h-11 px-2.5 text-amber-800 sm:px-3 dark:text-secondary-foreground">
       <FileSpreadsheet className="size-5" />
       <span className="hidden sm:inline">Export to Excel</span>
       <span className="sm:hidden">Excel</span>

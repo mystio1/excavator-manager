@@ -16,8 +16,16 @@ export function ExactValueBadge({ exactValue }: { exactValue: string }) {
     function onDocClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
+    // Escape dismisses the pop-up without moving focus (WCAG 1.4.13).
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
     document.addEventListener("click", onDocClick);
-    return () => document.removeEventListener("click", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [open]);
 
   return (
@@ -30,12 +38,13 @@ export function ExactValueBadge({ exactValue }: { exactValue: string }) {
       <button
         type="button"
         aria-label={`Exact value: ${exactValue}`}
+        aria-expanded={open}
         onClick={(e) => {
           e.stopPropagation();
           e.preventDefault();
           setOpen((o) => !o);
         }}
-        className="flex items-center text-muted-foreground/70 hover:text-muted-foreground"
+        className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
       >
         <Info className="size-3.5" />
       </button>

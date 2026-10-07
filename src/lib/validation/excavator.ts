@@ -1,13 +1,20 @@
 import { z } from "zod";
+import { expectedVersionField } from "@/lib/validation/workSession";
+
+// "" is how an empty <input type="date"> arrives; anything else must parse.
+const optionalDate = z
+  .string()
+  .optional()
+  .refine((value) => !value || !Number.isNaN(Date.parse(value)), "Enter a valid purchase date");
 
 export const addExcavatorSchema = z.object({
   name: z.string().trim().min(1, "Enter a machine name"),
   machineNumber: z.string().trim().optional(),
   brand: z.string().trim().optional(),
   model: z.string().trim().optional(),
-  purchaseDate: z.string().optional(),
-  startingHourMeter: z.coerce.number().min(0, "Must be 0 or more"),
-  serviceIntervalHrs: z.coerce.number().min(1, "Must be greater than 0").optional(),
+  purchaseDate: optionalDate,
+  startingHourMeter: z.coerce.number().min(0, "Must be 0 or more").max(10_000_000),
+  serviceIntervalHrs: z.coerce.number().min(1, "Must be greater than 0").max(100_000).optional(),
 });
 
 export type AddExcavatorInput = z.infer<typeof addExcavatorSchema>;
@@ -16,7 +23,7 @@ export type AddExcavatorInput = z.infer<typeof addExcavatorSchema>;
 // anchors service-due math and work history, so it stays fixed.
 export const editExcavatorSchema = addExcavatorSchema
   .omit({ startingHourMeter: true })
-  .extend({ startingHourMeter: z.coerce.number().min(0).optional() });
+  .extend({ startingHourMeter: z.coerce.number().min(0).optional(), expectedVersion: expectedVersionField });
 
 export type EditExcavatorInput = z.infer<typeof editExcavatorSchema>;
 

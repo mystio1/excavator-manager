@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
 import {
   getDashboardSummary,
@@ -10,13 +9,15 @@ import {
   getRecentActivity,
   getTopCustomersByRevenue,
 } from "@/lib/services/dashboard";
+import { json, withApi } from "@/lib/with-api";
 
 const RECENT_ACTIVITY_LIMIT = 20;
 
 /** Backs the client-rendered dashboard page used by the Android bundled
  * build — same 8-way parallel batch the server-rendered web page fetches
- * directly, just returned as one JSON response instead of embedded in HTML. */
-export async function GET() {
+ * directly, just returned as one JSON response instead of embedded in HTML.
+ * Every total is summed exactly (Decimal) and sent as a plain number. */
+export const GET = withApi("dashboard.get", async () => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { businessId } = auth.session;
@@ -33,7 +34,7 @@ export async function GET() {
       getTopCustomersByRevenue(businessId),
     ]);
 
-  return NextResponse.json({
+  return json({
     cards: summary.cards,
     alerts: summary.alerts,
     ownerName: summary.ownerName,
@@ -45,4 +46,4 @@ export async function GET() {
     profit,
     topCustomers,
   });
-}
+});

@@ -1,29 +1,31 @@
-import { NextResponse } from "next/server";
-import { requestPasswordReset } from "@/lib/services/auth";
+import { after } from "next/server";
+import { enforceAuthLimits, forgotPasswordRules } from "@/lib/auth-throttle";
+import { clientIp } from "@/lib/rateLimit";
+import { requestPasswordResetQuietly } from "@/lib/services/auth";
+import { json, parseBody, withApi } from "@/lib/with-api";
 import { forgotPasswordSchema } from "@/lib/validation/auth";
 
-export async function POST(req: Request) {
-  const parsed = forgotPasswordSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Enter a valid email" }, { status: 400 });
-  }
-
+/** Runs `task` once the response has been sent. Outside a Next request scope
+ * (unit tests, scripts) `after()` is unavailable and the task just runs in the
+ * background instead. */
+function runAfterResponse(task: () => Promise<void>) {
   try {
-    // The reset link always points at whichever host the request actually
-    // came in on, same as the original Server Action's approach — works
-    // for a browser hitting this directly, and also correct for the
-    // Android app's cross-origin call, since the email link needs to open
-    // in a real browser either way, not inside the app's own WebView.
-    // x-forwarded-proto, not req.url's own protocol — Render terminates
-    // TLS and proxies internally over plain HTTP, so req.url would read
-    // "http:" even for a real https:// request without it.
-    const host = req.headers.get("host") ?? "localhost:3000";
-    const proto = req.headers.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-    const origin = `${proto}://${host}`;
-    await requestPasswordReset(parsed.data.email, origin);
-  } catch (err) {
-    console.error("Failed to send password reset email:", err);
+    after(task);
+  } catch {
+    void task();
   }
-
-  return NextResponse.json({ submitted: true });
 }
+
+export const POST = withApi("auth.forgotPassword", async (req) => {
+  const input = await parseBody(req, forgotPasswordSchema);
+  await enforceAuthLimits(forgotPasswordRules(clientIp(req), input.email));
+
+  // Identical response whether or not the email is registered — AND identical
+  // timing: the lookup, token write and email send all happen after the
+  // response has gone out, so nothing about how long this call took reveals
+  // whether an account exists. The link in the email is built from APP_URL
+  // (config), never from this request's Host header.
+  runAfterResponse(() => requestPasswordResetQuietly(input.email));
+
+  return json({ submitted: true });
+});

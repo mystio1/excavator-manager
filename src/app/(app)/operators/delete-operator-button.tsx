@@ -11,9 +11,11 @@ export function DeleteOperatorButton({ operatorId, operatorName }: { operatorId:
   const { mutate } = useSWRConfig();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleDelete() {
     setPending(true);
+    setError(null);
     try {
       await apiFetch(`/api/operators/${operatorId}`, { method: "DELETE" });
       setOpen(false);
@@ -21,13 +23,21 @@ export function DeleteOperatorButton({ operatorId, operatorName }: { operatorId:
       // request path) — the client-fetch analogue of the old
       // revalidatePath("/operators") in the Server Action this replaced.
       await mutate("/api/operators");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete this operator. Please try again.");
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setError(null);
+      }}
+    >
       <DialogTrigger
         render={
           <Button
@@ -49,6 +59,7 @@ export function DeleteOperatorButton({ operatorId, operatorName }: { operatorId:
           Deleting the operator will permanently remove them, along with their data, from your active operator
           list. This cannot be undone.
         </p>
+        {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
         <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
           <Button type="button" variant="destructive" size="lg" className="h-11 w-full" disabled={pending} onClick={handleDelete}>
             {pending ? <Loader2 className="size-4 animate-spin" /> : "Yes, Delete"}

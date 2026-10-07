@@ -5,6 +5,7 @@ import { MapPin } from "lucide-react";
 import type { listSiteAnalysisReadings } from "@/lib/services/operatorWorkRequests";
 import type { listSiteOptions } from "@/lib/services/sites";
 import type { listCustomerOptions } from "@/lib/services/customers";
+import type { Plain } from "@/lib/plain";
 import { swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
@@ -12,9 +13,9 @@ import { SiteAnalysisExplorer } from "./site-analysis-explorer";
 import Loading from "../loading";
 
 type SiteAnalysisData = {
-  readings: Awaited<ReturnType<typeof listSiteAnalysisReadings>>;
-  siteOptions: Awaited<ReturnType<typeof listSiteOptions>>;
-  customerOptions: Awaited<ReturnType<typeof listCustomerOptions>>;
+  readings: Plain<Awaited<ReturnType<typeof listSiteAnalysisReadings>>>;
+  siteOptions: Plain<Awaited<ReturnType<typeof listSiteOptions>>>;
+  customerOptions: Plain<Awaited<ReturnType<typeof listCustomerOptions>>>;
 };
 
 export default function SiteAnalysisPage() {

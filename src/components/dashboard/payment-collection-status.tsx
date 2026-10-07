@@ -85,6 +85,8 @@ export function PaymentCollectionStatus({
               key={bucket}
               role="button"
               tabIndex={0}
+              aria-expanded={isOpen}
+              aria-controls="payment-bucket-customers"
               onClick={() => setOpen(isOpen ? null : bucket)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
@@ -111,7 +113,7 @@ export function PaymentCollectionStatus({
       </div>
 
       {open && (
-        <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 p-2.5 animate-fade-in-up">
+        <div id="payment-bucket-customers" className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 p-2.5 animate-fade-in-up">
           {customers[open].length === 0 ? (
             <p className="py-2 text-center text-xs text-muted-foreground">No customers in this group.</p>
           ) : (
@@ -132,7 +134,7 @@ export function PaymentCollectionStatus({
       )}
 
       <div className="flex flex-col gap-2">
-        <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
+        <div aria-hidden="true" className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
           <div className="h-full bg-working" style={{ width: `${receivedPct}%` }} />
           <div className="h-full bg-destructive/70" style={{ width: `${100 - receivedPct}%` }} />
         </div>

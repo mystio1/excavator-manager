@@ -1,17 +1,13 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
 import { updateBusinessProfile } from "@/lib/services/settings";
 import { businessProfileSchema } from "@/lib/validation/settings";
+import { json, parseBody, withApi } from "@/lib/with-api";
 
-export async function PATCH(req: Request) {
+export const PATCH = withApi("settings.profile.update", async (req) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
 
-  const parsed = businessProfileSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
-
-  await updateBusinessProfile(auth.session.businessId, parsed.data);
-  return NextResponse.json({ ok: true });
-}
+  const input = await parseBody(req, businessProfileSchema);
+  await updateBusinessProfile(auth.session.businessId, auth.actor, input);
+  return json({ ok: true });
+});

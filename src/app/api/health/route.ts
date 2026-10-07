@@ -8,11 +8,16 @@ import { NextResponse } from "next/server";
  * Handlers aren't supported by `output: "export"`) — a route placed
  * outside that directory would break `npm run build:android`.
  *
- * src/proxy.ts's middleware does run in front of this (its matcher is
- * "/api/:path*"), but it only ever adds CORS headers when the request's
- * Origin is the Capacitor Android app's origin — it never adds auth or
- * blocks requests, so this stays reachable with no auth for Render, an
+ * src/proxy.ts runs in front of this (matcher "/api/:path*"): it only
+ * rejects cross-site state-changing requests (CSRF) and adds CORS/request-id
+ * headers. This is a GET, so it stays reachable with no auth for Render, an
  * external uptime monitor, or anyone else.
+ *
+ * LIVENESS vs READINESS: this endpoint answers "is the process alive" and is
+ * what Render's Health Check Path should point at (a failing health check
+ * restarts the service, which a database blip must not trigger). Use
+ * GET /api/health/ready for "can this instance actually serve traffic"
+ * (database + required configuration) from an uptime monitor / alert.
  *
  * Deliberately does not touch the database: this app's Postgres
  * connection pool is capped low (see src/lib/db.ts's comment on Supabase's

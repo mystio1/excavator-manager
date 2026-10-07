@@ -1,15 +1,16 @@
-import { NextResponse } from "next/server";
+import { failureResponse } from "@/lib/api-error";
+import { enforceAuthLimits, resetPasswordRules } from "@/lib/auth-throttle";
+import { clientIp } from "@/lib/rateLimit";
 import { resetPassword } from "@/lib/services/auth";
+import { json, parseBody, withApi } from "@/lib/with-api";
 import { resetPasswordSchema } from "@/lib/validation/auth";
 
-export async function POST(req: Request) {
-  const parsed = resetPasswordSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
+export const POST = withApi("auth.resetPassword", async (req) => {
+  const input = await parseBody(req, resetPasswordSchema);
+  await enforceAuthLimits(resetPasswordRules(clientIp(req)));
 
-  const result = await resetPassword(parsed.data.token, parsed.data.password);
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
+  const result = await resetPassword(input.token, input.password);
+  if ("error" in result) return failureResponse(result);
 
-  return NextResponse.json({ ok: true });
-}
+  return json({ ok: true });
+});

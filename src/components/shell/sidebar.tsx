@@ -43,7 +43,7 @@ export function Sidebar({ businessName }: { businessName: string }) {
         {!collapsed && (
           <div className="min-w-0 animate-fade-in">
             <p className="truncate text-[15px] leading-tight font-extrabold text-sidebar-foreground">
-              Excavator <span className="text-primary">Manager</span>
+              Excavator <span className="text-primary-text">Manager</span>
             </p>
             <p className="truncate text-[11px] leading-tight text-muted-foreground">Smart Fleet Management</p>
           </div>
@@ -56,7 +56,7 @@ export function Sidebar({ businessName }: { businessName: string }) {
         </div>
       )}
 
-      <nav className="flex flex-1 flex-col gap-1 p-3">
+      <nav aria-label="Main" className="flex flex-1 flex-col gap-1 p-3">
         {NAV_ITEMS.map((item) => {
           const active = isNavItemActive(pathname, item.href);
           const Icon = item.icon;
@@ -65,11 +65,13 @@ export function Sidebar({ businessName }: { businessName: string }) {
               key={item.href}
               href={item.href}
               title={collapsed ? item.label : undefined}
+              aria-label={collapsed ? item.label : undefined}
+              aria-current={active ? "page" : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-xl border-l-[3px] px-3 py-2.5 text-[15px] font-medium transition-all duration-200",
                 collapsed && "justify-center",
                 active
-                  ? "border-l-primary bg-primary/10 text-primary"
+                  ? "border-l-primary bg-primary/10 text-primary-text"
                   : "border-l-transparent text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               )}
             >
@@ -84,11 +86,13 @@ export function Sidebar({ businessName }: { businessName: string }) {
         <Link
           href="/settings"
           title={collapsed ? "Settings" : undefined}
+          aria-label={collapsed ? "Settings" : undefined}
+          aria-current={pathname.startsWith("/settings") ? "page" : undefined}
           className={cn(
             "flex items-center gap-3 rounded-xl border-l-[3px] px-3 py-2.5 text-[15px] font-medium transition-all duration-200",
             collapsed && "justify-center",
             pathname.startsWith("/settings")
-              ? "border-l-primary bg-primary/10 text-primary"
+              ? "border-l-primary bg-primary/10 text-primary-text"
               : "border-l-transparent text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           )}
         >
@@ -103,6 +107,7 @@ export function Sidebar({ businessName }: { businessName: string }) {
           disabled={pending}
           onClick={logout}
           title={collapsed ? "Log Out" : undefined}
+          aria-label={collapsed ? "Log Out" : undefined}
           className={cn(
             "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:opacity-60",
             collapsed && "justify-center",
@@ -117,6 +122,7 @@ export function Sidebar({ businessName }: { businessName: string }) {
         type="button"
         onClick={toggleCollapsed}
         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-expanded={!collapsed}
         className="flex items-center justify-center gap-2 border-t border-sidebar-border py-2.5 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
       >
         <ChevronsLeft className={cn("size-4 transition-transform duration-250", collapsed && "rotate-180")} />

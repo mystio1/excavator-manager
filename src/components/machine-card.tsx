@@ -5,17 +5,10 @@ import { StatusBadge } from "@/components/status-badge";
 import { ExcavatorLogo } from "@/components/excavator-logo";
 import { formatHours } from "@/lib/utils/hours";
 import { cn } from "@/lib/utils";
+import type { Plain } from "@/lib/plain";
+import type { listExcavators } from "@/lib/services/excavators";
 
-type Excavator = {
-  id: string;
-  name: string;
-  machineNumber: string | null;
-  currentSite: string | null;
-  assignedOperator: string | null;
-  currentHourMeter: number;
-  status: string;
-  serviceStatus: { overdue: boolean; dueSoon: boolean; dueInHours: number };
-};
+type Excavator = Plain<Awaited<ReturnType<typeof listExcavators>>[number]>;
 
 export function MachineCard({ excavator: ex }: { excavator: Excavator }) {
   return (

@@ -3,22 +3,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatHours } from "@/lib/utils/hours";
+import type { Plain } from "@/lib/plain";
+import type { getMachinePerformanceSummary } from "@/lib/services/excavators";
 
-type MachinePerformance = {
-  id: string;
-  name: string;
-  machineNumber: string | null;
-  status: string;
-  hoursThisMonth: number;
-  revenueThisMonth: number;
-};
+type MachinePerformance = Plain<Awaited<ReturnType<typeof getMachinePerformanceSummary>>[number]>;
 
 export function MachinePerformanceList({ machines }: { machines: MachinePerformance[] }) {
   return (
     <Card className="animate-fade-in-up">
       <CardHeader>
         <CardTitle className="flex items-center gap-2.5 text-lg font-bold tracking-tight">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/12 text-primary">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/12 text-primary-text">
             <ClipboardList className="size-4" />
           </span>
           Machine Performance

@@ -1,27 +1,31 @@
-import { NextResponse } from "next/server";
+import { failureResponse } from "@/lib/api-error";
 import { requireBusinessApi } from "@/lib/api-auth";
 import { archiveCustomer, updateCustomer } from "@/lib/services/customers";
-import { addCustomerSchema } from "@/lib/validation/customer";
+import { updateCustomerSchema } from "@/lib/validation/customer";
+import { json, parseBody, withApi } from "@/lib/with-api";
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+type Ctx = { params: Promise<{ id: string }> };
+
+/** Edit a customer. Send `expectedVersion` (the `version` you loaded) to be
+ * refused with 409 RESOURCE_MODIFIED instead of overwriting someone else's edit. */
+export const PATCH = withApi("customers.update", async (req, { params }: Ctx) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { id } = await params;
 
-  const parsed = addCustomerSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
+  const { expectedVersion, ...input } = await parseBody(req, updateCustomerSchema);
+  const result = await updateCustomer(auth.session.businessId, auth.actor, id, input, { expectedVersion });
+  if ("error" in result) return failureResponse(result);
+  return json({ ok: true, customer: result.customer });
+});
 
-  await updateCustomer(auth.session.businessId, id, parsed.data);
-  return NextResponse.json({ ok: true });
-}
-
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+/** Archives (hides) the customer — history and bills are kept. */
+export const DELETE = withApi("customers.archive", async (_req, { params }: Ctx) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { id } = await params;
 
-  await archiveCustomer(auth.session.businessId, id);
-  return NextResponse.json({ ok: true });
-}
+  const result = await archiveCustomer(auth.session.businessId, auth.actor, id);
+  if ("error" in result) return failureResponse(result);
+  return json({ ok: true });
+});

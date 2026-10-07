@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { dec, round2, sum, toNumber } from "@/lib/money";
 import { computeServiceStatus } from "@/lib/services/serviceStatus";
 import { getSalaryBreakdownForMonth, getTotalSalaryDue } from "@/lib/services/salary";
 import { currentMonthRange } from "@/lib/utils/dates";
@@ -267,10 +268,12 @@ export async function getMonthlyRevenueTrend(businessId: string) {
   });
 
   return months.map(({ year, month, label }) => {
-    const revenue = bills
-      .filter((b) => b.billDate.getFullYear() === year && b.billDate.getMonth() === month)
-      .reduce((sum, b) => sum + b.totalAmount, 0);
-    return { month: label, revenue: Math.round(revenue * 100) / 100 };
+    const revenue = sum(
+      bills
+        .filter((b) => b.billDate.getFullYear() === year && b.billDate.getMonth() === month)
+        .map((b) => b.totalAmount),
+    );
+    return { month: label, revenue: round2(revenue).toNumber() };
   });
 }
 
@@ -320,7 +323,7 @@ export async function getDashboardSummary(businessId: string) {
     revenueAgg,
     revenueLastMonthAgg,
     receivedAgg,
-    pendingBills,
+    pendingBillsAgg,
     totalCustomers,
     allTimeAgg,
     pendingLogsCount,
@@ -356,9 +359,12 @@ export async function getDashboardSummary(businessId: string) {
       where: { businessId },
       _sum: { amount: true },
     }),
-    db.bill.findMany({
+    // Totals of every unpaid/partial bill, summed in the database (exact
+    // NUMERIC arithmetic) instead of loading each bill row.
+    db.bill.aggregate({
       where: { businessId, status: { in: ["UNPAID", "PARTIAL"] } },
-      select: { totalAmount: true, paidAmount: true },
+      _sum: { totalAmount: true, paidAmount: true },
+      _count: true,
     }),
     db.customer.count({ where: { businessId, isArchived: false } }),
     db.bill.aggregate({ where: { businessId }, _sum: { totalAmount: true }, _count: true }),
@@ -379,11 +385,10 @@ export async function getDashboardSummary(businessId: string) {
     getComponentMaintenanceAlerts(businessId),
   ]);
 
-  const revenueThisMonth = Math.round((revenueAgg._sum.totalAmount ?? 0) * 100) / 100;
-  const revenueLastMonth = Math.round((revenueLastMonthAgg._sum.totalAmount ?? 0) * 100) / 100;
-  const amountReceived = Math.round((receivedAgg._sum.amount ?? 0) * 100) / 100;
-  const pendingPayments =
-    Math.round(pendingBills.reduce((sum, b) => sum + (b.totalAmount - b.paidAmount), 0) * 100) / 100;
+  const revenueThisMonth = round2(revenueAgg._sum.totalAmount).toNumber();
+  const revenueLastMonth = round2(revenueLastMonthAgg._sum.totalAmount).toNumber();
+  const amountReceived = round2(receivedAgg._sum.amount).toNumber();
+  const pendingPayments = round2(dec(pendingBillsAgg._sum.totalAmount).minus(dec(pendingBillsAgg._sum.paidAmount))).toNumber();
   const revenueTrendPct = percentChange(revenueThisMonth, revenueLastMonth);
   const hoursTrendPct = percentChange(hoursThisMonth, hoursLastMonth);
 
@@ -413,12 +418,12 @@ export async function getDashboardSummary(businessId: string) {
     revenueTrendPct,
     amountReceived,
     pendingPayments,
-    pendingBillsCount: pendingBills.length,
+    pendingBillsCount: pendingBillsAgg._count,
     totalCustomers,
-    totalRevenueAllTime: Math.round((allTimeAgg._sum.totalAmount ?? 0) * 100) / 100,
+    totalRevenueAllTime: round2(allTimeAgg._sum.totalAmount).toNumber(),
     totalBillsCount: allTimeAgg._count,
     upcomingServices: excavatorsWithStatus.filter((e) => e.serviceStatus.dueSoon).length,
-    operatorSalaryDue,
+    operatorSalaryDue: toNumber(operatorSalaryDue),
     pendingApprovalsCount: pendingLogsCount + pendingWorkRequestsCount,
   };
 
@@ -531,13 +536,13 @@ export async function getRecentActivity(businessId: string, limit = 8): Promise<
       id: `bill-${b.id}`,
       kind: "bill" as const,
       message: `Bill ${b.billNumber} generated for ${b.customer.name}`,
-      detail: `₹${b.totalAmount.toLocaleString("en-IN")}`,
+      detail: `₹${toNumber(b.totalAmount).toLocaleString("en-IN")}`,
       at: b.createdAt,
     })),
     ...payments.map((p) => ({
       id: `pay-${p.id}`,
       kind: "payment" as const,
-      message: `₹${p.amount.toLocaleString("en-IN")} received from ${p.bill.customer.name}`,
+      message: `₹${toNumber(p.amount).toLocaleString("en-IN")} received from ${p.bill.customer.name}`,
       detail: `Bill ${p.bill.billNumber}`,
       at: p.createdAt,
     })),
@@ -609,61 +614,60 @@ export type PaymentCollectionCustomer = { id: string; name: string; billed: numb
  * and the actual customer breakdown per bucket (shown on the dashboard only
  * once a bucket is tapped — see PaymentCollectionStatus). */
 export async function getPaymentCollectionStatus(businessId: string) {
-  const bills = await db.bill.findMany({
+  // Per-customer billed/paid totals summed by the database (exact NUMERIC),
+  // then one lookup for the names — no bill row ever loaded into memory.
+  const perCustomer = await db.bill.groupBy({
+    by: ["customerId"],
     where: { businessId },
-    select: {
-      customerId: true,
-      totalAmount: true,
-      paidAmount: true,
-      customer: { select: { name: true, companyName: true } },
-    },
+    _sum: { totalAmount: true, paidAmount: true },
   });
+  const customers = perCustomer.length
+    ? await db.customer.findMany({
+        where: { businessId, id: { in: perCustomer.map((c) => c.customerId) } },
+        select: { id: true, name: true, companyName: true },
+      })
+    : [];
+  const customerById = new Map(customers.map((c) => [c.id, c]));
 
-  const byCustomer = new Map<string, { name: string; billed: number; paid: number }>();
-  for (const b of bills) {
-    const entry = byCustomer.get(b.customerId) ?? {
-      name: b.customer.companyName ? `${b.customer.name} — ${b.customer.companyName}` : b.customer.name,
-      billed: 0,
-      paid: 0,
-    };
-    entry.billed += b.totalAmount;
-    entry.paid += b.paidAmount;
-    byCustomer.set(b.customerId, entry);
-  }
-
-  let totalBilled = 0;
-  let totalReceived = 0;
   const paidCustomers: PaymentCollectionCustomer[] = [];
   const partialCustomers: PaymentCollectionCustomer[] = [];
   const overdueCustomers: PaymentCollectionCustomer[] = []; // "overdue" here = still owes, distinct bucket from "in progress" partial
 
-  for (const [id, { name, billed, paid }] of byCustomer) {
-    totalBilled += billed;
-    totalReceived += paid;
-    const pending = billed - paid;
+  for (const row of perCustomer) {
+    const customer = customerById.get(row.customerId);
+    if (!customer) continue;
+    const billed = dec(row._sum.totalAmount);
+    const paid = dec(row._sum.paidAmount);
+    const pending = billed.minus(paid);
     const entry: PaymentCollectionCustomer = {
-      id,
-      name,
-      billed: Math.round(billed * 100) / 100,
-      paid: Math.round(paid * 100) / 100,
-      pending: Math.round(pending * 100) / 100,
+      id: customer.id,
+      name: customer.companyName ? `${customer.name} — ${customer.companyName}` : customer.name,
+      billed: round2(billed).toNumber(),
+      paid: round2(paid).toNumber(),
+      pending: round2(pending).toNumber(),
     };
-    if (pending <= 0.01) paidCustomers.push(entry);
-    else if (paid > 0.01) partialCustomers.push(entry);
+    if (pending.lte(0.01)) paidCustomers.push(entry);
+    else if (paid.gt(0.01)) partialCustomers.push(entry);
     else overdueCustomers.push(entry);
   }
 
-  paidCustomers.sort((a, b) => b.billed - a.billed);
-  partialCustomers.sort((a, b) => b.pending - a.pending);
-  overdueCustomers.sort((a, b) => b.pending - a.pending);
+  // Name + id as the final tie-breakers keep the order deterministic.
+  const byName = (a: PaymentCollectionCustomer, b: PaymentCollectionCustomer) =>
+    a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+  paidCustomers.sort((a, b) => b.billed - a.billed || byName(a, b));
+  partialCustomers.sort((a, b) => b.pending - a.pending || byName(a, b));
+  overdueCustomers.sort((a, b) => b.pending - a.pending || byName(a, b));
+
+  const totalBilled = sum(perCustomer.map((c) => c._sum.totalAmount));
+  const totalReceived = sum(perCustomer.map((c) => c._sum.paidAmount));
 
   return {
     paidCount: paidCustomers.length,
     partialCount: partialCustomers.length,
     overdueCount: overdueCustomers.length,
-    totalBilled: Math.round(totalBilled * 100) / 100,
-    totalReceived: Math.round(totalReceived * 100) / 100,
-    totalPending: Math.round((totalBilled - totalReceived) * 100) / 100,
+    totalBilled: round2(totalBilled).toNumber(),
+    totalReceived: round2(totalReceived).toNumber(),
+    totalPending: round2(totalBilled.minus(totalReceived)).toNumber(),
     paidCustomers,
     partialCustomers,
     overdueCustomers,
@@ -671,15 +675,23 @@ export async function getPaymentCollectionStatus(businessId: string) {
 }
 
 const OVERDUE_GRACE_DAYS = 15;
+const DAY_MS = 86400000;
 
 /** "Overdue Payment Alert": unpaid/partially-paid bills, oldest (and
  * therefore most overdue) first. "Overdue by N days" is measured from the
  * bill date since there's no separate due-date field — a grace period
  * avoids flagging a bill that was only just issued. */
 export async function getOverduePayments(businessId: string, limit = 5) {
+  const now = Date.now();
+  // daysOverdue = floor((now - billDate) / 1 day) - grace > 0, i.e. the bill is
+  // at least (grace + 1) whole days old. Filtering and limiting in the query
+  // (oldest first) returns exactly the rows the old load-everything-then-
+  // filter approach did, without reading the rest.
+  const oldestAllowed = new Date(now - (OVERDUE_GRACE_DAYS + 1) * DAY_MS);
   const bills = await db.bill.findMany({
-    where: { businessId, status: { in: ["UNPAID", "PARTIAL"] } },
-    orderBy: { billDate: "asc" },
+    where: { businessId, status: { in: ["UNPAID", "PARTIAL"] }, billDate: { lte: oldestAllowed } },
+    orderBy: [{ billDate: "asc" }, { id: "asc" }],
+    take: limit,
     select: {
       id: true,
       billNumber: true,
@@ -690,47 +702,49 @@ export async function getOverduePayments(businessId: string, limit = 5) {
     },
   });
 
-  const now = Date.now();
-  return bills
-    .map((b) => ({
-      billId: b.id,
-      billNumber: b.billNumber,
-      customerId: b.customer.id,
-      customerName: b.customer.name,
-      pending: Math.round((b.totalAmount - b.paidAmount) * 100) / 100,
-      daysOverdue: Math.floor((now - b.billDate.getTime()) / 86400000) - OVERDUE_GRACE_DAYS,
-    }))
-    .filter((b) => b.daysOverdue > 0)
-    .sort((a, b) => b.daysOverdue - a.daysOverdue)
-    .slice(0, limit);
+  return bills.map((b) => ({
+    billId: b.id,
+    billNumber: b.billNumber,
+    customerId: b.customer.id,
+    customerName: b.customer.name,
+    pending: round2(dec(b.totalAmount).minus(dec(b.paidAmount))).toNumber(),
+    daysOverdue: Math.floor((now - b.billDate.getTime()) / DAY_MS) - OVERDUE_GRACE_DAYS,
+  }));
 }
 
 /** "Top Customers": ranked by all-time revenue, with how much of that is
  * still outstanding. */
 export async function getTopCustomersByRevenue(businessId: string, limit = 5) {
-  const bills = await db.bill.findMany({
+  const perCustomer = await db.bill.groupBy({
+    by: ["customerId"],
     where: { businessId },
-    select: { customerId: true, totalAmount: true, paidAmount: true, customer: { select: { name: true } } },
+    _sum: { totalAmount: true, paidAmount: true },
   });
 
-  const byCustomer = new Map<string, { name: string; revenue: number; received: number }>();
-  for (const b of bills) {
-    const entry = byCustomer.get(b.customerId) ?? { name: b.customer.name, revenue: 0, received: 0 };
-    entry.revenue += b.totalAmount;
-    entry.received += b.paidAmount;
-    byCustomer.set(b.customerId, entry);
-  }
-
-  return [...byCustomer.entries()]
-    .map(([customerId, v]) => ({
-      customerId,
-      name: v.name,
-      revenue: Math.round(v.revenue * 100) / 100,
-      received: Math.round(v.received * 100) / 100,
-      pending: Math.round((v.revenue - v.received) * 100) / 100,
+  const top = perCustomer
+    .map((c) => ({
+      customerId: c.customerId,
+      revenue: round2(c._sum.totalAmount).toNumber(),
+      received: round2(c._sum.paidAmount).toNumber(),
+      pending: round2(dec(c._sum.totalAmount).minus(dec(c._sum.paidAmount))).toNumber(),
     }))
-    .sort((a, b) => b.revenue - a.revenue)
+    .sort((a, b) => b.revenue - a.revenue || a.customerId.localeCompare(b.customerId))
     .slice(0, limit);
+  if (top.length === 0) return [];
+
+  const customers = await db.customer.findMany({
+    where: { businessId, id: { in: top.map((t) => t.customerId) } },
+    select: { id: true, name: true },
+  });
+  const nameById = new Map(customers.map((c) => [c.id, c.name]));
+
+  return top.map((t) => ({
+    customerId: t.customerId,
+    name: nameById.get(t.customerId) ?? "",
+    revenue: t.revenue,
+    received: t.received,
+    pending: t.pending,
+  }));
 }
 
 /** "Business Profit Overview" for the current calendar month. Expenses are
@@ -742,33 +756,33 @@ export async function getTopCustomersByRevenue(businessId: string, limit = 5) {
 export async function getProfitOverview(businessId: string) {
   const { start, end } = currentMonthRange();
 
-  const [revenueAgg, serviceRecords, salaryBreakdown] = await Promise.all([
+  const [revenueAgg, serviceAgg, salaryBreakdown] = await Promise.all([
     db.bill.aggregate({ where: { businessId, billDate: { gte: start, lte: end } }, _sum: { totalAmount: true } }),
-    db.serviceRecord.findMany({
+    db.serviceRecord.aggregate({
       where: { businessId, serviceDate: { gte: start, lte: end } },
-      select: { cost: true },
+      _sum: { cost: true },
     }),
     getSalaryBreakdownForMonth(businessId, start.getFullYear(), start.getMonth()),
   ]);
 
-  const revenue = Math.round((revenueAgg._sum.totalAmount ?? 0) * 100) / 100;
-  const serviceCost = Math.round(serviceRecords.reduce((sum, r) => sum + r.cost, 0) * 100) / 100;
-  const salaryCost = Math.round(
-    salaryBreakdown.reduce((sum, op) => sum + op.baseSalary + op.bonus, 0) * 100,
-  ) / 100;
+  const revenue = round2(revenueAgg._sum.totalAmount);
+  const serviceCost = round2(serviceAgg._sum.cost);
+  // dec() accepts the salary service's amounts whether it hands back numbers or Decimals.
+  const salaryCost = round2(sum(salaryBreakdown.map((op) => dec(op.baseSalary).plus(dec(op.bonus)))));
 
-  const expenses = Math.round((serviceCost + salaryCost) * 100) / 100;
-  const netProfit = Math.round((revenue - expenses) * 100) / 100;
-  const profitMarginPct = revenue > 0 ? Math.round((netProfit / revenue) * 1000) / 10 : 0;
+  const expenses = round2(serviceCost.plus(salaryCost));
+  const netProfit = round2(revenue.minus(expenses));
+  // A percentage, not money: computed from the exact 2-dp figures, rounded to 1 dp.
+  const profitMarginPct = revenue.gt(0) ? Math.round((netProfit.toNumber() / revenue.toNumber()) * 1000) / 10 : 0;
 
   return {
-    revenue,
-    expenses,
-    netProfit,
+    revenue: revenue.toNumber(),
+    expenses: expenses.toNumber(),
+    netProfit: netProfit.toNumber(),
     profitMarginPct,
     breakdown: [
-      { label: "Operator Salary", amount: salaryCost },
-      { label: "Service & Maintenance", amount: serviceCost },
+      { label: "Operator Salary", amount: salaryCost.toNumber() },
+      { label: "Service & Maintenance", amount: serviceCost.toNumber() },
     ].filter((b) => b.amount > 0),
   };
 }

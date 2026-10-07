@@ -31,6 +31,38 @@ import java.io.IOException;
 public class FileSaverPlugin extends Plugin {
 
     private static final String DOWNLOADS_SUBDIR = "downloads";
+    /** Exported bills contain customer data: do not leave them on the device indefinitely. */
+    private static final long MAX_FILE_AGE_MS = 7L * 24 * 60 * 60 * 1000;
+    private static final int MAX_FILENAME_LENGTH = 80;
+
+    /**
+     * The filename comes from JavaScript, so treat it as untrusted: keep only the last path segment, replace
+     * anything but letters/digits/dot/dash/underscore/space, never start with a dot, and bound the length.
+     * (Path separators or ".." in a name must not be able to write outside the downloads directory.)
+     */
+    static String sanitizeFilename(String name) {
+        String base = name.replace('\\', '/');
+        int slash = base.lastIndexOf('/');
+        if (slash >= 0) base = base.substring(slash + 1);
+        base = base.replaceAll("[^A-Za-z0-9._ -]", "_");
+        while (base.startsWith(".")) base = "_" + base.substring(1);
+        if (base.length() > MAX_FILENAME_LENGTH) base = base.substring(base.length() - MAX_FILENAME_LENGTH);
+        if (base.trim().isEmpty()) base = "download.xlsx";
+        return base;
+    }
+
+    /** Deletes exports older than a week so customer data does not accumulate in app storage. */
+    private static void pruneOldFiles(File dir) {
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        long cutoff = System.currentTimeMillis() - MAX_FILE_AGE_MS;
+        for (File f : files) {
+            if (f.isFile() && f.lastModified() < cutoff) {
+                //noinspection ResultOfMethodCallIgnored
+                f.delete();
+            }
+        }
+    }
 
     @PluginMethod
     public void saveAndOpenFile(PluginCall call) {
@@ -47,7 +79,19 @@ public class FileSaverPlugin extends Plugin {
             call.reject("Could not create downloads directory", "storage_error");
             return;
         }
-        File outFile = new File(downloadsDir, filename);
+        pruneOldFiles(downloadsDir);
+        String safeName = sanitizeFilename(filename);
+        File outFile = new File(downloadsDir, safeName);
+        try {
+            // Belt and braces: whatever the name was, the file must resolve INSIDE the downloads directory.
+            if (!outFile.getCanonicalPath().startsWith(downloadsDir.getCanonicalPath() + File.separator)) {
+                call.reject("Invalid file name", "invalid_argument");
+                return;
+            }
+        } catch (IOException e) {
+            call.reject("Invalid file name", "invalid_argument", e);
+            return;
+        }
 
         try {
             byte[] bytes = Base64.decode(base64Data, Base64.DEFAULT);
@@ -70,7 +114,7 @@ public class FileSaverPlugin extends Plugin {
             viewIntent.setDataAndType(contentUri, mimeType);
             viewIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
 
-            Intent chooser = Intent.createChooser(viewIntent, "Open " + filename);
+            Intent chooser = Intent.createChooser(viewIntent, "Open " + safeName);
             chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getContext().startActivity(chooser);
 

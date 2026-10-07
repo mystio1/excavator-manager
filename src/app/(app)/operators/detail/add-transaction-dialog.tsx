@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import { IndianRupee } from "lucide-react";
-import { apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch, newIdempotencyKey } from "@/lib/api-client";
 import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { TransactionFormFields } from "./transaction-form-fields";
 
+import { todayLocal } from "@/lib/utils/dates";
 export function AddTransactionDialog({
   operatorId,
   categories,
@@ -25,12 +26,32 @@ export function AddTransactionDialog({
 }) {
   const { mutate } = useSWRConfig();
   const [open, setOpen] = useState(false);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const defaultCategoryId = categories.find((c) => c.name === "Salary Advance")?.id ?? "";
 
+  // One key per logical submission: a retry after a lost response replays the
+  // first result instead of recording the payment twice. A fresh key is made
+  // when the dialog opens and after every success.
+  const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
+
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
-    await apiFetch(`/api/operators/${operatorId}/transactions`, { method: "POST", body: JSON.stringify(body) });
+    try {
+      await apiFetch(`/api/operators/${operatorId}/transactions`, {
+        method: "POST",
+        body: JSON.stringify(body),
+        idempotencyKey,
+      });
+    } catch (err) {
+      // The key was already spent on a different amount/date — the next attempt is a new submission.
+      if (err instanceof ApiError && err.code === "IDEMPOTENCY_KEY_REUSED") setIdempotencyKey(newIdempotencyKey());
+      throw err;
+    }
   });
+
+  function onOpenChange(next: boolean) {
+    if (next) setIdempotencyKey(newIdempotencyKey());
+    setOpen(next);
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -45,13 +66,14 @@ export function AddTransactionDialog({
       businessEffect: fd.get("businessEffect"),
     });
     if (ok) {
+      setIdempotencyKey(newIdempotencyKey());
       await mutate((key) => typeof key === "string" && key.startsWith("/api/operators/detail"));
       setOpen(false);
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger render={<Button size="lg" className="h-11" />}>
         <IndianRupee className="size-4" />
         Add Money Transaction
@@ -63,7 +85,7 @@ export function AddTransactionDialog({
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <TransactionFormFields categories={categories} defaultCategoryId={defaultCategoryId} defaultDate={today} />
 
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
           <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
             <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>

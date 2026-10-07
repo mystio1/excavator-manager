@@ -24,10 +24,10 @@ export default function OperatorAuthLayout({ children }: { children: React.React
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 py-10">
-      <div className="absolute inset-0 -z-10 overflow-hidden">
+      <div aria-hidden="true" className="absolute inset-0 -z-10 overflow-hidden">
         <Image
           src="/login-bg.jpg"
-          alt="Excavator background"
+          alt=""
           fill
           priority
           sizes="100vw"
@@ -37,20 +37,20 @@ export default function OperatorAuthLayout({ children }: { children: React.React
         <div className="absolute inset-0 bg-radial-[circle_at_center] from-transparent via-background/30 to-background/80" />
       </div>
 
-      <div className="relative z-10 flex w-full flex-col items-center">
+      <main className="relative z-10 flex w-full flex-col items-center">
         <div className="mb-8 flex flex-col items-center gap-3">
           <div className="flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-glow-primary shadow-lg ring-4 ring-primary/20">
             <ExcavatorLogo className="size-8" />
           </div>
           <div className="text-center">
             <p className="text-xl font-extrabold tracking-tight">
-              Operator <span className="text-primary">Portal</span>
+              Operator <span className="text-primary-text">Portal</span>
             </p>
             <p className="text-sm font-medium text-muted-foreground">Excavator Manager</p>
           </div>
         </div>
         <div className="w-full max-w-sm animate-fade-in-up">{children}</div>
-      </div>
+      </main>
     </div>
   );
 }

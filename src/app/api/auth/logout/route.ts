@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { signOut } from "@/lib/auth";
+import { json, withApi } from "@/lib/with-api";
 
-export async function POST() {
+export const POST = withApi("auth.logout", async () => {
   await signOut({ redirect: false });
-  return NextResponse.json({ ok: true });
-}
+  return json({ ok: true });
+});

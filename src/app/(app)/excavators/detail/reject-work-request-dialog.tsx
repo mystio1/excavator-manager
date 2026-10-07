@@ -52,7 +52,7 @@ export function RejectWorkRequestDialog({ requestId }: { requestId: string }) {
             <Textarea id={`note-${requestId}`} name="note" placeholder="e.g. Please recheck the ending reading" className="min-h-20" />
           </div>
 
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
           <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
             <Button type="submit" size="lg" variant="destructive" className="h-12 w-full text-base" disabled={pending}>

@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { usePageTitle } from "@/components/page-title";
 
 export function PageHeader({
   title,
@@ -11,6 +14,7 @@ export function PageHeader({
   /** Renders a circular back button before the title, linking here. */
   backHref?: string;
 }) {
+  usePageTitle(title);
   return (
     // print-hidden: this is a plain div, not a semantic <header> — the
     // @media print rule that hides `header`/`nav`/`aside` never caught it,
@@ -27,7 +31,7 @@ export function PageHeader({
             aria-label="Back"
             className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground transition-colors hover:bg-secondary/80"
           >
-            <ArrowLeft className="size-5" />
+            <ArrowLeft className="size-5" aria-hidden="true" />
           </Link>
         )}
         {/* Stacked below sm: so the title always gets the full row width —

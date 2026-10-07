@@ -1,4 +1,9 @@
 import { db } from "@/lib/db";
+import { fail } from "@/lib/api-error";
+import { recordAudit, type AuditActor } from "@/lib/audit";
+import { round2, sum } from "@/lib/money";
+import { withTx, type Tx } from "@/lib/tx";
+import { lockOwnedExcavator, roundHours } from "@/lib/services/workSessions";
 import { NOT_ACTIONED, type AddComponentInput, type CreateServiceRecordInput } from "@/lib/validation/serviceRecord";
 
 // Inspect/Service-trigger hours sourced from the general 20-ton excavator
@@ -158,7 +163,7 @@ export async function createCustomComponent(businessId: string, input: AddCompon
 export async function getPreviousServiceSummary(businessId: string, excavatorId: string) {
   const lastRecord = await db.serviceRecord.findFirst({
     where: { businessId, excavatorId },
-    orderBy: { serviceDate: "desc" },
+    orderBy: [{ serviceDate: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     include: { items: { include: { serviceItem: true } } },
   });
 
@@ -178,10 +183,15 @@ export async function getPreviousServiceSummary(businessId: string, excavatorId:
   return { lastRecord: { id: lastRecord.id, serviceDate: lastRecord.serviceDate }, items, flagged };
 }
 
+// One machine's service history is small (a handful of records a year); the
+// cap only keeps a pathological backlog from becoming an unbounded response.
+const HISTORY_CAP = 500;
+
 export async function getComponentHistory(businessId: string, excavatorId: string, serviceItemId: string) {
   return db.serviceRecordItem.findMany({
     where: { serviceItemId, serviceRecord: { businessId, excavatorId } },
-    orderBy: { serviceRecord: { serviceDate: "desc" } },
+    orderBy: [{ serviceRecord: { serviceDate: "desc" } }, { id: "desc" }],
+    take: HISTORY_CAP,
     include: { serviceRecord: { select: { serviceDate: true, hourMeterAtService: true } } },
   });
 }
@@ -189,7 +199,8 @@ export async function getComponentHistory(businessId: string, excavatorId: strin
 export async function getReplacementHistory(businessId: string, excavatorId: string) {
   return db.serviceRecordItem.findMany({
     where: { action: "Replaced", serviceRecord: { businessId, excavatorId } },
-    orderBy: { serviceRecord: { serviceDate: "desc" } },
+    orderBy: [{ serviceRecord: { serviceDate: "desc" } }, { id: "desc" }],
+    take: HISTORY_CAP,
     include: {
       serviceItem: { select: { name: true, category: true } },
       serviceRecord: { select: { serviceDate: true, hourMeterAtService: true } },
@@ -200,7 +211,8 @@ export async function getReplacementHistory(businessId: string, excavatorId: str
 export async function listServiceHistory(businessId: string, excavatorId: string) {
   return db.serviceRecord.findMany({
     where: { businessId, excavatorId },
-    orderBy: { serviceDate: "desc" },
+    orderBy: [{ serviceDate: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    take: HISTORY_CAP,
     include: { items: { include: { serviceItem: true } } },
   });
 }
@@ -212,54 +224,84 @@ export async function listServiceHistory(businessId: string, excavatorId: string
  * configured an interval for) — falls back to null (business/machine
  * default interval keeps driving computeServiceStatus in that case).
  */
-export async function createServiceRecord(businessId: string, input: CreateServiceRecordInput) {
-  const excavator = await db.excavator.findFirst({ where: { id: input.excavatorId, businessId } });
-  if (!excavator) return { error: "Machine not found" } as const;
+export async function createServiceRecord(
+  businessId: string,
+  actor: AuditActor,
+  input: CreateServiceRecordInput,
+  opts?: { tx?: Tx },
+) {
+  return withTx(opts?.tx, async (tx) => {
+    if (!(await lockOwnedExcavator(tx, businessId, input.excavatorId))) return fail("NOT_FOUND", "Machine not found");
+    const excavator = await tx.excavator.findFirst({ where: { id: input.excavatorId, businessId } });
+    if (!excavator) return fail("NOT_FOUND", "Machine not found");
 
-  const serviceItems = await db.serviceItem.findMany({
-    where: { id: { in: input.items.map((i) => i.serviceItemId) }, businessId },
-  });
-  const intervalById = new Map(serviceItems.map((s) => [s.id, s.defaultIntervalHours]));
+    // Every component must be this business's own catalog entry — a record
+    // must never link to another tenant's ServiceItem by guessed id.
+    const itemIds = [...new Set(input.items.map((i) => i.serviceItemId))];
+    const serviceItems = await tx.serviceItem.findMany({ where: { id: { in: itemIds }, businessId } });
+    if (serviceItems.length !== itemIds.length) return fail("NOT_FOUND", "One or more components were not found");
+    const intervalById = new Map(serviceItems.map((s) => [s.id, s.defaultIntervalHours]));
 
-  let nextServiceDueHour: number | null = null;
-  for (const item of input.items) {
-    if (NOT_ACTIONED.has(item.action)) continue;
-    const interval = intervalById.get(item.serviceItemId);
-    if (interval == null) continue;
-    const due = input.hourMeterAtService + interval;
-    if (nextServiceDueHour == null || due < nextServiceDueHour) nextServiceDueHour = due;
-  }
+    const hourMeterAtService = roundHours(input.hourMeterAtService);
 
-  const totalCost = Math.round(input.items.reduce((sum, i) => sum + (i.cost ?? 0), 0) * 100) / 100;
+    let nextServiceDueHour: number | null = null;
+    for (const item of input.items) {
+      if (NOT_ACTIONED.has(item.action)) continue;
+      const interval = intervalById.get(item.serviceItemId);
+      if (interval == null) continue;
+      const due = roundHours(hourMeterAtService + interval);
+      if (nextServiceDueHour == null || due < nextServiceDueHour) nextServiceDueHour = due;
+    }
 
-  const record = await db.serviceRecord.create({
-    data: {
-      businessId,
-      excavatorId: input.excavatorId,
-      serviceDate: new Date(input.serviceDate),
-      hourMeterAtService: input.hourMeterAtService,
-      cost: totalCost,
-      notes: input.notes || null,
-      nextServiceDueHour,
-      items: {
-        create: input.items.map((i) => ({
-          serviceItemId: i.serviceItemId,
-          action: i.action,
-          done: !NOT_ACTIONED.has(i.action),
-          cost: i.cost ?? 0,
-          brand: i.brand || null,
-          notes: i.notes || null,
-        })),
+    // Money: every line is rounded to the paisa first and the record's cost is
+    // the EXACT sum of those stored lines (Decimal arithmetic — 0.1 + 0.2 is
+    // 0.3), so the header total always equals what the lines add up to.
+    const lineCosts = input.items.map((i) => round2(i.cost ?? 0));
+    const totalCost = sum(lineCosts);
+
+    const record = await tx.serviceRecord.create({
+      data: {
+        businessId,
+        excavatorId: input.excavatorId,
+        serviceDate: new Date(input.serviceDate),
+        hourMeterAtService,
+        cost: totalCost,
+        notes: input.notes || null,
+        nextServiceDueHour,
+        items: {
+          create: input.items.map((i, index) => ({
+            serviceItemId: i.serviceItemId,
+            action: i.action,
+            done: !NOT_ACTIONED.has(i.action),
+            cost: lineCosts[index],
+            brand: i.brand || null,
+            notes: i.notes || null,
+          })),
+        },
       },
-    },
-  });
-
-  if (input.hourMeterAtService > excavator.currentHourMeter) {
-    await db.excavator.update({
-      where: { id: excavator.id },
-      data: { currentHourMeter: input.hourMeterAtService },
+      include: { items: true },
     });
-  }
 
-  return { record } as const;
+    let excavatorMeter: { from: number; to: number } | null = null;
+    if (hourMeterAtService > excavator.currentHourMeter) {
+      await tx.excavator.update({
+        where: { id: excavator.id, businessId },
+        data: { currentHourMeter: hourMeterAtService, version: { increment: 1 } },
+      });
+      excavatorMeter = { from: excavator.currentHourMeter, to: hourMeterAtService };
+    }
+
+    // A service record carries a money cost, so it is part of the audit trail.
+    await recordAudit(tx, {
+      businessId,
+      actor,
+      action: "serviceRecord.create",
+      entityType: "ServiceRecord",
+      entityId: record.id,
+      after: record,
+      details: { excavatorId: excavator.id, totalCost: totalCost.toFixed(2), excavatorMeter },
+    });
+
+    return { record } as const;
+  });
 }

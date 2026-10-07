@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
+import { errorResponse } from "@/lib/api-error";
+import { excavatorInBusiness } from "@/lib/services/excavators";
+import { json, withApi } from "@/lib/with-api";
 import {
   getPreviousServiceSummary,
   getReplacementHistory,
@@ -7,11 +9,12 @@ import {
   listServiceHistory,
 } from "@/lib/services/serviceRecords";
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export const GET = withApi("excavators.serviceTab", async (_req, { params }: { params: Promise<{ id: string }> }) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { id } = await params;
   const { businessId } = auth.session;
+  if (!(await excavatorInBusiness(businessId, id))) return errorResponse("NOT_FOUND", "Machine not found");
 
   const [catalogGroups, previousSummary, history, replacements] = await Promise.all([
     listComponentCatalog(businessId),
@@ -20,5 +23,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     getReplacementHistory(businessId, id),
   ]);
 
-  return NextResponse.json({ catalogGroups, previousSummary, history, replacements });
-}
+  return json({ catalogGroups, previousSummary, history, replacements });
+});

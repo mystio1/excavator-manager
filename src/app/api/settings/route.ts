@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
 import { getBusinessSettings, listBankAccounts } from "@/lib/services/settings";
 import { db } from "@/lib/db";
+import { json, withApi } from "@/lib/with-api";
 
-export async function GET() {
+export const GET = withApi("settings.get", async () => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { businessId, userId } = auth.session;
@@ -11,8 +11,8 @@ export async function GET() {
   const [business, bankAccounts, user] = await Promise.all([
     getBusinessSettings(businessId),
     listBankAccounts(businessId),
-    db.user.findUnique({ where: { id: userId }, select: { appPinHash: true } }),
+    db.user.findFirst({ where: { id: userId, businessId }, select: { appPinHash: true } }),
   ]);
 
-  return NextResponse.json({ business, bankAccounts, hasPin: !!user?.appPinHash });
-}
+  return json({ business, bankAccounts, hasPin: !!user?.appPinHash });
+});

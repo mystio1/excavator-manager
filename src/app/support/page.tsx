@@ -9,8 +9,33 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { usePageTitle } from "@/components/page-title";
 
 const TOKEN_KEY = "excavator_support_token";
+
+/** Every support action that touches a business must say why; the server
+ * requires it too and stores it in that business's audit log. */
+const MIN_REASON = 5;
+const reasonOk = (reason: string) => reason.trim().length >= MIN_REASON;
+
+function ReasonField({ id, value, onChange, disabled }: { id: string; value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={id} className="text-sm">
+        Reason (recorded in the audit log)
+      </Label>
+      <Input
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        maxLength={500}
+        placeholder="e.g. owner asked us to fix a bill"
+        className="h-11"
+        disabled={disabled}
+      />
+    </div>
+  );
+}
 
 type Business = {
   id: string;
@@ -30,9 +55,12 @@ type Business = {
 // Not linked from anywhere in the owner/operator-facing UI — reachable only
 // by navigating straight here. Entirely separate credential from any
 // business's own login: a single shared password (SUPPORT_ACCESS_PASSWORD
-// on the server) grants a short-lived token that can list every business
-// and open any of them as their admin, for remote troubleshooting.
+// on the server) opens a one-hour support session (an opaque token the server
+// checks against its database on every call, and can revoke) that can list
+// every business and open any of them as their admin, for remote
+// troubleshooting.
 export default function SupportConsolePage() {
+  usePageTitle("Support console");
   const [token, setToken] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
@@ -47,14 +75,33 @@ export default function SupportConsolePage() {
     setToken(t);
   }
 
-  function handleExit() {
+  // The session already ended server-side (expired / revoked): just forget the token.
+  function handleExpired() {
     sessionStorage.removeItem(TOKEN_KEY);
     setToken(null);
   }
 
+  // "Exit Support Mode" revokes the session on the server too, so the token is
+  // dead everywhere the moment this is clicked — not merely forgotten here.
+  async function handleExit() {
+    const current = token;
+    handleExpired();
+    if (!current) return;
+    try {
+      await apiFetch("/api/support/logout", { method: "POST", headers: { Authorization: `Bearer ${current}` } });
+    } catch {
+      // Best effort — an unreachable server can't have honoured the token anyway,
+      // and it expires on its own within the hour.
+    }
+  }
+
   if (!hydrated) return null;
 
-  return token ? <BusinessDirectory token={token} onExit={handleExit} /> : <SupportLogin onLoggedIn={handleLoggedIn} />;
+  return token ? (
+    <BusinessDirectory token={token} onExit={handleExit} onExpired={handleExpired} />
+  ) : (
+    <SupportLogin onLoggedIn={handleLoggedIn} />
+  );
 }
 
 function SupportLogin({ onLoggedIn }: { onLoggedIn: (token: string) => void }) {
@@ -85,11 +132,11 @@ function SupportLogin({ onLoggedIn }: { onLoggedIn: (token: string) => void }) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <main className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardContent className="flex flex-col gap-4 py-6">
           <div className="flex items-center gap-2">
-            <KeyRound className="size-5 text-primary" />
+            <KeyRound className="size-5 text-primary-text" />
             <h1 className="text-xl font-extrabold">Support Console</h1>
           </div>
           <p className="text-sm text-muted-foreground">
@@ -110,18 +157,26 @@ function SupportLogin({ onLoggedIn }: { onLoggedIn: (token: string) => void }) {
                 disabled={pending}
               />
             </div>
-            {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
             <Button type="submit" size="lg" className="h-11" disabled={pending}>
               {pending ? "Checking..." : "Log In"}
             </Button>
           </form>
         </CardContent>
       </Card>
-    </div>
+    </main>
   );
 }
 
-function BusinessDirectory({ token, onExit }: { token: string; onExit: () => void }) {
+function BusinessDirectory({
+  token,
+  onExit,
+  onExpired,
+}: {
+  token: string;
+  onExit: () => void;
+  onExpired: () => void;
+}) {
   const [businesses, setBusinesses] = useState<Business[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
@@ -137,7 +192,7 @@ function BusinessDirectory({ token, onExit }: { token: string; onExit: () => voi
       // bounce back to the password screen rather than showing a list that
       // can't actually be used.
       if (err instanceof ApiError && err.status === 401) {
-        onExit();
+        onExpired();
         return;
       }
       setLoadError(err instanceof Error ? err.message : "Could not load businesses");
@@ -157,12 +212,12 @@ function BusinessDirectory({ token, onExit }: { token: string; onExit: () => voi
   });
 
   return (
-    <div className="min-h-screen bg-background p-4 sm:p-8">
+    <main className="min-h-screen bg-background p-4 sm:p-8">
       <div className="mx-auto flex max-w-3xl flex-col gap-4">
         <Card>
           <CardContent className="flex flex-wrap items-start justify-between gap-2 py-4">
             <div>
-              <h1 className="flex items-center gap-2 text-xl font-extrabold text-primary">
+              <h1 className="flex items-center gap-2 text-xl font-extrabold text-primary-text">
                 <Shield className="size-5" />
                 Support Console
               </h1>
@@ -177,13 +232,14 @@ function BusinessDirectory({ token, onExit }: { token: string; onExit: () => voi
           </CardContent>
         </Card>
 
-        {loadError && <p className="text-sm font-medium text-destructive">{loadError}</p>}
+        {loadError && <p role="alert" className="text-sm font-medium text-destructive">{loadError}</p>}
 
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search businesses"
             placeholder="Search by business name or code..."
             className="h-11 pr-9 pl-9"
           />
@@ -192,7 +248,7 @@ function BusinessDirectory({ token, onExit }: { token: string; onExit: () => voi
               type="button"
               onClick={() => setSearch("")}
               aria-label="Clear search"
-              className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              className="absolute top-1/2 right-1.5 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
             >
               <X className="size-4" />
             </button>
@@ -210,7 +266,7 @@ function BusinessDirectory({ token, onExit }: { token: string; onExit: () => voi
           ))}
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -270,6 +326,7 @@ function badgeClass(overLimit: boolean) {
 
 function AccessAdminDialog({ business, token, disabled }: { business: Business; token: string; disabled: boolean }) {
   const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
@@ -280,7 +337,7 @@ function AccessAdminDialog({ business, token, disabled }: { business: Business; 
       await apiFetch("/api/support/impersonate", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ businessCode: business.code }),
+        body: JSON.stringify({ businessCode: business.code, reason: reason.trim() }),
       });
       // A full navigation, not router.push() — impersonation just swapped
       // the session cookie to a different business entirely, and this page
@@ -308,12 +365,13 @@ function AccessAdminDialog({ business, token, disabled }: { business: Business; 
           This logs this browser into <strong>{business.name}</strong> (code {business.code}) as their admin. The
           action is recorded in the audit log.
         </p>
-        {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+        <ReasonField id="access-reason" value={reason} onChange={setReason} disabled={pending} />
+        {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
         <DialogFooter>
           <Button variant="secondary" onClick={() => setOpen(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={handleAccess} disabled={pending}>
+          <Button onClick={handleAccess} disabled={pending || !reasonOk(reason)}>
             {pending ? "Accessing..." : "Access Admin"}
           </Button>
         </DialogFooter>
@@ -324,6 +382,7 @@ function AccessAdminDialog({ business, token, disabled }: { business: Business; 
 
 function FreezeDialog({ business, token, onChanged }: { business: Business; token: string; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
@@ -334,7 +393,7 @@ function FreezeDialog({ business, token, onChanged }: { business: Business; toke
       await apiFetch("/api/support/freeze", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ businessCode: business.code, frozen: !business.frozen }),
+        body: JSON.stringify({ businessCode: business.code, frozen: !business.frozen, reason: reason.trim() }),
       });
       setOpen(false);
       onChanged();
@@ -348,7 +407,7 @@ function FreezeDialog({ business, token, onChanged }: { business: Business; toke
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
-        render={<Button size="sm" variant={business.frozen ? "default" : "outline"} className={business.frozen ? "" : "border-primary/40 text-primary"} />}
+        render={<Button size="sm" variant={business.frozen ? "default" : "outline"} className={business.frozen ? "" : "border-primary/40 text-primary-text"} />}
       >
         <Snowflake className="size-4" />
         {business.frozen ? "Unfreeze" : "Freeze"}
@@ -364,12 +423,13 @@ function FreezeDialog({ business, token, onChanged }: { business: Business; toke
             ? `This immediately restores access for the owner and every operator of ${business.name} (code ${business.code}).`
             : `This immediately locks out the owner and every operator of ${business.name} (code ${business.code}) — they'll see a full-screen notice to contact support.`}
         </p>
-        {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+        <ReasonField id="freeze-reason" value={reason} onChange={setReason} disabled={pending} />
+        {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
         <DialogFooter>
           <Button variant="secondary" onClick={() => setOpen(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button variant={business.frozen ? "default" : "destructive"} onClick={handleConfirm} disabled={pending}>
+          <Button variant={business.frozen ? "default" : "destructive"} onClick={handleConfirm} disabled={pending || !reasonOk(reason)}>
             {pending ? "Please wait..." : business.frozen ? "Unfreeze" : "Freeze Account"}
           </Button>
         </DialogFooter>
@@ -382,6 +442,7 @@ function ManageLimitsDialog({ business, token, onChanged }: { business: Business
   const [open, setOpen] = useState(false);
   const [maxOperators, setMaxOperators] = useState(business.maxOperators != null ? String(business.maxOperators) : "");
   const [maxBillsPerDay, setMaxBillsPerDay] = useState(business.maxBillsPerDay != null ? String(business.maxBillsPerDay) : "");
+  const [reason, setReason] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
@@ -397,6 +458,7 @@ function ManageLimitsDialog({ business, token, onChanged }: { business: Business
           businessCode: business.code,
           maxOperators: maxOperators.trim() || null,
           maxBillsPerDay: maxBillsPerDay.trim() || null,
+          reason: reason.trim(),
         }),
       });
       setOpen(false);
@@ -453,12 +515,13 @@ function ManageLimitsDialog({ business, token, onChanged }: { business: Business
             />
             <p className="text-xs text-muted-foreground">{business.billsToday} bill(s) generated today</p>
           </div>
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          <ReasonField id="limits-reason" value={reason} onChange={setReason} disabled={pending} />
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="secondary" onClick={() => setOpen(false)} disabled={pending}>
               Cancel
             </Button>
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" disabled={pending || !reasonOk(reason)}>
               {pending ? "Saving..." : "Save Limits"}
             </Button>
           </DialogFooter>
@@ -491,12 +554,14 @@ type ClearDataCounts = {
 function ClearDataDialog({ business, token, onChanged }: { business: Business; token: string; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const [confirmCode, setConfirmCode] = useState("");
+  const [reason, setReason] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<ClearDataCounts | null>(null);
 
   function reset() {
     setConfirmCode("");
+    setReason("");
     setError("");
     setResult(null);
   }
@@ -508,7 +573,7 @@ function ClearDataDialog({ business, token, onChanged }: { business: Business; t
       const { counts } = await apiFetch<{ counts: ClearDataCounts }>("/api/support/clear-data", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ businessCode: business.code, confirmCode }),
+        body: JSON.stringify({ businessCode: business.code, confirmCode, reason: reason.trim() }),
       });
       setResult(counts);
       onChanged();
@@ -577,7 +642,8 @@ function ClearDataDialog({ business, token, onChanged }: { business: Business; t
                 disabled={pending}
               />
             </div>
-            {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+            <ReasonField id="clear-reason" value={reason} onChange={setReason} disabled={pending} />
+            {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
             <DialogFooter>
               <Button variant="secondary" onClick={() => setOpen(false)} disabled={pending}>
                 Cancel
@@ -585,7 +651,7 @@ function ClearDataDialog({ business, token, onChanged }: { business: Business; t
               <Button
                 variant="destructive"
                 onClick={handleClear}
-                disabled={pending || confirmCode.trim().toUpperCase() !== business.code.toUpperCase()}
+                disabled={pending || !reasonOk(reason) || confirmCode.trim().toUpperCase() !== business.code.toUpperCase()}
               >
                 {pending ? "Clearing..." : "Clear Data"}
               </Button>

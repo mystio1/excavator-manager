@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { CalendarDays, Clock, FileText, Pencil, Truck } from "lucide-react";
 import type { getCustomerDetail } from "@/lib/services/customers";
+import type { Plain } from "@/lib/plain";
 import { swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
 import { SummaryCard } from "@/components/dashboard/summary-card";
@@ -19,7 +20,7 @@ import { formatHours } from "@/lib/utils/hours";
 import { StatusBadge } from "@/components/status-badge";
 import Loading from "../../loading";
 
-type CustomerDetail = NonNullable<Awaited<ReturnType<typeof getCustomerDetail>>>;
+type CustomerDetail = Plain<NonNullable<Awaited<ReturnType<typeof getCustomerDetail>>>>;
 
 export default function CustomerDetailPage() {
   const searchParams = useSearchParams();
@@ -109,7 +110,7 @@ export default function CustomerDetailPage() {
 
           <form method="get" className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <input type="hidden" name="id" value={id} />
-            <NativeSelect name="excavatorId" defaultValue={excavatorId} className="h-11">
+            <NativeSelect name="excavatorId" aria-label="Machine" defaultValue={excavatorId} className="h-11">
               <option value="">All Machines</option>
               {machineOptions.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -118,7 +119,7 @@ export default function CustomerDetailPage() {
                 </option>
               ))}
             </NativeSelect>
-            <NativeSelect name="site" defaultValue={site} className="h-11">
+            <NativeSelect name="site" aria-label="Site" defaultValue={site} className="h-11">
               <option value="">All Sites</option>
               {siteOptions.map((s) => (
                 <option key={s} value={s}>

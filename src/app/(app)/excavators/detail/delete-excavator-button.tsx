@@ -31,7 +31,7 @@ export function DeleteExcavatorButton({ excavatorId, excavatorName }: { excavato
           Deleting the machine will permanently remove it from your active machine list. Its work history, service
           records and past bills stay on record. This cannot be undone.
         </p>
-        {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+        {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
         <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
           <Button type="button" variant="destructive" size="lg" className="h-11 w-full" disabled={pending} onClick={handleDelete}>
             {pending ? "Deleting..." : "Yes, Delete"}

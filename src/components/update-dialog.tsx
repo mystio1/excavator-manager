@@ -130,7 +130,7 @@ export function UpdateDialog() {
       <DialogContent showCloseButton={dismissible}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <DownloadCloud className="size-5 text-primary" />
+            <DownloadCloud className="size-5 text-primary-text" />
             New Update Available
           </DialogTitle>
         </DialogHeader>
@@ -165,7 +165,14 @@ export function UpdateDialog() {
 
           {state.phase === "downloading" && (
             <div className="flex flex-col gap-1.5">
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                role="progressbar"
+                aria-label="Download progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={state.progress && state.progress.percent >= 0 ? Math.round(state.progress.percent) : undefined}
+                className="h-2 w-full overflow-hidden rounded-full bg-muted"
+              >
                 <div
                   className="h-full rounded-full bg-primary transition-all"
                   style={{
@@ -184,7 +191,7 @@ export function UpdateDialog() {
           )}
 
           {state.phase === "error" && (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/8 p-3 text-destructive">
+            <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/8 p-3 text-destructive">
               <TriangleAlert className="mt-0.5 size-4 shrink-0" />
               <p>{state.message}</p>
             </div>

@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
 import { requireSupportApi } from "@/lib/supportTokens";
 import { listBusinessesForSupport } from "@/lib/services/support";
+import { json, withApi } from "@/lib/with-api";
 
-export async function GET(req: Request) {
-  const auth = requireSupportApi(req);
+export const GET = withApi("support.businesses", async (req) => {
+  const auth = await requireSupportApi(req);
   if (auth.error) return auth.error;
 
   const businesses = await listBusinessesForSupport();
-  return NextResponse.json({ businesses });
-}
+  return json({ businesses });
+});

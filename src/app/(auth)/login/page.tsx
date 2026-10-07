@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api-client";
 import { useApiForm } from "@/lib/use-api-form";
+import { useClearClientCache } from "@/lib/use-clear-client-cache";
 import { ExcavatorLogo } from "@/components/excavator-logo";
 import { Mail, Lock, Eye, EyeOff, ArrowRight, HardHat, ChevronRight } from "lucide-react";
+import { usePageTitle } from "@/components/page-title";
 
 export default function LoginPage() {
   return (
@@ -18,12 +20,15 @@ export default function LoginPage() {
 
 function LoginForm() {
   const router = useRouter();
+  const clearClientCache = useClearClientCache();
   const searchParams = useSearchParams();
   const justReset = searchParams.get("reset") === "1";
   const [showPassword, setShowPassword] = useState(false);
+  usePageTitle("Log in");
 
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify(body) });
+    await clearClientCache(); // never show a previous account's cached data
     router.push("/dashboard");
   });
 
@@ -69,7 +74,7 @@ function LoginForm() {
       </div>
 
       {justReset && (
-        <div className="mb-3 rounded-xl bg-amber-500/20 border border-amber-500/40 px-3 py-2 text-xs font-semibold text-amber-300">
+        <div role="status" className="mb-3 rounded-xl bg-amber-500/20 border border-amber-500/40 px-3 py-2 text-xs font-semibold text-amber-300">
           Password reset successfully — log in with your new password.
         </div>
       )}
@@ -85,6 +90,8 @@ function LoginForm() {
             type="text"
             required
             autoFocus
+            aria-label="Email or phone number"
+            autoComplete="username"
             placeholder="Email or phone number"
             className="w-full h-11 pl-10 pr-4 rounded-xl bg-slate-900/80 border border-white/20 hover:border-white/40 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/40 text-white placeholder:text-slate-400 text-sm outline-none transition-all"
           />
@@ -99,13 +106,15 @@ function LoginForm() {
               name="password"
               type={showPassword ? "text" : "password"}
               required
+              aria-label="Password"
+              autoComplete="current-password"
               placeholder="Password"
               className="w-full h-11 pl-10 pr-10 rounded-xl bg-slate-900/80 border border-white/20 hover:border-white/40 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/40 text-white placeholder:text-slate-400 text-sm outline-none transition-all"
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-300 hover:text-white transition-colors"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-300 hover:text-white transition-colors"
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
               {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -115,7 +124,7 @@ function LoginForm() {
           <div className="text-right">
             <Link
               href="/forgot-password"
-              className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 underline-offset-4 hover:underline"
+              className="inline-block py-1 text-[11px] font-semibold text-amber-400 hover:text-amber-300 underline-offset-4 hover:underline"
             >
               Forgot password?
             </Link>
@@ -123,7 +132,7 @@ function LoginForm() {
         </div>
 
         {error && (
-          <div className="rounded-xl bg-red-500/25 border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-200">
+          <div role="alert" className="rounded-xl bg-red-500/25 border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-200">
             {error}
           </div>
         )}

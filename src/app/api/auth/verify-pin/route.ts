@@ -1,25 +1,22 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
-import { PIN_RATE_LIMIT_MESSAGE, verifyAppPin } from "@/lib/services/auth";
+import { verifyAppPin } from "@/lib/services/auth";
+import { authFailureResponse } from "@/lib/signin-response";
+import { json, parseBody, withApi } from "@/lib/with-api";
 import { verifyAppPinSchema } from "@/lib/validation/auth";
 
 /** The (app) layout's lock screen calls this — a valid session already
  * exists at this point (requireBusinessApi confirms that same as any other
- * route); this only gates whether the client reveals the dashboard. */
-export async function POST(req: Request) {
+ * route); this only gates whether the client reveals the dashboard. Wrong
+ * guesses are throttled per user (see appPinRules); a correct PIN is never
+ * counted against the budget. */
+export const POST = withApi("auth.verifyPin", async (req) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
 
-  const parsed = verifyAppPinSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Enter your PIN" }, { status: 400 });
-  }
+  const input = await parseBody(req, verifyAppPinSchema);
 
-  const result = await verifyAppPin(auth.session.userId, parsed.data.pin);
-  if ("error" in result) {
-    const status = result.error === PIN_RATE_LIMIT_MESSAGE ? 429 : 401;
-    return NextResponse.json({ error: result.error }, { status });
-  }
+  const result = await verifyAppPin(auth.session.userId, input.pin);
+  if ("error" in result) return authFailureResponse(result);
 
-  return NextResponse.json({ ok: true });
-}
+  return json({ ok: true });
+});

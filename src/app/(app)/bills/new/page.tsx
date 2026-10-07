@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { NativeSelect } from "@/components/native-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Field } from "@/components/bill/editor/form-parts";
 import { GenerateBillForm } from "./generate-bill-form";
 import Loading from "../../loading";
 
@@ -62,54 +63,58 @@ export default function NewBillPage() {
           <Card>
             <CardContent>
               <form method="get" className="flex flex-col gap-4">
-                <div>
-                  <p className="mb-2 text-base font-semibold">Select Customer</p>
-                  {customers.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Add a customer first.</p>
-                  ) : (
-                    <NativeSelect name="customerId" required defaultValue="">
-                      <option value="" disabled>
-                        Choose a customer
-                      </option>
-                      {customers.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                          {c.companyName ? ` (${c.companyName})` : ""}
+                <h2 className="text-base font-semibold">Select Customer</h2>
+                {customers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Add a customer first.</p>
+                ) : (
+                  <Field label="Customer">
+                    {(id) => (
+                      <NativeSelect id={id} name="customerId" required defaultValue="" className="h-11 min-w-0">
+                        <option value="" disabled>
+                          Choose a customer
+                        </option>
+                        {customers.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                            {c.companyName ? ` (${c.companyName})` : ""}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    )}
+                  </Field>
+                )}
+                <Field label="Site (Optional)">
+                  {(id) => (
+                    <NativeSelect id={id} name="siteId" defaultValue="" className="h-11 min-w-0">
+                      <option value="">All Sites</option>
+                      {sites.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
                         </option>
                       ))}
                     </NativeSelect>
                   )}
-                </div>
-                <div>
-                  <p className="mb-2 text-sm font-semibold text-muted-foreground">Site (Optional)</p>
-                  <NativeSelect name="siteId" defaultValue="" className="h-11">
-                    <option value="">All Sites</option>
-                    {sites.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </div>
-                <div>
-                  <p className="mb-2 text-sm font-semibold text-muted-foreground">Machine (Optional)</p>
-                  <NativeSelect name="excavatorId" defaultValue="" className="h-11">
-                    <option value="">All Machines</option>
-                    {excavators.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.name} ({e.machineNumber})
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <p className="mb-2 text-sm font-semibold text-muted-foreground">From Date (Optional)</p>
-                    <Input type="date" name="from" className="h-11" />
-                  </div>
-                  <div>
-                    <p className="mb-2 text-sm font-semibold text-muted-foreground">To Date (Optional)</p>
-                    <Input type="date" name="to" className="h-11" />
+                </Field>
+                <Field label="Machine (Optional)">
+                  {(id) => (
+                    <NativeSelect id={id} name="excavatorId" defaultValue="" className="h-11 min-w-0">
+                      <option value="">All Machines</option>
+                      {excavators.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.name} ({e.machineNumber})
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  )}
+                </Field>
+                <div className="@container">
+                  <div className="grid grid-cols-1 gap-4 @min-[320px]:grid-cols-2">
+                    <Field label="From Date (Optional)">
+                      {(id) => <Input id={id} type="date" name="from" className="h-11 px-2" />}
+                    </Field>
+                    <Field label="To Date (Optional)">
+                      {(id) => <Input id={id} type="date" name="to" className="h-11 px-2" />}
+                    </Field>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">

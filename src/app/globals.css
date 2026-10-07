@@ -36,6 +36,13 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
   --color-primary-light: var(--primary-light);
+  /* Amber used AS TEXT (links, active nav, tinted icon labels). Light mode
+     needs a darker amber than the --primary fill to reach 4.5:1 on cream/white;
+     dark mode keeps the brand amber. */
+  --color-primary-text: var(--primary-text);
+  /* Border of form controls (inputs, selects, textareas): >= 3:1 against the
+     surface they sit on (WCAG 1.4.11). --input stays the soft fill tint. */
+  --color-control: var(--control-border);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -103,19 +110,26 @@
    working/paid, amber = idle/waiting, construction orange-red = under
    service (routine, not urgent), red = overdue/critical.
    ========================================================================= */
+/* Contrast notes (WCAG 2.2 AA, enforced by tests/a11y/contrast.test.ts): the
+   status colors double as text colors (text-working on a card, tinted chips)
+   and as solid fills with a foreground on top (badges). In light mode one
+   value serves both, so they are the deep shade of each hue (>= 4.5:1 for
+   white-on-fill AND for text on white/cream/their own 12-15% tint). In dark
+   mode the bright shade is the right TEXT color on dark surfaces, so the
+   solid-fill foregrounds flip to near-black instead. */
 :root {
-  --working: #10b981;
+  --working: #066a4c;
   --working-foreground: #ffffff;
   /* Idle keeps the soft-tint-background + dark-readable-text convention
      (unlike working/service's solid-fill + white-text) — it's used as a
      light chip/banner background in many places, not a solid badge. */
   --idle: rgba(245, 158, 11, 0.14);
-  --idle-foreground: #b45309;
-  --service: #f97316;
+  --idle-foreground: #9f4a07;
+  --service: #b43c0b;
   --service-foreground: #ffffff;
-  --info: #3b82f6;
+  --info: #1d4ed8;
   --info-foreground: #ffffff;
-  --purple: #8b5cf6;
+  --purple: #6d28d9;
   --purple-foreground: #ffffff;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -126,6 +140,14 @@
 .dark {
   --idle: rgba(245, 158, 11, 0.16);
   --idle-foreground: #f59e0b;
+  --working: #10b981;
+  --working-foreground: #0b1118;
+  --service: #f97316;
+  --service-foreground: #0b1118;
+  --info: #60a5fa;
+  --info-foreground: #0b1118;
+  --purple: #a78bfa;
+  --purple-foreground: #0b1118;
 }
 
 :root {
@@ -144,26 +166,32 @@
   --primary: #f4a910;
   --primary-light: rgba(244, 169, 16, 0.1);
   --primary-foreground: #1a1207;
+  /* Amber as TEXT on cream/white (the #f4a910 fill is only 1.9:1 there). */
+  --primary-text: #945806;
   --golden: #f6b51e;
   --secondary: #fff0d8;
-  --secondary-foreground: #a16207;
+  --secondary-foreground: #945806;
   --muted: #ffe9c4;
-  --muted-foreground: #687385;
+  --muted-foreground: #5b667a;
   --accent: rgba(244, 169, 16, 0.08);
-  --accent-foreground: #a16207;
-  --destructive: #ef4444;
+  --accent-foreground: #945806;
+  --destructive: #b31a1a;
   --border: rgba(248, 199, 100, 0.2);
   --input: rgba(248, 199, 100, 0.2);
-  --ring: #f4a910;
+  /* >= 3:1 against white cards and the cream page (the soft --input tint is
+     ~1.1:1, which left text fields without a visible edge). */
+  --control-border: #8b8171;
+  /* Focus indicator: >= 3:1 on white/cream (the #f4a910 brand amber is 1.9:1). */
+  --ring: #b8650a;
   --radius: 1rem;
   --sidebar: #fff0d8;
   --sidebar-foreground: #17212b;
   --sidebar-primary: #f4a910;
   --sidebar-primary-foreground: #1a1207;
   --sidebar-accent: rgba(244, 169, 16, 0.1);
-  --sidebar-accent-foreground: #a16207;
+  --sidebar-accent-foreground: #945806;
   --sidebar-border: rgba(248, 199, 100, 0.2);
-  --sidebar-ring: #f4a910;
+  --sidebar-ring: #b8650a;
   --header-bg: linear-gradient(90deg, #fff6de 0%, #ffe9b0 100%);
   --header-border: rgba(246, 181, 30, 0.32);
 }
@@ -179,6 +207,7 @@
   --primary: #f4a910;
   --primary-light: rgba(244, 169, 16, 0.18);
   --primary-foreground: #1a1207;
+  --primary-text: #f4a910;
   --golden: #f6b51e;
   --secondary: #202b36;
   --secondary-foreground: #f4a910;
@@ -186,9 +215,12 @@
   --muted-foreground: #9aa8b8;
   --accent: rgba(244, 169, 16, 0.16);
   --accent-foreground: #f4a910;
-  --destructive: #ef4444;
+  /* Lighter than light mode so red TEXT clears 4.5:1 on the dark card and on
+     its own 10-15% tint (solid red fills use bg-red-600, not this token). */
+  --destructive: #fa8080;
   --border: #263140;
   --input: #263140;
+  --control-border: #67768a;
   --ring: #f4a910;
   --sidebar: #101720;
   --sidebar-foreground: #f5f7fa;
@@ -227,6 +259,14 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     @apply font-sans;
+  }
+  /* Baseline keyboard-focus indicator (WCAG 2.4.7). Anything focusable that
+     doesn't draw its own — plain <button>/<a>/<summary> elements — gets this
+     ring; components that do (ring utilities together with outline-none /
+     outline-hidden) win because utilities sit in a later cascade layer. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
   /* NativeSelect's trigger is intentionally bg-transparent so it blends into
      whatever card/dialog it sits on — but that leaves the browser with no
@@ -309,5 +349,26 @@
   .bill-print-area * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+}
+
+/* Respect the user's OS-level "reduce motion" setting: drop the infinite
+   excavator animation, entrance fades, hover lifts and smooth scrolling. State
+   changes still apply instantly, so nothing depends on an animation finishing. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-excavator-dig {
+    animation: none !important;
+  }
+  .card-hover:hover {
+    transform: none;
   }
 }

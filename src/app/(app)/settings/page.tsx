@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import type { getBusinessSettings, listBankAccounts } from "@/lib/services/settings";
+import type { Plain } from "@/lib/plain";
 import { swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
 import { ThemeSwitcher } from "@/components/theme-switcher";
@@ -12,11 +13,13 @@ import { BankAccountsSection } from "./bank-accounts-section";
 import { BusinessCodeCard } from "./business-code-card";
 import { OperatorLanguageForm } from "./operator-language-form";
 import { AppLockSection } from "./app-lock-section";
+import { ChangePasswordCard } from "./change-password-card";
+import { SignOutEverywhereCard } from "./sign-out-everywhere-card";
 import Loading from "../loading";
 
 type SettingsData = {
-  business: Awaited<ReturnType<typeof getBusinessSettings>>;
-  bankAccounts: Awaited<ReturnType<typeof listBankAccounts>>;
+  business: Plain<Awaited<ReturnType<typeof getBusinessSettings>>>;
+  bankAccounts: Plain<Awaited<ReturnType<typeof listBankAccounts>>>;
   hasPin: boolean;
 };
 
@@ -33,6 +36,8 @@ export default function SettingsPage() {
         <ThemeSwitcher />
         <BusinessCodeCard code={business.code} />
         <AppLockSection hasPin={hasPin} />
+        <ChangePasswordCard />
+        <SignOutEverywhereCard />
         <OperatorLanguageForm operatorLanguage={business.operatorLanguage} />
         <BusinessProfileForm business={business} />
         <BillLetterheadForm business={business} />

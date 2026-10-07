@@ -25,3 +25,12 @@ export function currentMonthRange(reference = new Date()) {
 export function toDateInputValue(date: Date) {
   return format(date, "yyyy-MM-dd");
 }
+
+/** Today's date as yyyy-MM-dd in the USER'S local timezone — what a date input's
+ * default must be. `new Date().toISOString().slice(0, 10)` is the UTC date, which
+ * is YESTERDAY in India between 00:00 and 05:30 IST (exactly when operators start
+ * work). Use this for "now"; keep toISOString() only for converting a STORED date
+ * (stored as UTC midnight of the chosen day) back into an input value. */
+export function todayLocal(now = new Date()) {
+  return toDateInputValue(now);
+}

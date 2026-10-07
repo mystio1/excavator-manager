@@ -16,7 +16,7 @@ export function SectionTitle({
   tone?: "default" | "success" | "info" | "premium";
 }) {
   const toneClass = {
-    default: "bg-primary/12 text-primary",
+    default: "bg-primary/12 text-primary-text",
     success: "bg-working/12 text-working",
     info: "bg-info/12 text-info",
     premium: "bg-purple/12 text-purple",

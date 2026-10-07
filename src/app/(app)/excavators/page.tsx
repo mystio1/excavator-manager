@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { Plus, Truck } from "lucide-react";
 import type { getMachinePerformanceSummary, listExcavators } from "@/lib/services/excavators";
 import { swrFetcher } from "@/lib/api-client";
+import type { Plain } from "@/lib/plain";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { MachineCard } from "@/components/machine-card";
@@ -14,8 +15,8 @@ import { ReorderMachines } from "./reorder-machines";
 import Loading from "../loading";
 
 type ExcavatorsData = {
-  excavators: Awaited<ReturnType<typeof listExcavators>>;
-  machinePerformance: Awaited<ReturnType<typeof getMachinePerformanceSummary>>;
+  excavators: Plain<Awaited<ReturnType<typeof listExcavators>>>;
+  machinePerformance: Plain<Awaited<ReturnType<typeof getMachinePerformanceSummary>>>;
 };
 
 export default function ExcavatorsPage() {

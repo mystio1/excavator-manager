@@ -30,5 +30,8 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "ledger-plus-trackmarg"]
+  // tests/ is typechecked separately (tsconfig.tests.json): `next build` for the
+  // Android bundle moves src/app/api and src/proxy.ts aside, and route/proxy
+  // tests import them, so including tests here would break that build.
+  "exclude": ["node_modules", "ledger-plus-trackmarg", "tests"]
 }

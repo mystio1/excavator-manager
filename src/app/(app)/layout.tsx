@@ -21,8 +21,8 @@ type LayoutData = { businessName: string; ownerName: string; alerts: Alert[]; fr
 function FrozenNotice() {
   const { logout, pending } = useLogout();
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
-      <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
+      <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary-text">
         <Snowflake className="size-9" />
       </div>
       <h1 className="text-xl font-bold">Account Temporarily Frozen</h1>
@@ -32,7 +32,7 @@ function FrozenNotice() {
       <Button onClick={logout} disabled={pending} variant="secondary">
         {pending ? "Logging out..." : "Log Out"}
       </Button>
-    </div>
+    </main>
   );
 }
 
@@ -66,10 +66,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     // First paint of the whole app shell — distinct from (app)/loading.tsx,
     // which only covers content swapping once this shell already exists.
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+      <div role="status" className="flex min-h-screen flex-col items-center justify-center gap-4">
+        <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary-text">
           <ExcavatorLogo animated className="size-9" />
         </div>
+        <span className="sr-only">Loading…</span>
       </div>
     );
   }
@@ -96,11 +97,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
+      {/* Bypass block (WCAG 2.4.1): the first Tab stop jumps past the sidebar
+          and header straight to the page content. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-primary-foreground"
+      >
+        Skip to main content
+      </a>
       <Sidebar businessName={data.businessName} />
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <MobileTopBar businessName={data.businessName} alerts={data.alerts} />
         <DesktopTopHeader ownerName={data.ownerName} alerts={data.alerts} />
-        <main className="flex-1 overflow-x-hidden bg-background pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-x-hidden outline-none bg-background pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">
           {children}
         </main>
         <BottomNav />

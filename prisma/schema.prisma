@@ -17,7 +17,8 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model Business {
-  id                           String  @id @default(cuid())
+  id                           String                @id @default(cuid())
+  operatorJoinRequests         OperatorJoinRequest[]
   name                         String
   ownerName                    String
   phone                        String
@@ -26,15 +27,15 @@ model Business {
   // Short, human-shareable code an operator enters at /operator-signup to
   // scope their activation to this business — see registerBusiness /
   // regenerateBusinessCode. Never editable directly, only regenerated.
-  code                         String  @unique
-  defaultServiceIntervalHrs    Float   @default(350)
-  maintenanceAlertThresholdHrs Float   @default(50)
+  code                         String                @unique
+  defaultServiceIntervalHrs    Float                 @default(350)
+  maintenanceAlertThresholdHrs Float                 @default(50)
   // "en" | "hi" | "mr" — controls the display language of the whole
   // operator portal (login/signup through every dialog), set here by the
   // Admin. The pre-login screens can't know which business a visitor
   // belongs to yet, so they stay in English; this takes effect from the
   // operator's own home page onward.
-  operatorLanguage             String  @default("en")
+  operatorLanguage             String                @default("en")
 
   // Support-console-managed (see /support and src/lib/services/support.ts) —
   // not editable from anywhere in the normal owner-facing UI. frozen blocks
@@ -87,6 +88,15 @@ model AuditLog {
   action     String
   entityId   String
   details    Json     @default("{}")
+  // Financial audit trail (append-only — enforced by a DB trigger, see the
+  // audit_log_append_only migration).
+  actorType  String   @default("OWNER") // OWNER | OPERATOR | SUPPORT | SYSTEM
+  actorId    String?
+  entityType String   @default("")
+  before     Json?
+  after      Json?
+  reason     String?
+  requestId  String?
   createdAt  DateTime @default(now())
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
@@ -95,6 +105,7 @@ model AuditLog {
   @@index([businessId])
   @@index([businessId, createdAt])
   @@index([entityId])
+  @@index([businessId, entityType, entityId])
 }
 
 // Multiple bank accounts a business may bill against — the owner picks one
@@ -123,6 +134,7 @@ model BankAccount {
 // enum so more roles (staff/accountant) can be added later without a migration.
 model User {
   id               String    @id @default(cuid())
+  tokenVersion     Int       @default(0) // bump to invalidate every issued session JWT
   businessId       String
   name             String
   email            String    @unique
@@ -148,6 +160,7 @@ model User {
   auditLogs AuditLog[]
 
   @@index([businessId])
+  @@index([resetTokenHash])
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +178,7 @@ model User {
 // every pairing this machine has had.
 model Excavator {
   id                 String    @id @default(cuid())
+  version            Int       @default(0) // optimistic concurrency: bumped on every update
   businessId         String
   name               String
   machineNumber      String?
@@ -245,6 +259,7 @@ model Site {
 
 model Customer {
   id          String   @id @default(cuid())
+  version     Int      @default(0) // optimistic concurrency: bumped on every update
   businessId  String
   name        String
   mobile      String
@@ -264,12 +279,14 @@ model Customer {
 
 model Operator {
   id                   String    @id @default(cuid())
+  tokenVersion         Int       @default(0) // bump to invalidate every issued session JWT
+  version              Int       @default(0) // optimistic concurrency: bumped on every update
   businessId           String
   name                 String
   mobile               String
   address              String?
   joiningDate          DateTime?
-  defaultMonthlySalary Float     @default(0)
+  defaultMonthlySalary Decimal   @default(0) @db.Decimal(14, 2)
   isArchived           Boolean   @default(false)
   // Operator self-login (portal): PIN-based, separate from the owner's
   // email/password login. canLogin stays false until the Admin explicitly
@@ -306,6 +323,7 @@ model Operator {
 // add/edit/delete — never hand-entered.
 model WorkSession {
   id             String    @id @default(cuid())
+  version        Int       @default(0) // optimistic concurrency: bumped on every update
   businessId     String
   excavatorId    String
   customerId     String
@@ -396,6 +414,7 @@ model OperatorWorkRequest {
 // must only ever see approved readings.
 model DailyWorkLog {
   id             String    @id @default(cuid())
+  version        Int       @default(0) // optimistic concurrency: bumped on every update
   workSessionId  String
   date           DateTime
   startTime      String?
@@ -462,10 +481,11 @@ model TransactionCategory {
 // businessEffect: "ADVANCE_RECOVERABLE" | "BUSINESS_EXPENSE" | "SALARY_PAYMENT" | "BONUS_INCENTIVE" | "OTHER"
 model OperatorTransaction {
   id               String   @id @default(cuid())
+  version          Int      @default(0) // optimistic concurrency: bumped on every update
   businessId       String
   operatorId       String
   categoryId       String?
-  amount           Float
+  amount           Decimal  @db.Decimal(14, 2)
   date             DateTime
   notes            String?
   deductFromSalary Boolean  @default(true)
@@ -512,7 +532,7 @@ model ServiceRecord {
   serviceDate        DateTime
   hourMeterAtService Float
   serviceType        String?
-  cost               Float    @default(0)
+  cost               Decimal  @default(0) @db.Decimal(14, 2)
   notes              String?
   nextServiceDueHour Float?
   createdAt          DateTime @default(now())
@@ -536,7 +556,7 @@ model ServiceRecordItem {
   serviceItemId   String
   action          String  @default("Serviced")
   done            Boolean @default(true)
-  cost            Float   @default(0)
+  cost            Decimal @default(0) @db.Decimal(14, 2)
   brand           String?
   notes           String?
 
@@ -558,7 +578,7 @@ model ExcavatorExpense {
   excavatorId String
   date        DateTime
   type        String
-  amount      Float
+  amount      Decimal  @db.Decimal(14, 2)
   notes       String?
   createdAt   DateTime @default(now())
 
@@ -593,26 +613,27 @@ model BillNumberSequence {
 // source of truth.
 model Bill {
   id                  String    @id @default(cuid())
+  version             Int       @default(0) // optimistic concurrency: bumped on every update
   businessId          String
   billNumber          String
   billType            String
   customerId          String
   bankAccountId       String?
   billDate            DateTime
-  subtotal            Float
-  transportCharges    Float     @default(0)
-  fuelCharges         Float     @default(0)
-  extraCharges        Float     @default(0)
-  bucketCharge        Float     @default(0)
-  breakerCharge       Float     @default(0)
-  discount            Float     @default(0)
-  gstPercentage       Float?
-  cgst                Float?
-  sgst                Float?
-  igst                Float?
+  subtotal            Decimal   @db.Decimal(14, 2)
+  transportCharges    Decimal   @default(0) @db.Decimal(14, 2)
+  fuelCharges         Decimal   @default(0) @db.Decimal(14, 2)
+  extraCharges        Decimal   @default(0) @db.Decimal(14, 2)
+  bucketCharge        Decimal   @default(0) @db.Decimal(14, 2)
+  breakerCharge       Decimal   @default(0) @db.Decimal(14, 2)
+  discount            Decimal   @default(0) @db.Decimal(14, 2)
+  gstPercentage       Decimal?  @db.Decimal(5, 2)
+  cgst                Decimal?  @db.Decimal(14, 2)
+  sgst                Decimal?  @db.Decimal(14, 2)
+  igst                Decimal?  @db.Decimal(14, 2)
   buyerGstin          String?
-  totalAmount         Float
-  paidAmount          Float     @default(0)
+  totalAmount         Decimal   @db.Decimal(14, 2)
+  paidAmount          Decimal   @default(0) @db.Decimal(14, 2)
   status              String    @default("UNPAID")
   notes               String?
   // Owner's choice, made per-bill at generation time, of whether the
@@ -633,13 +654,13 @@ model Bill {
   excavatorId         String?
   fromDate            DateTime?
   toDate              DateTime?
-  bucketHours         Float?
-  bucketRate          Float?
-  breakerHours        Float?
-  breakerRate         Float?
-  dieselLiters        Float?
-  dieselPricePerLiter Float?
-  dieselAdvance       Float?
+  bucketHours         Decimal?  @db.Decimal(10, 2)
+  bucketRate          Decimal?  @db.Decimal(14, 2)
+  breakerHours        Decimal?  @db.Decimal(10, 2)
+  breakerRate         Decimal?  @db.Decimal(14, 2)
+  dieselLiters        Decimal?  @db.Decimal(10, 2)
+  dieselPricePerLiter Decimal?  @db.Decimal(14, 2)
+  dieselAdvance       Decimal?  @db.Decimal(14, 2)
   // Frozen copy of business name/address/GST/logos/signature/bank details
   // and the template/accent used, so a later Settings change never rewrites
   // a bill that's already been generated.
@@ -671,14 +692,18 @@ model BillItem {
   attachment    String? // optional "Bucket" / "Breaker" tag for this line
   fromDate      DateTime
   toDate        DateTime
-  hours         Float
-  ratePerHour   Float
-  amount        Float
+  hours         Decimal  @db.Decimal(10, 2)
+  ratePerHour   Decimal  @db.Decimal(14, 2)
+  amount        Decimal  @db.Decimal(14, 2)
 
   bill        Bill         @relation(fields: [billId], references: [id], onDelete: Cascade)
   excavator   Excavator    @relation(fields: [excavatorId], references: [id], onDelete: Restrict)
   workSession WorkSession? @relation(fields: [workSessionId], references: [id], onDelete: SetNull)
 
+  // One work session can be billed at most once — enforced by the database so
+  // two concurrent bill requests cannot both succeed (NULLs are exempt, so
+  // hand-typed Summary Bill lines are unaffected).
+  @@unique([workSessionId])
   @@index([billId])
   @@index([excavatorId])
   @@index([workSessionId])
@@ -686,9 +711,10 @@ model BillItem {
 
 model Payment {
   id         String   @id @default(cuid())
+  version    Int      @default(0) // optimistic concurrency: bumped on every update
   businessId String
   billId     String
-  amount     Float
+  amount     Decimal  @db.Decimal(14, 2)
   date       DateTime
   method     String?
   notes      String?
@@ -699,4 +725,84 @@ model Payment {
 
   @@index([businessId])
   @@index([billId])
+}
+
+// ---------------------------------------------------------------------------
+// Security / reliability infrastructure
+// ---------------------------------------------------------------------------
+
+// Idempotency for financial creates (bill, summary bill, payment). The row is
+// inserted in the SAME transaction as the resource it protects, guarded by the
+// unique index — so "the request succeeded but the client timed out, then
+// retried" replays the stored response instead of creating a second record.
+// Scoped per business (never global across tenants).
+model IdempotencyKey {
+  id             String   @id @default(cuid())
+  businessId     String
+  key            String
+  operation      String // e.g. "bill.create", "payment.create"
+  actorId        String?
+  requestHash    String // sha256 of the canonical request payload
+  resourceType   String?
+  resourceId     String?
+  responseStatus Int
+  responseBody   Json
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+
+  @@unique([businessId, key])
+  @@index([expiresAt])
+}
+
+// Sliding-window-counter rate limiting shared by every app instance and
+// surviving restarts (see src/lib/rateLimit.ts). One row per (key, window).
+model RateLimitBucket {
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+  @@index([windowStart])
+}
+
+// Support-console sessions: opaque random token (only its sha256 is stored),
+// short-lived and individually revocable — replaces the old HMAC token that
+// shared AUTH_SECRET with owner sessions and could not be revoked.
+model SupportSession {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  @@index([expiresAt])
+}
+
+// An operator asking to join a business. Never touches an Operator row until
+// an admin approves it, so knowing a business code + a mobile number can no
+// longer set or overwrite anyone's PIN. status:
+// PENDING | APPROVED | REJECTED | EXPIRED | LOCKED
+model OperatorJoinRequest {
+  id               String    @id @default(cuid())
+  businessId       String
+  name             String
+  mobile           String
+  pinHash          String
+  // Short code shown only to the requester; the admin must type it to approve,
+  // so a request filed by someone else (who sees the code, not the real
+  // operator) is detectable. Stored as an HMAC, never plain.
+  verificationHash String
+  verifyAttempts   Int       @default(0)
+  status           String    @default("PENDING")
+  operatorId       String? // existing Operator row this request will be linked to on approval
+  expiresAt        DateTime
+  decidedAt        DateTime?
+  decidedBy        String?
+  createdAt        DateTime  @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, status])
+  @@index([mobile])
+  @@index([expiresAt])
 }

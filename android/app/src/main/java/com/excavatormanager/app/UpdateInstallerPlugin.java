@@ -41,6 +41,28 @@ public class UpdateInstallerPlugin extends Plugin {
     // own size — covers Android's own transient space needs during install.
     private static final long MIN_FREE_SPACE_MARGIN_BYTES = 20L * 1024 * 1024;
     private static final int PROGRESS_NOTIFY_INTERVAL_MS = 250;
+    // The only hosts a release APK may come from: GitHub release assets (and the
+    // CDN GitHub redirects them to). Anything else is refused outright, so even
+    // if the page's JavaScript were ever tampered with it could not point the
+    // updater at an arbitrary server.
+    private static final String[] ALLOWED_DOWNLOAD_HOSTS = {
+        "github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
+    };
+
+    private static boolean isAllowedDownloadUrl(URL url) {
+        if (!"https".equalsIgnoreCase(url.getProtocol())) {
+            return false;
+        }
+        String host = url.getHost() == null ? "" : url.getHost().toLowerCase();
+        for (String allowed : ALLOWED_DOWNLOAD_HOSTS) {
+            if (host.equals(allowed)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     @PluginMethod
     public void downloadApk(PluginCall call) {
@@ -50,6 +72,11 @@ public class UpdateInstallerPlugin extends Plugin {
             return;
         }
         String expectedSha256 = call.getString("expectedSha256");
+        // The checksum is mandatory: an unverified APK is never downloaded.
+        if (expectedSha256 == null || !expectedSha256.matches("(?i)^[0-9a-f]{64}$")) {
+            call.reject("A valid SHA-256 checksum is required for updates", "verification_required");
+            return;
+        }
 
         File updatesDir = new File(getContext().getExternalFilesDir(null), UPDATES_SUBDIR);
         if (!updatesDir.exists() && !updatesDir.mkdirs()) {
@@ -66,11 +93,38 @@ public class UpdateInstallerPlugin extends Plugin {
         OutputStream output = null;
         try {
             URL url = new URL(urlString);
+            if (!isAllowedDownloadUrl(url)) {
+                call.reject("Updates can only be downloaded from GitHub releases over HTTPS", "untrusted_source");
+                return;
+            }
             connection = (HttpURLConnection) url.openConnection();
             connection.setConnectTimeout(15000);
             connection.setReadTimeout(15000);
-            connection.setInstanceFollowRedirects(true);
+            // Follow redirects manually (GitHub redirects release assets to its CDN)
+            // so every hop is checked against the allowlist and stays on HTTPS.
+            connection.setInstanceFollowRedirects(false);
             connection.connect();
+            int hops = 0;
+            while (connection.getResponseCode() >= 300 && connection.getResponseCode() < 400 && hops < 5) {
+                String location = connection.getHeaderField("Location");
+                connection.disconnect();
+                if (location == null) {
+                    call.reject("Redirect without a target", "http_error");
+                    return;
+                }
+                URL next = new URL(url, location);
+                if (!isAllowedDownloadUrl(next)) {
+                    call.reject("Redirected to an untrusted location", "untrusted_source");
+                    return;
+                }
+                url = next;
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(15000);
+                connection.setReadTimeout(15000);
+                connection.setInstanceFollowRedirects(false);
+                connection.connect();
+                hops++;
+            }
 
             int responseCode = connection.getResponseCode();
             if (responseCode < 200 || responseCode >= 300) {
@@ -154,6 +208,18 @@ public class UpdateInstallerPlugin extends Plugin {
         }
 
         File apkFile = new File(path);
+        // Only the file this plugin itself downloaded may be handed to the system
+        // installer — never an arbitrary path supplied by the page.
+        File expectedApk = new File(new File(getContext().getExternalFilesDir(null), UPDATES_SUBDIR), APK_FILENAME);
+        try {
+            if (!apkFile.getCanonicalPath().equals(expectedApk.getCanonicalPath())) {
+                call.reject("Refusing to install a file this app did not download", "invalid_path");
+                return;
+            }
+        } catch (IOException e) {
+            call.reject("Could not resolve the APK path", "invalid_path", e);
+            return;
+        }
         if (!apkFile.exists()) {
             call.reject("APK file not found at the given path", "file_not_found");
             return;

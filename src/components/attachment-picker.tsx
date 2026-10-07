@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
@@ -23,22 +23,26 @@ export function AttachmentPicker({
   optionLabels?: Partial<Record<(typeof ATTACHMENT_VALUES)[number], string>>;
 }) {
   const [value, setValue] = useState(defaultValue ?? "");
+  const labelId = useId();
 
   return (
-    <div className="flex flex-col gap-2">
-      <Label className="text-base">{label}</Label>
+    <div role="group" aria-labelledby={labelId} className="flex flex-col gap-2">
+      <Label id={labelId} className="text-base">
+        {label}
+      </Label>
       <input type="hidden" name={name} value={value} />
       <div className="grid grid-cols-3 gap-2">
         {ATTACHMENT_VALUES.map((opt) => (
           <button
             key={opt}
             type="button"
+            aria-pressed={value === opt}
             onClick={() => setValue((prev) => (prev === opt ? "" : opt))}
             className={cn(
               "h-11 rounded-lg border text-sm font-semibold transition-colors",
               value === opt
                 ? "border-primary bg-primary text-primary-foreground"
-                : "border-input bg-muted text-muted-foreground",
+                : "border-control bg-muted text-muted-foreground",
             )}
           >
             {optionLabels?.[opt] ?? opt}

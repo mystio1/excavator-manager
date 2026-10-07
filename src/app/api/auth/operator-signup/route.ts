@@ -1,40 +1,50 @@
-import { NextResponse } from "next/server";
-import { AuthError } from "next-auth";
-import { signIn } from "@/lib/auth";
-import { requestOperatorJoin } from "@/lib/services/operators";
+import { failureResponse } from "@/lib/api-error";
+import { clientIp, enforceRateLimits, hashPart } from "@/lib/rateLimit";
+import {
+  assertBusinessCodeAttemptsAllowed,
+  recordInvalidBusinessCode,
+  requestOperatorJoin,
+} from "@/lib/services/operators";
+import { normalizeBusinessCode } from "@/lib/utils/businessCode";
 import { operatorSignupSchema } from "@/lib/validation/operator";
+import { json, parseBody, withApi } from "@/lib/with-api";
 
-export async function POST(req: Request) {
-  const parsed = operatorSignupSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * Operator self-service "request to join". Unauthenticated by nature, so it is
+ * rate limited on every axis an attacker could vary:
+ *   - per IP            10 / hour
+ *   - per mobile number  5 / hour
+ *   - per business code 30 / hour
+ *   - INVALID business codes per IP: 5 / 15 min — checked BEFORE the lookup, so
+ *     once an IP has burned its allowance even a valid code is refused (the
+ *     limit cannot be used to tell valid codes from invalid ones).
+ *
+ * It never creates or changes an Operator row — see requestOperatorJoin. The
+ * response carries the one-time verification code the admin must type to
+ * approve the request (also inside `message`, which is all old apps display).
+ */
+export const POST = withApi("operators.signup", async (req) => {
+  const input = await parseBody(req, operatorSignupSchema);
+  const ip = clientIp(req);
+
+  await assertBusinessCodeAttemptsAllowed(ip);
+  await enforceRateLimits([
+    { key: `operator-signup:ip:${ip}`, limit: 10, windowMs: HOUR_MS },
+    { key: `operator-signup:mobile:${hashPart(input.mobile)}`, limit: 5, windowMs: HOUR_MS },
+    { key: `operator-signup:code:${hashPart(normalizeBusinessCode(input.businessCode))}`, limit: 30, windowMs: HOUR_MS },
+  ]);
+
+  const result = await requestOperatorJoin(input.businessCode, input.name, input.mobile, input.pin);
+  if ("error" in result) {
+    if (result.code === "NOT_FOUND") await recordInvalidBusinessCode(ip);
+    return failureResponse(result);
   }
 
-  const result = await requestOperatorJoin(
-    parsed.data.businessCode,
-    parsed.data.name,
-    parsed.data.mobile,
-    parsed.data.pin,
+  // The code is shown once — make sure no intermediary caches the response.
+  return json(
+    { success: true, message: result.message, verificationCode: result.verificationCode },
+    { headers: { "Cache-Control": "no-store" } },
   );
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
-
-  // Only a leftover pre-approved (legacy invite) row logs straight in — a
-  // fresh join request stays canLogin=false until the Admin approves it.
-  if (result.status === "PENDING") {
-    return NextResponse.json({
-      success: true,
-      message: "Request submitted! Ask your admin to approve your account, then log in below.",
-    });
-  }
-
-  try {
-    await signIn("operator", { mobile: parsed.data.mobile, pin: parsed.data.pin, redirect: false });
-  } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ success: true, message: "Account activated — please log in below." });
-    }
-    throw error;
-  }
-
-  return NextResponse.json({ ok: true });
-}
+});

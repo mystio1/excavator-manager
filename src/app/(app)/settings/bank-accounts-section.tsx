@@ -26,27 +26,34 @@ type BankAccount = {
 function RemoveAccountButton({ id }: { id: string }) {
   const { mutate } = useSWRConfig();
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleRemove() {
     setPending(true);
+    setError(null);
     try {
       await apiFetch(`/api/settings/bank-accounts/${id}`, { method: "DELETE" });
       await mutate("/api/settings");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove this account");
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <button
-      type="button"
-      disabled={pending}
-      onClick={handleRemove}
-      className="p-2 text-muted-foreground hover:text-destructive disabled:opacity-60"
-      aria-label="Remove"
-    >
-      <Trash2 className="size-4" />
-    </button>
+    <div className="flex flex-col items-end">
+      <button
+        type="button"
+        disabled={pending}
+        onClick={handleRemove}
+        className="p-2 text-muted-foreground hover:text-destructive disabled:opacity-60"
+        aria-label="Remove"
+      >
+        <Trash2 className="size-4" />
+      </button>
+      {error && <p role="alert" className="max-w-40 text-right text-xs font-medium text-destructive">{error}</p>}
+    </div>
   );
 }
 
@@ -159,7 +166,7 @@ export function BankAccountsSection({ accounts }: { accounts: BankAccount[] }) {
                 Default for Non-GST bills
               </label>
             </div>
-            {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
             <div className="flex gap-2">
               <Button type="submit" disabled={pending}>
                 {pending ? "Saving..." : "Save Account"}

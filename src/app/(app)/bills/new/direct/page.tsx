@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { NativeSelect } from "@/components/native-select";
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/bill/editor/form-parts";
 import { GenerateDirectBillForm } from "./generate-direct-bill-form";
 import Loading from "../../../loading";
 
@@ -43,24 +44,26 @@ export default function NewDirectBillPage() {
           <Card>
             <CardContent>
               <form method="get" className="flex flex-col gap-4">
-                <div>
-                  <p className="mb-2 text-base font-semibold">Select Customer</p>
-                  {customers.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Add a customer first.</p>
-                  ) : (
-                    <NativeSelect name="customerId" required defaultValue="">
-                      <option value="" disabled>
-                        Choose a customer
-                      </option>
-                      {customers.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                          {c.companyName ? ` (${c.companyName})` : ""}
+                <h2 className="text-base font-semibold">Select Customer</h2>
+                {customers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Add a customer first.</p>
+                ) : (
+                  <Field label="Customer">
+                    {(id) => (
+                      <NativeSelect id={id} name="customerId" required defaultValue="" className="h-11 min-w-0">
+                        <option value="" disabled>
+                          Choose a customer
                         </option>
-                      ))}
-                    </NativeSelect>
-                  )}
-                </div>
+                        {customers.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                            {c.companyName ? ` (${c.companyName})` : ""}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    )}
+                  </Field>
+                )}
                 <Button type="submit" size="lg" className="h-12 self-start text-base" disabled={customers.length === 0}>
                   Next
                 </Button>

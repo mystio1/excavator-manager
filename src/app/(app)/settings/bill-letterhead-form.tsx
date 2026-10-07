@@ -37,10 +37,17 @@ export function BillLetterheadForm({
     e.preventDefault();
     setSuccess(false);
     const fd = new FormData(e.currentTarget);
+    // Only send an image that actually changed ("" = removed). Leaving an
+    // untouched one out keeps the saved copy as it is — no needless megabyte
+    // upload, and an older, larger logo does not block saving the tagline.
+    const imageField = (name: "logoLeftUrl" | "logoRightUrl" | "signatureUrl") => {
+      const value = String(fd.get(name) ?? "");
+      return value === (business[name] ?? "") ? {} : { [name]: value };
+    };
     await run({
-      logoLeftUrl: fd.get("logoLeftUrl") ?? "",
-      logoRightUrl: fd.get("logoRightUrl") ?? "",
-      signatureUrl: fd.get("signatureUrl") ?? "",
+      ...imageField("logoLeftUrl"),
+      ...imageField("logoRightUrl"),
+      ...imageField("signatureUrl"),
       billTagline: fd.get("billTagline") || undefined,
       billAccentColor: accent,
     });
@@ -73,24 +80,28 @@ export function BillLetterheadForm({
             />
           </div>
 
-          <div>
-            <Label className="mb-2 block text-base">Accent Color</Label>
+          <div role="group" aria-labelledby="accent-color-label">
+            <Label id="accent-color-label" className="mb-2 block text-base">
+              Accent Color
+            </Label>
             <div className="flex flex-wrap items-center gap-2">
               {ACCENT_PRESETS.map((c) => (
                 <button
                   key={c}
                   type="button"
                   onClick={() => setAccent(c)}
+                  aria-pressed={accent.toLowerCase() === c.toLowerCase()}
                   className={cn(
                     "size-8 rounded-lg",
-                    accent === c && "ring-2 ring-offset-2 ring-foreground/40",
+                    accent.toLowerCase() === c.toLowerCase() && "ring-2 ring-offset-2 ring-foreground",
                   )}
                   style={{ backgroundColor: c }}
-                  aria-label={c}
+                  aria-label={`Accent color ${c}`}
                 />
               ))}
               <input
                 type="color"
+                aria-label="Custom accent color"
                 value={accent}
                 onChange={(e) => setAccent(e.target.value)}
                 className="h-9 w-10 cursor-pointer rounded-lg border border-border"
@@ -98,8 +109,8 @@ export function BillLetterheadForm({
             </div>
           </div>
 
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
-          {success && !error && <p className="text-sm font-medium text-working">Saved.</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
+          {success && !error && <p role="status" className="text-sm font-medium text-working">Saved.</p>}
           <Button type="submit" size="lg" className="h-11 self-start" disabled={pending}>
             {pending ? "Saving..." : "Save Letterhead"}
           </Button>

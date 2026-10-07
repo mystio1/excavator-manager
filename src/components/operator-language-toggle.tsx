@@ -11,14 +11,16 @@ export function OperatorLanguageToggle({
   onChange: (lang: OperatorLang) => void;
 }) {
   return (
-    <div className="mb-4 flex justify-center gap-1.5">
+    <div role="group" aria-label="Language" className="mb-4 flex justify-center gap-1.5">
       {OPERATOR_LANGUAGES.map((l) => (
         <button
           key={l.id}
           type="button"
+          lang={l.id}
+          aria-pressed={lang === l.id}
           onClick={() => onChange(l.id)}
           className={cn(
-            "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
+            "min-h-8 rounded-full px-3 py-1 text-xs font-semibold transition-colors",
             lang === l.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
           )}
         >

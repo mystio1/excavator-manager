@@ -19,6 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+import { todayLocal } from "@/lib/utils/dates";
 type CustomerOption = { id: string; name: string; companyName: string | null };
 
 export function StartWorkDialog({
@@ -35,7 +36,7 @@ export function StartWorkDialog({
   customers: CustomerOption[];
 }) {
   const { mutate } = useSWRConfig();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const [open, setOpen] = useState(false);
 
   const [customers, setCustomers] = useState<CustomerOption[]>(initialCustomers);
@@ -164,7 +165,7 @@ export function StartWorkDialog({
               }}
             />
 
-            {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
             <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
               <Button
@@ -208,7 +209,7 @@ function AddCustomerInline({ onAdded }: { onAdded: (customer: CustomerOption) =>
       <button
         type="button"
         onClick={() => setShow(true)}
-        className="flex items-center gap-1.5 self-start text-sm font-semibold text-primary"
+        className="flex items-center gap-1.5 self-start text-sm font-semibold text-primary-text"
       >
         <Plus className="size-4" />
         Add New Customer
@@ -232,7 +233,7 @@ function AddCustomerInline({ onAdded }: { onAdded: (customer: CustomerOption) =>
           </Button>
         </div>
       </form>
-      {error && <p className="text-xs font-medium text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-xs font-medium text-destructive">{error}</p>}
     </div>
   );
 }

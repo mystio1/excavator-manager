@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
@@ -7,7 +8,8 @@ import { ChevronLeft, ChevronRight, Pencil, Truck } from "lucide-react";
 import type { getOperatorDetail } from "@/lib/services/operators";
 import type { listCategories, listTransactions } from "@/lib/services/operatorTransactions";
 import type { computeSalaryForMonth, getLifetimeSalarySummary } from "@/lib/services/salary";
-import { swrFetcher } from "@/lib/api-client";
+import { apiFetch, swrFetcher } from "@/lib/api-client";
+import type { Plain } from "@/lib/plain";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,14 +28,21 @@ import Loading from "../../loading";
 
 const MONTH_LABEL = new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric" });
 
-type OperatorDetail = NonNullable<Awaited<ReturnType<typeof getOperatorDetail>>>;
+// Money arrives as plain numbers once serialized (see Plain / money.ts).
+type OperatorDetail = Plain<NonNullable<Awaited<ReturnType<typeof getOperatorDetail>>>>;
 type DetailData = {
   detail: OperatorDetail;
-  categories: Awaited<ReturnType<typeof listCategories>>;
-  transactions: Awaited<ReturnType<typeof listTransactions>>;
-  salary: Awaited<ReturnType<typeof computeSalaryForMonth>>;
-  lifetimeSalary: Awaited<ReturnType<typeof getLifetimeSalarySummary>>;
+  categories: Plain<Awaited<ReturnType<typeof listCategories>>>;
+  transactions: Plain<Awaited<ReturnType<typeof listTransactions>>>;
+  /** Set when more transactions exist beyond the requested `limit`. */
+  nextCursor?: string | null;
+  salary: Plain<Awaited<ReturnType<typeof computeSalaryForMonth>>>;
+  lifetimeSalary: Plain<Awaited<ReturnType<typeof getLifetimeSalarySummary>>>;
 };
+
+type Transaction = Plain<Awaited<ReturnType<typeof listTransactions>>[number]>;
+
+const PAGE_SIZE = 50;
 
 export default function OperatorDetailPage() {
   const searchParams = useSearchParams();
@@ -47,7 +56,16 @@ export default function OperatorDetailPage() {
   const prevMonth = new Date(monthYear!, monthIndex! - 2, 1);
   const nextMonth = new Date(monthYear!, monthIndex!, 1);
 
-  const query = new URLSearchParams({ id });
+  // The detail endpoint returns the first page of transactions (+ nextCursor);
+  // "Load more" appends the following pages from the transactions endpoint.
+  // Extra pages are tied to the SWR data they were loaded against, so any
+  // revalidation that changes the data (add / edit / delete) starts over from
+  // the fresh first page instead of showing stale rows.
+  const [more, setMore] = useState<{ base: unknown; items: Transaction[]; nextCursor: string | null } | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+
+  const query = new URLSearchParams({ id, limit: String(PAGE_SIZE) });
   if (monthParam) query.set("month", monthParam);
 
   const { data } = useSWR<DetailData>(id ? `/api/operators/detail?${query.toString()}` : null, swrFetcher, {
@@ -56,7 +74,26 @@ export default function OperatorDetailPage() {
 
   if (!data) return <Loading />;
   const { operator, assignedExcavator, pastWork } = data.detail;
-  const { categories, transactions, salary, lifetimeSalary } = data;
+  const { categories, salary, lifetimeSalary } = data;
+  const extra = more && more.base === data ? more : null;
+  const transactions = extra ? [...data.transactions, ...extra.items] : data.transactions;
+  const nextCursor = extra ? extra.nextCursor : (data.nextCursor ?? null);
+
+  async function loadMore() {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const page = await apiFetch<{ transactions: Transaction[]; nextCursor: string | null }>(
+        `/api/operators/${operator.id}/transactions?limit=${PAGE_SIZE}&cursor=${encodeURIComponent(nextCursor)}`,
+      );
+      setMore({ base: data, items: [...(extra?.items ?? []), ...page.transactions], nextCursor: page.nextCursor });
+    } catch (err) {
+      setLoadMoreError(err instanceof Error ? err.message : "Could not load more transactions");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   return (
     <div>
@@ -80,7 +117,7 @@ export default function OperatorDetailPage() {
         {assignedExcavator ? (
           <Link
             href={`/excavators/detail?id=${assignedExcavator.id}`}
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary-text"
           >
             <Truck className="size-3.5" />
             On {assignedExcavator.name}
@@ -145,7 +182,7 @@ export default function OperatorDetailPage() {
               </CardContent>
             </Card>
 
-            <OperatorPinCard operatorId={operator.id} canLogin={operator.canLogin} hasPinSet={!!operator.pinHash} />
+            <OperatorPinCard operatorId={operator.id} canLogin={operator.canLogin} hasPinSet={operator.hasPin} />
           </TabsContent>
 
           <TabsContent value="transactions" className="flex flex-col gap-4 pt-4">
@@ -176,6 +213,12 @@ export default function OperatorDetailPage() {
                 </CardContent>
               </Card>
             ))}
+            {loadMoreError && <p role="alert" className="text-sm font-medium text-destructive">{loadMoreError}</p>}
+            {nextCursor && (
+              <Button type="button" variant="outline" className="h-11" disabled={loadingMore} onClick={loadMore}>
+                {loadingMore ? "Loading..." : "Load more"}
+              </Button>
+            )}
           </TabsContent>
 
           <TabsContent value="salary" className="flex flex-col gap-4 pt-4">
@@ -184,6 +227,7 @@ export default function OperatorDetailPage() {
                 <Button
                   size="icon-sm"
                   variant="outline"
+                  aria-label="Previous month"
                   nativeButton={false}
                   render={
                     <Link
@@ -197,6 +241,7 @@ export default function OperatorDetailPage() {
                 <Button
                   size="icon-sm"
                   variant="outline"
+                  aria-label="Next month"
                   nativeButton={false}
                   render={
                     <Link

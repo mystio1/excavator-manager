@@ -11,12 +11,19 @@ export function DeleteTransactionButton({ operatorId, transactionId }: { operato
   const { mutate } = useSWRConfig();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleDelete() {
     setPending(true);
+    setError(null);
     try {
       await apiFetch(`/api/operators/${operatorId}/transactions/${transactionId}`, { method: "DELETE" });
       setOpen(false);
+      await mutate((key) => typeof key === "string" && key.startsWith("/api/operators/detail"));
+    } catch (err) {
+      // e.g. 404 when it was already deleted elsewhere — show the server's message
+      // and refresh so the list drops the stale row.
+      setError(err instanceof Error ? err.message : "Could not delete this transaction");
       await mutate((key) => typeof key === "string" && key.startsWith("/api/operators/detail"));
     } finally {
       setPending(false);
@@ -45,6 +52,7 @@ export function DeleteTransactionButton({ operatorId, transactionId }: { operato
         <p className="text-sm text-muted-foreground">
           Deleting the entry will permanently remove it and update the salary calculation. This cannot be undone.
         </p>
+        {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
         <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
           <Button
             type="button"

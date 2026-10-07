@@ -23,7 +23,7 @@ export function AssignedOperatorCard({
     <Card>
       <CardContent className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary-text">
             <HardHat className="size-5" />
           </div>
           <div className="min-w-0">

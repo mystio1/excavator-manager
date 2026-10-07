@@ -43,7 +43,7 @@ export function SiteCard({
     <Dialog open={open} onOpenChange={setOpen}>
       <div className="flex items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3">
         <div className="flex items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary-text">
             <MapPin className="size-5" />
           </div>
           <div>
@@ -86,7 +86,7 @@ export function SiteCard({
             </datalist>
           </div>
 
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
           <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
             <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>

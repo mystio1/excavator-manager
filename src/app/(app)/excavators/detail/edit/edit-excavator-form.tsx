@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch } from "@/lib/api-client";
+import { useSWRConfig } from "swr";
+import { ApiError, apiFetch } from "@/lib/api-client";
 import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +19,8 @@ type Excavator = {
   model: string | null;
   purchaseDate: Date | null;
   serviceIntervalHrs: number | null;
+  /** Optimistic-concurrency token: sent back as expectedVersion on save. */
+  version: number;
 };
 
 export function EditExcavatorForm({
@@ -27,8 +31,23 @@ export function EditExcavatorForm({
   defaultServiceIntervalHrs: number;
 }) {
   const router = useRouter();
+  const { mutate } = useSWRConfig();
+  // The version this form was opened with. SWR may refresh `excavator` in the
+  // background (focus/reconnect) while the user is still typing; saving must
+  // still be judged against what they actually started from.
+  const [loadedVersion] = useState(excavator.version);
+  const [conflict, setConflict] = useState(false);
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
-    await apiFetch(`/api/excavators/${excavator.id}`, { method: "PATCH", body: JSON.stringify(body) });
+    setConflict(false);
+    try {
+      await apiFetch(`/api/excavators/${excavator.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ ...body, expectedVersion: loadedVersion }),
+      });
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "RESOURCE_MODIFIED") setConflict(true);
+      throw e;
+    }
   });
   const { run: runArchive } = useApiForm(async () => {
     await apiFetch(`/api/excavators/${excavator.id}`, { method: "DELETE" });
@@ -45,7 +64,10 @@ export function EditExcavatorForm({
       purchaseDate: fd.get("purchaseDate"),
       serviceIntervalHrs: fd.get("serviceIntervalHrs") || undefined,
     });
-    if (ok) router.push(`/excavators/detail?id=${excavator.id}`);
+    if (ok) {
+      await mutate((key) => typeof key === "string" && key.startsWith("/api/excavators"));
+      router.push(`/excavators/detail?id=${excavator.id}`);
+    }
   }
 
   async function handleArchive() {
@@ -116,7 +138,12 @@ export function EditExcavatorForm({
                 className="h-12 text-base"
               />
             </div>
-            {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
+            {conflict && (
+              <Button type="button" variant="outline" className="h-11" onClick={() => window.location.reload()}>
+                Reload latest version
+              </Button>
+            )}
             <Button type="submit" size="lg" className="h-12 text-base" disabled={pending}>
               {pending ? "Saving..." : "Save Changes"}
             </Button>

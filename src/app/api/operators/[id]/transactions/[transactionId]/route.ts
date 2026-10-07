@@ -1,27 +1,30 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
+import { failureResponse } from "@/lib/api-error";
 import { deleteTransaction, updateTransaction } from "@/lib/services/operatorTransactions";
 import { updateTransactionSchema } from "@/lib/validation/operatorTransaction";
+import { json, parseBody, withApi } from "@/lib/with-api";
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ transactionId: string }> }) {
+type Ctx = { params: Promise<{ id: string; transactionId: string }> };
+
+export const PATCH = withApi("operator.transaction.update", async (req, { params }: Ctx) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
-  const { transactionId } = await params;
+  const { id, transactionId } = await params;
 
-  const parsed = updateTransactionSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
+  const input = await parseBody(req, updateTransactionSchema);
+  const result = await updateTransaction(auth.session.businessId, auth.actor, transactionId, input, { operatorId: id });
+  if ("error" in result) return failureResponse(result);
 
-  await updateTransaction(auth.session.businessId, transactionId, parsed.data);
-  return NextResponse.json({ ok: true });
-}
+  return json({ ok: true, transaction: result });
+});
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ transactionId: string }> }) {
+export const DELETE = withApi("operator.transaction.delete", async (_req, { params }: Ctx) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
-  const { transactionId } = await params;
+  const { id, transactionId } = await params;
 
-  await deleteTransaction(auth.session.businessId, transactionId);
-  return NextResponse.json({ ok: true });
-}
+  const result = await deleteTransaction(auth.session.businessId, auth.actor, transactionId, { operatorId: id });
+  if ("error" in result) return failureResponse(result);
+
+  return json({ ok: true });
+});

@@ -23,6 +23,7 @@ const LOG_STATUS_BADGE: Record<string, { label: string; className: string }> = {
 
 type DailyLog = {
   id: string;
+  version: number;
   date: Date;
   hoursWorked: number;
   status: string;
@@ -40,6 +41,7 @@ type DailyLog = {
 
 type ActiveWork = {
   id: string;
+  version: number;
   customerId: string;
   operatorId: string;
   customer: { name: string };
@@ -77,11 +79,18 @@ function DailyLogRow({ excavatorId, log }: { excavatorId: string; log: DailyLog 
   const { mutate } = useSWRConfig();
   const badge = LOG_STATUS_BADGE[log.status] ?? LOG_STATUS_BADGE.APPROVED;
   const [pending, setPending] = useState<"approve" | "reject" | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function respond(action: "approve" | "reject") {
     setPending(action);
+    setError(null);
     try {
-      await apiFetch(`/api/daily-logs/${log.id}/${action}`, { method: "POST" });
+      // expectedVersion: the reading changed since it was loaded (e.g. someone
+      // else already reviewed or edited it) is a conflict, not a blind approve.
+      await apiFetch(`/api/daily-logs/${log.id}/${action}?expectedVersion=${log.version}`, { method: "POST" });
+      await mutate(`/api/excavators/${excavatorId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
       await mutate(`/api/excavators/${excavatorId}`);
     } finally {
       setPending(null);
@@ -100,7 +109,7 @@ function DailyLogRow({ excavatorId, log }: { excavatorId: string; log: DailyLog 
           <span className="text-sm font-semibold">{formatHours(log.hoursWorked)}</span>
           <Badge className={badge.className}>{badge.label}</Badge>
           <EditReadingButton log={log} invalidateKey={`/api/excavators/${excavatorId}`} />
-          <DeleteReadingButton logId={log.id} invalidateKey={`/api/excavators/${excavatorId}`} />
+          <DeleteReadingButton logId={log.id} version={log.version} invalidateKey={`/api/excavators/${excavatorId}`} />
         </div>
       </div>
       {log.status === "PENDING" && (
@@ -123,6 +132,7 @@ function DailyLogRow({ excavatorId, log }: { excavatorId: string; log: DailyLog 
           </button>
         </div>
       )}
+      {error && <p role="alert" className="text-xs font-medium text-destructive">{error}</p>}
     </div>
   );
 }
@@ -196,7 +206,12 @@ export function CurrentWorkTab({
 
           <div className="flex gap-2 pt-2">
             <AddDailyLogDialog excavatorId={excavatorId} workSessionId={activeWork.id} currentHourMeter={currentHourMeter} />
-            <StopWorkDialog excavatorId={excavatorId} workSessionId={activeWork.id} currentHourMeter={currentHourMeter} />
+            <StopWorkDialog
+              excavatorId={excavatorId}
+              workSessionId={activeWork.id}
+              version={activeWork.version}
+              currentHourMeter={currentHourMeter}
+            />
           </div>
         </CardContent>
       </Card>

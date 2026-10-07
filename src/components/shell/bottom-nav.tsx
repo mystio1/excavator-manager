@@ -20,7 +20,7 @@ export function BottomNav() {
   const moreActive = secondaryItems.some((i) => isNavItemActive(pathname, i.href));
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t bg-card pb-[max(env(safe-area-inset-bottom),0px)] md:hidden">
+    <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-40 flex border-t bg-card pb-[max(env(safe-area-inset-bottom),0px)] md:hidden">
       {primaryItems.map((item) => {
         const active = isNavItemActive(pathname, item.href);
         const Icon = item.icon;
@@ -28,9 +28,10 @@ export function BottomNav() {
           <Link
             key={item.href}
             href={item.href}
+            aria-current={active ? "page" : undefined}
             className={cn(
               "flex min-w-0 flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium",
-              active ? "text-primary" : "text-muted-foreground",
+              active ? "text-primary-text" : "text-muted-foreground",
             )}
           >
             <Icon className="size-6 shrink-0" />
@@ -46,7 +47,7 @@ export function BottomNav() {
               type="button"
               className={cn(
                 "flex min-w-0 flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium",
-                moreActive ? "text-primary" : "text-muted-foreground",
+                moreActive ? "text-primary-text" : "text-muted-foreground",
               )}
             />
           }
@@ -66,9 +67,10 @@ export function BottomNav() {
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
                     "flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center text-xs font-medium",
-                    active ? "border-primary/40 bg-primary/10 text-primary" : "border-transparent text-foreground",
+                    active ? "border-primary/40 bg-primary/10 text-primary-text" : "border-transparent text-foreground",
                   )}
                 >
                   <Icon className="size-5 shrink-0" />

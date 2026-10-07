@@ -39,14 +39,16 @@ export function OperatorLanguageForm({ operatorLanguage }: { operatorLanguage: s
           Takes effect immediately for everyone.
         </p>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <div className="grid grid-cols-3 gap-2 rounded-lg bg-muted p-1">
+          <div role="group" aria-label="Operator language" className="grid grid-cols-3 gap-2 rounded-lg bg-muted p-1">
             {OPERATOR_LANGUAGES.map((l) => (
               <button
                 key={l.id}
                 type="button"
+                lang={l.id}
+                aria-pressed={lang === l.id}
                 onClick={() => setLang(l.id)}
                 className={cn(
-                  "rounded-md py-2 text-sm font-semibold transition-colors",
+                  "min-h-10 rounded-md py-2 text-sm font-semibold transition-colors",
                   lang === l.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
                 )}
               >
@@ -54,8 +56,8 @@ export function OperatorLanguageForm({ operatorLanguage }: { operatorLanguage: s
               </button>
             ))}
           </div>
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
-          {success && !error && <p className="text-sm font-medium text-working">Saved.</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
+          {success && !error && <p role="status" className="text-sm font-medium text-working">Saved.</p>}
           <Button type="submit" size="lg" className="h-11 self-start" disabled={pending}>
             {pending ? "Saving..." : "Save Language"}
           </Button>

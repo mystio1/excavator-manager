@@ -10,6 +10,7 @@ import type {
   listServiceHistory,
 } from "@/lib/services/serviceRecords";
 import { swrFetcher } from "@/lib/api-client";
+import type { Plain } from "@/lib/plain";
 import { formatDate } from "@/lib/utils/dates";
 import { formatHours } from "@/lib/utils/hours";
 import { formatCurrency } from "@/lib/utils/currency";
@@ -24,10 +25,10 @@ type ServiceStatus = {
 };
 
 type ServiceTabData = {
-  catalogGroups: Awaited<ReturnType<typeof listComponentCatalog>>;
-  previousSummary: Awaited<ReturnType<typeof getPreviousServiceSummary>>;
-  history: Awaited<ReturnType<typeof listServiceHistory>>;
-  replacements: Awaited<ReturnType<typeof getReplacementHistory>>;
+  catalogGroups: Plain<Awaited<ReturnType<typeof listComponentCatalog>>>;
+  previousSummary: Plain<Awaited<ReturnType<typeof getPreviousServiceSummary>>>;
+  history: Plain<Awaited<ReturnType<typeof listServiceHistory>>>;
+  replacements: Plain<Awaited<ReturnType<typeof getReplacementHistory>>>;
 };
 
 export function ServiceTab({

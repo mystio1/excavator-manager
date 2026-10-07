@@ -39,7 +39,7 @@ export function ProfitOverview({
         <p className="col-start-3 row-start-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           Actual Profit
         </p>
-        <p className="col-start-1 row-start-2 self-end text-xl font-extrabold tracking-tight text-primary tabular-nums sm:text-2xl">
+        <p className="col-start-1 row-start-2 self-end text-xl font-extrabold tracking-tight text-primary-text tabular-nums sm:text-2xl">
           {formatCurrencyCompact(revenue)}
         </p>
         <p className="col-start-2 row-start-2 self-end text-xl font-extrabold tracking-tight text-destructive tabular-nums sm:text-2xl">

@@ -74,14 +74,14 @@ function SetPinDialog() {
         </DialogHeader>
         <form onSubmit={onSubmit} className="flex flex-col gap-3">
           <div className="flex flex-col gap-2">
-            <Label className="text-sm">New PIN (4 or 6 digits)</Label>
-            <Input name="newPin" type="password" inputMode="numeric" required autoFocus className="h-11" />
+            <Label htmlFor="newPin" className="text-sm">New PIN (4 or 6 digits)</Label>
+            <Input id="newPin" name="newPin" type="password" inputMode="numeric" required autoFocus className="h-11" />
           </div>
           <div className="flex flex-col gap-2">
-            <Label className="text-sm">Confirm PIN</Label>
-            <Input name="confirmPin" type="password" inputMode="numeric" required className="h-11" />
+            <Label htmlFor="confirmPin" className="text-sm">Confirm PIN</Label>
+            <Input id="confirmPin" name="confirmPin" type="password" inputMode="numeric" required className="h-11" />
           </div>
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="secondary" onClick={() => setOpen(false)} disabled={pending}>
               Cancel
@@ -126,18 +126,18 @@ function ChangePinDialog() {
         </DialogHeader>
         <form onSubmit={onSubmit} className="flex flex-col gap-3">
           <div className="flex flex-col gap-2">
-            <Label className="text-sm">Current PIN</Label>
-            <Input name="currentPin" type="password" inputMode="numeric" required autoFocus className="h-11" />
+            <Label htmlFor="currentPin" className="text-sm">Current PIN</Label>
+            <Input id="currentPin" name="currentPin" type="password" inputMode="numeric" required autoFocus className="h-11" />
           </div>
           <div className="flex flex-col gap-2">
-            <Label className="text-sm">New PIN (4 or 6 digits)</Label>
-            <Input name="newPin" type="password" inputMode="numeric" required className="h-11" />
+            <Label htmlFor="newPin" className="text-sm">New PIN (4 or 6 digits)</Label>
+            <Input id="newPin" name="newPin" type="password" inputMode="numeric" required className="h-11" />
           </div>
           <div className="flex flex-col gap-2">
-            <Label className="text-sm">Confirm New PIN</Label>
-            <Input name="confirmPin" type="password" inputMode="numeric" required className="h-11" />
+            <Label htmlFor="confirmPin" className="text-sm">Confirm New PIN</Label>
+            <Input id="confirmPin" name="confirmPin" type="password" inputMode="numeric" required className="h-11" />
           </div>
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="secondary" onClick={() => setOpen(false)} disabled={pending}>
               Cancel
@@ -185,10 +185,10 @@ function DisablePinDialog() {
         </p>
         <form onSubmit={onSubmit} className="flex flex-col gap-3">
           <div className="flex flex-col gap-2">
-            <Label className="text-sm">Current PIN</Label>
-            <Input name="currentPin" type="password" inputMode="numeric" required autoFocus className="h-11" />
+            <Label htmlFor="currentPin" className="text-sm">Current PIN</Label>
+            <Input id="currentPin" name="currentPin" type="password" inputMode="numeric" required autoFocus className="h-11" />
           </div>
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="secondary" onClick={() => setOpen(false)} disabled={pending}>
               Cancel

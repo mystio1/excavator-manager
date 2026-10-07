@@ -25,7 +25,7 @@ export function ThemeToggleButton() {
   };
 
   return (
-    <Button type="button" size="icon-sm" variant="ghost" onClick={toggle} aria-label="Toggle light/dark mode">
+    <Button type="button" size="icon-sm" variant="ghost" onClick={toggle} aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}>
       {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
     </Button>
   );

@@ -1,19 +1,22 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
+import { runIdempotent } from "@/lib/idempotency";
 import { createSummaryBill } from "@/lib/services/bills";
 import { generateSummaryBillSchema } from "@/lib/validation/bill";
+import { parseBody, withApi } from "@/lib/with-api";
 
-export async function POST(req: Request) {
+export const POST = withApi("bills.summary.create", async (req) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
+  const { businessId } = auth.session;
 
-  const parsed = generateSummaryBillSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
+  const input = await parseBody(req, generateSummaryBillSchema);
 
-  const result = await createSummaryBill(auth.session.businessId, parsed.data);
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
-
-  return NextResponse.json(result);
-}
+  return runIdempotent(
+    { req, businessId, actorId: auth.actor.id, operation: "bill.summary.create", payload: input },
+    async (tx) => {
+      const result = await createSummaryBill(businessId, auth.actor, input, { tx });
+      if ("error" in result) return { ok: false, failure: result };
+      return { ok: true, status: 201, body: result, resourceType: "Bill", resourceId: result.bill.id };
+    },
+  );
+});

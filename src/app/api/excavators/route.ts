@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
+import { json, parseBody, withApi } from "@/lib/with-api";
 import { createExcavator, getMachinePerformanceSummary, listExcavators } from "@/lib/services/excavators";
 import { addExcavatorSchema } from "@/lib/validation/excavator";
 
-export async function GET() {
+export const GET = withApi("excavators.list", async () => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { businessId } = auth.session;
@@ -13,18 +13,14 @@ export async function GET() {
     getMachinePerformanceSummary(businessId),
   ]);
 
-  return NextResponse.json({ excavators, machinePerformance });
-}
+  return json({ excavators, machinePerformance });
+});
 
-export async function POST(req: Request) {
+export const POST = withApi("excavators.create", async (req) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
 
-  const parsed = addExcavatorSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
-
-  const excavator = await createExcavator(auth.session.businessId, parsed.data);
-  return NextResponse.json({ excavator });
-}
+  const input = await parseBody(req, addExcavatorSchema);
+  const excavator = await createExcavator(auth.session.businessId, auth.actor, input);
+  return json({ excavator });
+});

@@ -29,7 +29,7 @@ export function HoursDetailButton({ machines }: { machines: MachineHours[] }) {
         render={
           <button
             type="button"
-            className="shrink-0 text-xs font-semibold whitespace-nowrap text-primary underline-offset-2 hover:underline"
+            className="shrink-0 text-xs font-semibold whitespace-nowrap text-primary-text underline-offset-2 hover:underline"
           />
         }
       >

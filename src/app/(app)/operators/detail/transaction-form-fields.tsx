@@ -32,10 +32,12 @@ export function TransactionFormFields({
   return (
     <>
       <div className="flex flex-col gap-2">
-        <Label className="text-base">Category</Label>
+        <Label htmlFor={addingCustom ? "newCategoryName" : "categoryId"} className="text-base">
+          Category
+        </Label>
         {!addingCustom ? (
           <>
-            <NativeSelect name="categoryId" defaultValue={defaultCategoryId} className="h-12 text-base">
+            <NativeSelect id="categoryId" name="categoryId" defaultValue={defaultCategoryId} className="h-12 text-base">
               <option value="" disabled>
                 Select category
               </option>
@@ -48,14 +50,14 @@ export function TransactionFormFields({
             <button
               type="button"
               onClick={() => setAddingCustom(true)}
-              className="self-start text-sm font-semibold text-primary"
+              className="self-start text-sm font-semibold text-primary-text"
             >
               + Add Custom Category
             </button>
           </>
         ) : (
           <>
-            <Input name="newCategoryName" placeholder="e.g. Mobile Repair" required className="h-12 text-base" />
+            <Input id="newCategoryName" name="newCategoryName" placeholder="e.g. Mobile Repair" required className="h-12 text-base" />
             <button
               type="button"
               onClick={() => setAddingCustom(false)}
@@ -69,26 +71,26 @@ export function TransactionFormFields({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
-          <Label className="text-base">Amount</Label>
-          <Input
+          <Label htmlFor="amount" className="text-base">Amount</Label>
+          <Input id="amount"
             name="amount"
             type="number"
-            min="1"
-            step="1"
+            min="0.01"
+            step="0.01"
             required
             defaultValue={defaultAmount}
             className="h-12 text-base"
           />
         </div>
         <div className="flex flex-col gap-2">
-          <Label className="text-base">Date</Label>
-          <Input name="date" type="date" defaultValue={defaultDate} required className="h-12 text-base" />
+          <Label htmlFor="date" className="text-base">Date</Label>
+          <Input id="date" name="date" type="date" defaultValue={defaultDate} required className="h-12 text-base" />
         </div>
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label className="text-base">Notes (Optional)</Label>
-        <Input name="notes" defaultValue={defaultNotes} className="h-12 text-base" />
+        <Label htmlFor="notes" className="text-base">Notes (Optional)</Label>
+        <Input id="notes" name="notes" defaultValue={defaultNotes} className="h-12 text-base" />
       </div>
 
       <label className="flex items-center gap-2 text-sm">
@@ -103,8 +105,8 @@ export function TransactionFormFields({
       </label>
 
       <div className="flex flex-col gap-2">
-        <Label className="text-base">How should this affect the business account?</Label>
-        <NativeSelect name="businessEffect" defaultValue={defaultBusinessEffect} className="h-12 text-base">
+        <Label htmlFor="businessEffect" className="text-base">How should this affect the business account?</Label>
+        <NativeSelect id="businessEffect" name="businessEffect" defaultValue={defaultBusinessEffect} className="h-12 text-base">
           {BUSINESS_EFFECTS.map((effect) => (
             <option key={effect} value={effect}>
               {BUSINESS_EFFECT_LABEL[effect]}

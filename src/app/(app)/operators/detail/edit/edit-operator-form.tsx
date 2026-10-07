@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch } from "@/lib/api-client";
+import { useSWRConfig } from "swr";
+import { ApiError, apiFetch } from "@/lib/api-client";
 import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,15 +18,36 @@ type Operator = {
   address: string | null;
   joiningDate: Date | null;
   defaultMonthlySalary: number;
+  /** Optimistic-concurrency token: sent back as `expectedVersion`. */
+  version: number;
 };
 
 export function EditOperatorForm({ operator }: { operator: Operator }) {
   const router = useRouter();
+  const { mutate } = useSWRConfig();
+  // True when the server rejected the save because someone else changed this
+  // operator after the page loaded (RESOURCE_MODIFIED).
+  const [stale, setStale] = useState(false);
+  const [reloading, setReloading] = useState(false);
+
+  const refreshOperatorViews = () =>
+    mutate((key) => typeof key === "string" && key.startsWith("/api/operators"));
+
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
-    await apiFetch(`/api/operators/${operator.id}`, { method: "PATCH", body: JSON.stringify(body) });
+    try {
+      await apiFetch(`/api/operators/${operator.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ ...body, expectedVersion: operator.version }),
+      });
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "RESOURCE_MODIFIED") setStale(true);
+      throw err;
+    }
+    await refreshOperatorViews();
   });
-  const { run: runArchive } = useApiForm(async () => {
-    await apiFetch(`/api/operators/${operator.id}`, { method: "DELETE" });
+  const { error: archiveError, run: runArchive } = useApiForm(async () => {
+    await apiFetch(`/api/operators/${operator.id}?expectedVersion=${operator.version}`, { method: "DELETE" });
+    await refreshOperatorViews();
   });
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -43,6 +66,17 @@ export function EditOperatorForm({ operator }: { operator: Operator }) {
   async function handleArchive() {
     const ok = await runArchive(undefined);
     if (ok) router.push("/operators");
+  }
+
+  /** Pull the latest saved values; the page re-keys this form on `version`, so
+   * the inputs remount showing them. */
+  async function reloadLatest() {
+    setReloading(true);
+    try {
+      await mutate(`/api/operators/detail?id=${operator.id}`);
+    } finally {
+      setReloading(false);
+    }
   }
 
   return (
@@ -94,7 +128,12 @@ export function EditOperatorForm({ operator }: { operator: Operator }) {
                 className="h-12 text-base"
               />
             </div>
-            {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
+            {stale && (
+              <Button type="button" variant="outline" size="lg" className="h-11" disabled={reloading} onClick={reloadLatest}>
+                {reloading ? "Reloading..." : "Reload latest details"}
+              </Button>
+            )}
             <Button type="submit" size="lg" className="h-12 text-base" disabled={pending}>
               {pending ? "Saving..." : "Save Changes"}
             </Button>
@@ -103,6 +142,7 @@ export function EditOperatorForm({ operator }: { operator: Operator }) {
       </Card>
 
       <ArchiveButton onArchive={handleArchive} itemName={operator.name} />
+      {archiveError && <p role="alert" className="text-sm font-medium text-destructive">{archiveError}</p>}
     </div>
   );
 }

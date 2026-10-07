@@ -1,6 +1,7 @@
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/dates";
 import { amountInWords } from "@/lib/utils/numberToWords";
+import { lineAmountRupees } from "./money-preview";
 import type { BillLetterhead } from "@/lib/services/bills";
 
 export type BillPreviewItem = {
@@ -81,8 +82,9 @@ export function BillPreview({ bill }: { bill: BillPreviewData }) {
   ].filter((c) => c.amount > 0);
 
   const isDirect = bill.isDirect === true;
-  const bucketAmount = (bill.bucketHours ?? 0) * (bill.bucketRate ?? 0);
-  const breakerAmount = (bill.breakerHours ?? 0) * (bill.breakerRate ?? 0);
+  // Hours x rate rounded to paise, exactly as the server stored the subtotal.
+  const bucketAmount = lineAmountRupees(bill.bucketHours ?? 0, bill.bucketRate ?? 0);
+  const breakerAmount = lineAmountRupees(bill.breakerHours ?? 0, bill.breakerRate ?? 0);
 
   return (
     <div className="bill-print-area relative overflow-hidden bg-white text-[#1a1a1a]">
@@ -109,7 +111,7 @@ export function BillPreview({ bill }: { bill: BillPreviewData }) {
               {lh.businessName}
             </p>
             {lh.businessTagline && (
-              <p className="mt-0.5 text-[10px] font-bold tracking-[2px] text-slate-400 uppercase sm:text-xs">
+              <p className="mt-0.5 text-[10px] font-bold tracking-[2px] text-slate-500 uppercase sm:text-xs">
                 {lh.businessTagline}
               </p>
             )}
@@ -145,7 +147,9 @@ export function BillPreview({ bill }: { bill: BillPreviewData }) {
         </div>
 
         {/* Items table */}
-        <div className="mb-4 w-full overflow-x-auto">
+        {/* Keyboard users can scroll this region on narrow screens (WCAG 2.1.1) —
+            a scrollable area must itself be focusable. */}
+        <div className="mb-4 w-full overflow-x-auto" tabIndex={0} role="region" aria-label="Bill items">
           <table className="w-full min-w-[480px] border-collapse text-[12px]">
             <thead>
               <tr style={{ backgroundColor: accent }}>
@@ -163,12 +167,12 @@ export function BillPreview({ bill }: { bill: BillPreviewData }) {
                     <td className={cell} colSpan={2}>
                       <span className="font-semibold">Hiring Of {bill.excavatorName}</span>
                       {bill.machineNumber && (
-                        <span className="block text-[10px] text-slate-400">{bill.machineNumber}</span>
+                        <span className="block text-[10px] text-slate-500">{bill.machineNumber}</span>
                       )}
                     </td>
                     <td className={cell} colSpan={3}>
                       {bill.fromDate && bill.toDate && (
-                        <span className="block text-right text-[10px] text-slate-400">
+                        <span className="block text-right text-[10px] text-slate-500">
                           {formatDate(bill.fromDate)} – {formatDate(bill.toDate)}
                         </span>
                       )}
@@ -205,7 +209,7 @@ export function BillPreview({ bill }: { bill: BillPreviewData }) {
                     <td className={cell}>
                       {item.excavatorName}
                       {item.machineNumber && (
-                        <span className="block text-[10px] text-slate-400">{item.machineNumber}</span>
+                        <span className="block text-[10px] text-slate-500">{item.machineNumber}</span>
                       )}
                       {item.attachment && (
                         <span className="block text-[10px] font-semibold text-slate-500">{item.attachment}</span>
@@ -213,7 +217,7 @@ export function BillPreview({ bill }: { bill: BillPreviewData }) {
                     </td>
                     <td className={cell}>
                       {item.siteName}
-                      <span className="block text-[10px] text-slate-400">
+                      <span className="block text-[10px] text-slate-500">
                         {formatDate(item.fromDate)} – {formatDate(item.toDate)}
                       </span>
                     </td>
@@ -341,7 +345,7 @@ export function BillPreview({ bill }: { bill: BillPreviewData }) {
 
         {bill.notes && <p className="mt-3 text-[11px] text-slate-500">{bill.notes}</p>}
 
-        <p className="mt-4 text-center text-[11px] text-slate-400 italic">Thank you for your business!</p>
+        <p className="mt-4 text-center text-[11px] text-slate-500 italic">Thank you for your business!</p>
       </div>
     </div>
   );

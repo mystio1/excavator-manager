@@ -20,11 +20,12 @@ export default function Home() {
           console.error("Session check failed:", err);
         }
       });
+
   }, [router]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-      <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+      <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary-text">
         <ExcavatorLogo animated className="size-9" />
       </div>
     </div>

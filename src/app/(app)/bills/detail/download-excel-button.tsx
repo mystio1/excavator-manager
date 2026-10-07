@@ -15,7 +15,7 @@ export function DownloadExcelButton({ billId }: { billId: string }) {
         disabled={pending}
         size="lg"
         variant="secondary"
-        className="h-11 px-2.5 print-hidden sm:px-3"
+        className="h-11 px-2.5 print-hidden text-amber-800 sm:px-3 dark:text-secondary-foreground"
       >
         <FileSpreadsheet className="size-5" />
         Excel
@@ -29,7 +29,7 @@ export function DownloadExcelButton({ billId }: { billId: string }) {
       nativeButton={false}
       size="lg"
       variant="secondary"
-      className="h-11 px-2.5 print-hidden sm:px-3"
+      className="h-11 px-2.5 print-hidden text-amber-800 sm:px-3 dark:text-secondary-foreground"
     >
       <FileSpreadsheet className="size-5" />
       Excel

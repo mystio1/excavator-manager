@@ -4,12 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api-client";
 import { PIN_UNLOCKED_KEY } from "@/lib/appLock";
+import { useClearClientCache } from "@/lib/use-clear-client-cache";
 
 /** Replaces logoutAction (a Server Action) — unreachable from the Android
  * bundled build, which has no Next.js server backing its own origin to
  * post a Server Action to. */
 export function useLogout(redirectTo: string = "/login") {
   const router = useRouter();
+  const clearClientCache = useClearClientCache();
   const [pending, setPending] = useState(false);
 
   async function logout() {
@@ -24,6 +26,8 @@ export function useLogout(redirectTo: string = "/login") {
       } catch {
         // Private-browsing/storage-blocked — nothing to clear either way.
       }
+      // The next person to sign in on this tab/device must not see this account's cached data.
+      await clearClientCache();
       router.push(redirectTo);
     } finally {
       setPending(false);

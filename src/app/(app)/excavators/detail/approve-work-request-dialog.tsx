@@ -89,10 +89,12 @@ export function ApproveWorkRequestDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label className="text-base">Customer</Label>
+            <Label htmlFor={addingCustomer ? "approve-newCustomerName" : "approve-customerId"} className="text-base">
+              Customer
+            </Label>
             {!addingCustomer ? (
               <>
-                <NativeSelect name="customerId" defaultValue="" className="h-12 text-base">
+                <NativeSelect id="approve-customerId" name="customerId" defaultValue="" className="h-12 text-base">
                   <option value="" disabled>
                     Select customer
                   </option>
@@ -107,7 +109,7 @@ export function ApproveWorkRequestDialog({
                   <button
                     type="button"
                     onClick={() => setAddingCustomer(true)}
-                    className="self-start text-sm font-semibold text-primary"
+                    className="self-start text-sm font-semibold text-primary-text"
                   >
                     + Add New Customer
                   </button>
@@ -115,8 +117,8 @@ export function ApproveWorkRequestDialog({
               </>
             ) : (
               <>
-                <Input name="newCustomerName" placeholder="Customer name" required className="h-12 text-base" />
-                <Input name="newCustomerMobile" placeholder="Mobile number (optional)" className="h-12 text-base" />
+                <Input id="approve-newCustomerName" name="newCustomerName" placeholder="Customer name" required className="h-12 text-base" />
+                <Input name="newCustomerMobile" aria-label="Customer mobile number (optional)" placeholder="Mobile number (optional)" className="h-12 text-base" />
                 {customers.length > 0 && (
                   <button
                     type="button"
@@ -238,7 +240,7 @@ export function ApproveWorkRequestDialog({
             />
           </div>
 
-          {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
           <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
             <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>

@@ -1,19 +1,16 @@
-import { NextResponse } from "next/server";
 import { requireOperatorApi } from "@/lib/api-auth";
+import { failureResponse } from "@/lib/api-error";
 import { submitDailyLog } from "@/lib/services/workSessions";
 import { dailyLogSchema } from "@/lib/validation/workSession";
+import { json, parseBody, withApi } from "@/lib/with-api";
 
-export async function POST(req: Request) {
+export const POST = withApi("operator.dailyLog.submit", async (req) => {
   const auth = await requireOperatorApi();
   if (auth.error) return auth.error;
 
-  const parsed = dailyLogSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Please check the form" }, { status: 400 });
-  }
+  const input = await parseBody(req, dailyLogSchema);
+  const result = await submitDailyLog(auth.session.operatorId, input);
+  if ("error" in result) return failureResponse(result);
 
-  const result = await submitDailyLog(auth.session.operatorId, parsed.data);
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
-
-  return NextResponse.json(result);
-}
+  return json(result);
+});

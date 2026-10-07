@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server";
 import { requireBusinessApi } from "@/lib/api-auth";
 import { listCustomerOptions } from "@/lib/services/customers";
 import { listSiteOptions } from "@/lib/services/sites";
 import { listExcavatorOptions } from "@/lib/services/excavators";
 import { listBankAccounts, getBusinessSettings } from "@/lib/services/settings";
 import { listUnbilledWorkSessions, previewNextNonGstBillNumber } from "@/lib/services/bills";
+import { json, withApi } from "@/lib/with-api";
 
-export async function GET(req: Request) {
+export const GET = withApi("bills.new-form", async (req) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
   const { businessId } = auth.session;
@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   ]);
 
   if (!customerId) {
-    return NextResponse.json({ customers, sites, excavators });
+    return json({ customers, sites, excavators });
   }
 
   const siteId = searchParams.get("siteId") ?? undefined;
@@ -37,7 +37,7 @@ export async function GET(req: Request) {
   ]);
   const customer = customers.find((c) => c.id === customerId);
 
-  return NextResponse.json({
+  return json({
     customers,
     sites,
     excavators,
@@ -55,4 +55,4 @@ export async function GET(req: Request) {
     nextNonGstNumber,
     customerName: customer?.name ?? "",
   });
-}
+});

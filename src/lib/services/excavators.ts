@@ -1,7 +1,12 @@
 import { db } from "@/lib/db";
+import { fail } from "@/lib/api-error";
+import { recordAudit, type AuditActor } from "@/lib/audit";
+import { round2, sum, ZERO, type Decimal } from "@/lib/money";
+import { isStale, lockBusiness, resourceModified, withTx, type Tx } from "@/lib/tx";
 import { computeServiceStatus } from "@/lib/services/serviceStatus";
 import { listOpenWorkRequestsForExcavator } from "@/lib/services/operatorWorkRequests";
 import { findOrCreateSite } from "@/lib/services/sites";
+import { lockOwnedExcavator, roundHours } from "@/lib/services/workSessions";
 import { currentMonthRange } from "@/lib/utils/dates";
 import type { AddExcavatorInput, EditExcavatorInput } from "@/lib/validation/excavator";
 
@@ -26,7 +31,7 @@ export async function listExcavators(businessId: string) {
         currentOperator: { select: { id: true, name: true } },
         currentSite: { select: { name: true } },
         serviceRecords: {
-          orderBy: { serviceDate: "desc" },
+          orderBy: [{ serviceDate: "desc" }, { createdAt: "desc" }, { id: "desc" }],
           take: 1,
         },
       },
@@ -103,13 +108,14 @@ export async function getMachinePerformanceSummary(businessId: string) {
     }),
   ]);
 
-  const revenueByExcavator = new Map<string, number>();
+  // Revenue is money: summed as exact Decimals, handed to the UI as a number.
+  const revenueByExcavator = new Map<string, Decimal>();
   for (const item of billItems) {
-    revenueByExcavator.set(item.excavatorId, (revenueByExcavator.get(item.excavatorId) ?? 0) + item.amount);
+    revenueByExcavator.set(item.excavatorId, (revenueByExcavator.get(item.excavatorId) ?? ZERO).plus(item.amount));
   }
   for (const bill of directBills) {
     if (!bill.excavatorId) continue;
-    revenueByExcavator.set(bill.excavatorId, (revenueByExcavator.get(bill.excavatorId) ?? 0) + bill.totalAmount);
+    revenueByExcavator.set(bill.excavatorId, (revenueByExcavator.get(bill.excavatorId) ?? ZERO).plus(bill.totalAmount));
   }
 
   return excavators.map((e) => ({
@@ -117,26 +123,43 @@ export async function getMachinePerformanceSummary(businessId: string) {
     name: e.name,
     machineNumber: e.machineNumber,
     status: e.status,
-    hoursThisMonth: Math.round(e.workSessions.reduce((sum, s) => sum + s.totalHours, 0) * 100) / 100,
-    revenueThisMonth: Math.round((revenueByExcavator.get(e.id) ?? 0) * 100) / 100,
+    hoursThisMonth: round2(sum(e.workSessions.map((s) => s.totalHours))).toNumber(),
+    revenueThisMonth: round2(revenueByExcavator.get(e.id) ?? ZERO).toNumber(),
   }));
 }
 
-export async function createExcavator(businessId: string, input: AddExcavatorInput) {
-  const last = await db.excavator.aggregate({ where: { businessId }, _max: { sortOrder: true } });
-  return db.excavator.create({
-    data: {
+export async function createExcavator(
+  businessId: string,
+  actor: AuditActor,
+  input: AddExcavatorInput,
+  opts?: { tx?: Tx },
+) {
+  return withTx(opts?.tx, async (tx) => {
+    const last = await tx.excavator.aggregate({ where: { businessId }, _max: { sortOrder: true } });
+    const startingHourMeter = roundHours(input.startingHourMeter);
+    const excavator = await tx.excavator.create({
+      data: {
+        businessId,
+        sortOrder: (last._max.sortOrder ?? 0) + 1,
+        name: input.name,
+        machineNumber: input.machineNumber || null,
+        brand: input.brand || null,
+        model: input.model || null,
+        purchaseDate: input.purchaseDate ? new Date(input.purchaseDate) : null,
+        startingHourMeter,
+        currentHourMeter: startingHourMeter,
+        serviceIntervalHrs: input.serviceIntervalHrs ?? null,
+      },
+    });
+    await recordAudit(tx, {
       businessId,
-      sortOrder: (last._max.sortOrder ?? 0) + 1,
-      name: input.name,
-      machineNumber: input.machineNumber || null,
-      brand: input.brand || null,
-      model: input.model || null,
-      purchaseDate: input.purchaseDate ? new Date(input.purchaseDate) : null,
-      startingHourMeter: input.startingHourMeter,
-      currentHourMeter: input.startingHourMeter,
-      serviceIntervalHrs: input.serviceIntervalHrs ?? null,
-    },
+      actor,
+      action: "excavator.create",
+      entityType: "Excavator",
+      entityId: excavator.id,
+      after: excavator,
+    });
+    return excavator;
   });
 }
 
@@ -157,7 +180,7 @@ export async function getExcavatorDetail(businessId: string, id: string) {
       },
       currentOperator: { select: { id: true, name: true, mobile: true } },
       currentSite: { select: { id: true, name: true } },
-      serviceRecords: { orderBy: { serviceDate: "desc" }, take: 1 },
+      serviceRecords: { orderBy: [{ serviceDate: "desc" }, { createdAt: "desc" }, { id: "desc" }], take: 1 },
     },
   });
 
@@ -166,9 +189,9 @@ export async function getExcavatorDetail(businessId: string, id: string) {
   const [{ defaultServiceIntervalHrs: defaultInterval, maintenanceAlertThresholdHrs }, operatorWorkRequests, lastCompleted, lastSession] =
     await Promise.all([
       getMaintenanceSettings(businessId),
-      listOpenWorkRequestsForExcavator(id),
+      listOpenWorkRequestsForExcavator(id, businessId),
       db.workSession.findFirst({
-        where: { excavatorId: id, status: "COMPLETED" },
+        where: { businessId, excavatorId: id, status: "COMPLETED" },
         orderBy: { endDate: "desc" },
         select: { endDate: true },
       }),
@@ -211,35 +234,113 @@ export async function getExcavatorDetail(businessId: string, id: string) {
   };
 }
 
-export async function updateExcavator(businessId: string, id: string, input: EditExcavatorInput) {
-  return db.excavator.updateMany({
-    where: { id, businessId },
-    data: {
-      name: input.name,
-      machineNumber: input.machineNumber || null,
-      brand: input.brand || null,
-      model: input.model || null,
-      purchaseDate: input.purchaseDate ? new Date(input.purchaseDate) : null,
-      serviceIntervalHrs: input.serviceIntervalHrs ?? null,
-    },
+/** Owner edit of a machine's details. `input.expectedVersion` (the version the
+ * edit form loaded) makes a concurrent edit a RESOURCE_MODIFIED conflict
+ * instead of a silent overwrite. */
+export async function updateExcavator(
+  businessId: string,
+  actor: AuditActor,
+  id: string,
+  input: EditExcavatorInput,
+  opts?: { tx?: Tx },
+) {
+  return withTx(opts?.tx, async (tx) => {
+    if (!(await lockOwnedExcavator(tx, businessId, id))) return fail("NOT_FOUND", "Machine not found");
+    const before = await tx.excavator.findFirst({ where: { id, businessId } });
+    if (!before) return fail("NOT_FOUND", "Machine not found");
+    if (isStale(before.version, input.expectedVersion)) return resourceModified("machine");
+
+    const after = await tx.excavator.update({
+      where: { id, businessId },
+      data: {
+        name: input.name,
+        machineNumber: input.machineNumber || null,
+        brand: input.brand || null,
+        model: input.model || null,
+        purchaseDate: input.purchaseDate ? new Date(input.purchaseDate) : null,
+        serviceIntervalHrs: input.serviceIntervalHrs ?? null,
+        version: { increment: 1 },
+      },
+    });
+    await recordAudit(tx, {
+      businessId,
+      actor,
+      action: "excavator.update",
+      entityType: "Excavator",
+      entityId: id,
+      before,
+      after,
+    });
+    return { ok: true, version: after.version } as const;
   });
 }
 
-export async function archiveExcavator(businessId: string, id: string) {
-  return db.excavator.updateMany({ where: { id, businessId }, data: { isArchived: true } });
+/** Removes a machine from the active list. Its history (jobs, service records,
+ * bills) stays on record — it is an archive, never a hard delete. */
+export async function archiveExcavator(
+  businessId: string,
+  actor: AuditActor,
+  id: string,
+  opts?: { tx?: Tx; expectedVersion?: number },
+) {
+  return withTx(opts?.tx, async (tx) => {
+    if (!(await lockOwnedExcavator(tx, businessId, id))) return fail("NOT_FOUND", "Machine not found");
+    const before = await tx.excavator.findFirst({ where: { id, businessId } });
+    if (!before) return fail("NOT_FOUND", "Machine not found");
+    if (isStale(before.version, opts?.expectedVersion)) return resourceModified("machine");
+    if (before.isArchived) return { ok: true, version: before.version } as const;
+
+    const after = await tx.excavator.update({
+      where: { id, businessId },
+      data: { isArchived: true, version: { increment: 1 } },
+    });
+    await recordAudit(tx, {
+      businessId,
+      actor,
+      action: "excavator.archive",
+      entityType: "Excavator",
+      entityId: id,
+      before,
+      after,
+    });
+    return { ok: true, version: after.version } as const;
+  });
 }
 
 /** Admin's direct site-set — takes effect immediately, unlike an Operator's
  * proposed site change on a job request, which only updates this once
  * approved (see approveWorkRequest in operatorWorkRequests.ts). */
-export async function setExcavatorSite(businessId: string, excavatorId: string, siteName: string) {
-  const excavator = await db.excavator.findFirst({ where: { id: excavatorId, businessId } });
-  if (!excavator) return { error: "Machine not found" } as const;
+export async function setExcavatorSite(
+  businessId: string,
+  actor: AuditActor,
+  excavatorId: string,
+  siteName: string,
+  opts?: { tx?: Tx },
+) {
+  return withTx(opts?.tx, async (tx) => {
+    if (!(await lockOwnedExcavator(tx, businessId, excavatorId))) return fail("NOT_FOUND", "Machine not found");
+    const before = await tx.excavator.findFirst({ where: { id: excavatorId, businessId } });
+    if (!before) return fail("NOT_FOUND", "Machine not found");
 
-  const site = await findOrCreateSite(businessId, siteName);
+    const site = await findOrCreateSite(businessId, siteName, tx);
+    if (before.currentSiteId === site.id) return { site } as const;
 
-  await db.excavator.update({ where: { id: excavatorId }, data: { currentSiteId: site.id } });
-  return { site } as const;
+    const after = await tx.excavator.update({
+      where: { id: excavatorId, businessId },
+      data: { currentSiteId: site.id, version: { increment: 1 } },
+    });
+    await recordAudit(tx, {
+      businessId,
+      actor,
+      action: "excavator.update",
+      entityType: "Excavator",
+      entityId: excavatorId,
+      before,
+      after,
+      details: { change: "site", siteName: site.name },
+    });
+    return { site } as const;
+  });
 }
 
 export async function listExcavatorOptions(businessId: string) {
@@ -258,16 +359,38 @@ export async function listExcavatorOptions(businessId: string) {
 }
 
 /** Saves the admin's custom machine order. `orderedIds` is the full list of
- * the business's active machines in the desired order. */
+ * the business's active machines in the desired order. Ids that are not this
+ * business's machines are ignored (never read, never written) and only the
+ * machines whose position actually changes are touched — each of those counts
+ * as a write, so its `version` moves. */
 export async function reorderExcavators(businessId: string, orderedIds: string[]) {
-  const owned = await db.excavator.findMany({
-    where: { businessId, id: { in: orderedIds } },
-    select: { id: true },
+  const requested = [...new Set(orderedIds)];
+  return withTx(undefined, async (tx) => {
+    // Two reorders at once (two devices) used to interleave their per-machine updates into a mixed order
+    // with duplicate positions. Serialize them per business and read the current order AFTER taking the lock.
+    await lockBusiness(tx, businessId);
+    const owned = await tx.excavator.findMany({
+      where: { businessId, id: { in: requested } },
+      select: { id: true, sortOrder: true },
+    });
+    const currentOrder = new Map(owned.map((e) => [e.id, e.sortOrder]));
+    const ids = requested.filter((id) => currentOrder.has(id));
+
+    for (const [index, id] of ids.entries()) {
+      const position = index + 1;
+      if (currentOrder.get(id) === position) continue;
+      await tx.excavator.update({
+        where: { id, businessId },
+        data: { sortOrder: position, version: { increment: 1 } },
+      });
+    }
+    return { count: ids.length, ignored: requested.length - ids.length };
   });
-  const ownedIds = new Set(owned.map((e) => e.id));
-  const ids = orderedIds.filter((id) => ownedIds.has(id));
-  await db.$transaction(
-    ids.map((id, index) => db.excavator.update({ where: { id }, data: { sortOrder: index + 1 } })),
-  );
-  return { count: ids.length };
+}
+
+/** True when the machine exists in THIS business (archived machines included).
+ * Routes that list data belonging to a machine use it to answer 404 for another
+ * tenant's (or a nonexistent) id instead of an empty 200. */
+export async function excavatorInBusiness(businessId: string, id: string) {
+  return (await db.excavator.count({ where: { id, businessId } })) > 0;
 }

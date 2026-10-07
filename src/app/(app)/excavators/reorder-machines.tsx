@@ -75,7 +75,7 @@ export function ReorderMachines({ machines }: { machines: Machine[] }) {
           </Button>
         </div>
       </div>
-      {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
       <ol className="flex flex-col gap-2">
         {order.map((m, i) => (
           <li key={m.id} className="flex items-center gap-3 rounded-lg border p-2 text-sm">

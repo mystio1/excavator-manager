@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api-client";
 import { useApiForm } from "@/lib/use-api-form";
+import { useClearClientCache } from "@/lib/use-clear-client-cache";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useDocumentLang, usePageTitle } from "@/components/page-title";
 import { OperatorLanguageToggle } from "@/components/operator-language-toggle";
 import { OPERATOR_LANG_STORAGE_KEY, ot, otMsg, type OperatorLang } from "@/lib/i18n/operator";
 
@@ -16,8 +18,10 @@ const REMEMBERED_MOBILE_KEY = "operator-remembered-mobile";
 
 export default function OperatorLoginPage() {
   const router = useRouter();
+  const clearClientCache = useClearClientCache();
   const { error, pending: isPending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch("/api/auth/operator-login", { method: "POST", body: JSON.stringify(body) });
+    await clearClientCache(); // never show a previous account's cached data
     router.push("/operator");
   });
   const [lang, setLang] = useState<OperatorLang>("en");
@@ -50,13 +54,17 @@ export default function OperatorLoginPage() {
   }
 
   const t = (key: string, vars?: Record<string, string>) => ot(lang, key, vars);
+  useDocumentLang(lang);
+  usePageTitle(t("login.title"));
 
   return (
     <>
       <OperatorLanguageToggle lang={lang} onChange={chooseLang} />
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">{t("login.title")}</CardTitle>
+          <CardTitle role="heading" aria-level={1} className="text-2xl">
+            {t("login.title")}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -67,7 +75,7 @@ export default function OperatorLoginPage() {
                 <button
                   type="button"
                   onClick={useDifferentNumber}
-                  className="self-start text-sm font-semibold text-primary"
+                  className="self-start text-sm font-semibold text-primary-text"
                 >
                   {t("login.notYou")}
                 </button>
@@ -94,20 +102,20 @@ export default function OperatorLoginPage() {
                 autoFocus={!!rememberedMobile}
               />
             </div>
-            {error && <p className="text-sm font-medium text-destructive">{otMsg(lang, error)}</p>}
+            {error && <p role="alert" className="text-sm font-medium text-destructive">{otMsg(lang, error)}</p>}
             <Button type="submit" size="lg" className="h-12 text-base" disabled={isPending}>
               {isPending ? t("login.submitting") : t("login.submit")}
             </Button>
           </form>
           <p className="mt-4 text-center text-sm text-muted-foreground">
             {t("login.firstTime")}{" "}
-            <Link href="/operator-signup" className="font-medium text-primary underline underline-offset-4">
+            <Link href="/operator-signup" className="font-medium text-primary-text underline underline-offset-4">
               {t("login.setupAccount")}
             </Link>
           </p>
           <p className="mt-2 text-center text-sm text-muted-foreground">
             {t("login.owner")}{" "}
-            <Link href="/login" className="font-medium text-primary underline underline-offset-4">
+            <Link href="/login" className="font-medium text-primary-text underline underline-offset-4">
               {t("login.loginHere")}
             </Link>
           </p>

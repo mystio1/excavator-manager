@@ -38,6 +38,13 @@ export function numberToIndianWords(value: number): string {
   return parts.join(" ");
 }
 
+/** "Seven Thousand Seven Hundred Eighty Nine Rupees and Sixty Three Paise Only".
+ * Paise are spoken (not rounded away) so the words always agree with the
+ * printed total. */
 export function amountInWords(value: number): string {
-  return `${numberToIndianWords(value)} Rupees Only`;
+  const totalPaise = Math.round(Math.abs(value) * 100);
+  const rupees = Math.floor(totalPaise / 100);
+  const paise = totalPaise % 100;
+  const rupeeWords = `${numberToIndianWords(rupees)} Rupees`;
+  return paise > 0 ? `${rupeeWords} and ${twoDigits(paise)} Paise Only` : `${rupeeWords} Only`;
 }

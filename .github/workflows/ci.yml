@@ -1,0 +1,122 @@
+name: CI
+
+# Runs on every pull request and every push to main. A red CI must block
+# merging (branch protection: see docs/ci-cd.md) and — via Render's
+# "Auto-Deploy: After CI Checks Pass" setting — block the production deploy.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint, typecheck, tests, migrations, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: excavator_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/excavator_ci
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/excavator_ci
+      SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/excavator_shadow
+      AUTH_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
+      APP_URL: https://ci.example.test
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma schema is valid
+        run: npx prisma validate
+
+      - name: Apply all migrations to a fresh database
+        run: npx prisma migrate deploy
+
+      - name: Migrations and schema.prisma agree (no drift)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -c 'CREATE DATABASE excavator_shadow'
+          npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --exit-code
+
+      - name: Migration safety tests (fresh, upgrade-with-data, abort guard)
+        run: npm run test:migrations
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Generate Next.js route types
+        run: npx next typegen
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Authorization matrix is current and every route is guarded
+        run: npm run authz:check
+
+      - name: Tests
+        run: npm test
+
+      - name: Production build (web)
+        run: npm run build
+
+      - name: Configuration passes the pre-deploy gate (production rules)
+        run: npm run check:config -- --production
+
+      - name: The production server really sends the security headers
+        run: |
+          npx next start -p 3000 > next-start.log 2>&1 &
+          for i in $(seq 1 60); do curl -fs http://localhost:3000/api/health > /dev/null && break; sleep 1; done
+          npm run check:headers -- http://localhost:3000
+
+      - name: Dependency audit (fail on critical in production dependencies)
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: License inventory (fail on strong copyleft in production dependencies)
+        run: npm run licenses
+
+      - name: SBOM can be generated (CycloneDX)
+        run: npm run sbom > /dev/null
+
+  android-bundle:
+    name: Android static bundle still builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/unused
+      AUTH_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the static-export bundle Capacitor packages into the APK
+        run: npm run build:android
