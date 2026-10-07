@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AttachmentPicker } from "@/components/attachment-picker";
+import { ChangeReview } from "@/components/change-review";
+import { summarizeChanges, type FieldChange } from "@/lib/utils/change-summary";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
@@ -39,6 +41,8 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
   // The version the dialog was opened with (see EditSessionButton).
   const [loadedVersion, setLoadedVersion] = useState(log.version);
   const [conflict, setConflict] = useState(false);
+  const [review, setReview] = useState<{ body: Record<string, unknown>; changes: FieldChange[] } | null>(null);
+  const [nothingChanged, setNothingChanged] = useState(false);
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     setConflict(false);
     try {
@@ -56,6 +60,8 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
     if (next) {
       setLoadedVersion(log.version);
       setConflict(false);
+      setReview(null);
+      setNothingChanged(false);
     }
     setOpen(next);
   }
@@ -70,7 +76,7 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    const ok = await run({
+    const body = {
       date: fd.get("date"),
       startHourMeter: mode === "meter" ? fd.get("startHourMeter") || undefined : undefined,
       endHourMeter: mode === "meter" ? fd.get("endHourMeter") || undefined : undefined,
@@ -81,10 +87,37 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
       dieselLiters: fd.get("dieselLiters") || undefined,
       notes: fd.get("notes") || undefined,
       attachment: fd.get("attachment") || undefined,
-    });
+    };
+    const timeBased = mode === "time";
+    const changes = summarizeChanges([
+      { label: "Date", before: new Date(log.date).toISOString().slice(0, 10), after: body.date },
+      ...(timeBased
+        ? [
+            { label: "Start time", before: log.startTime, after: body.startTime },
+            { label: "Stop time", before: log.stopTime, after: body.stopTime },
+            { label: "Break (minutes)", before: log.breakMinutes ?? 0, after: body.breakMinutes ?? 0 },
+          ]
+        : [
+            { label: "Start meter", before: log.startHourMeter, after: body.startHourMeter },
+            { label: "End meter", before: log.endHourMeter, after: body.endHourMeter },
+          ]),
+      { label: "Operator", before: log.operatorName, after: body.operatorName },
+      { label: "Tool / attachment", before: log.attachment, after: body.attachment },
+      { label: "Diesel (L)", before: log.dieselLiters, after: body.dieselLiters },
+      { label: "Note", before: log.notes, after: body.notes },
+    ]);
+    setNothingChanged(changes.length === 0);
+    if (changes.length > 0) setReview({ body, changes });
+  }
+
+  /** The admin answered "Yes" to "Are you sure you want to change this?". */
+  async function confirmSave() {
+    if (!review) return;
+    const ok = await run(review.body);
     if (ok) {
       await mutate(invalidateKey);
-      await mutate((key) => typeof key === "string" && key.startsWith("/api/excavators"));
+      await mutate((key) => typeof key === "string" && (key.startsWith("/api/excavators") || key.startsWith("/api/customers")));
+      setReview(null);
       setOpen(false);
     }
   }
@@ -110,7 +143,18 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
         <DialogHeader>
           <DialogTitle>Edit Reading</DialogTitle>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        {review && (
+          <ChangeReview
+            changes={review.changes}
+            pending={pending}
+            error={error}
+            note="Hours, the job's total and diesel are recalculated from the readings after saving."
+            onBack={() => setReview(null)}
+            onConfirm={confirmSave}
+          />
+        )}
+        {/* Kept mounted (just hidden) while confirming, so "No, go back" returns to exactly what was typed. */}
+        <form onSubmit={onSubmit} className={review ? "hidden" : "flex flex-col gap-4"}>
           <div className="flex flex-col gap-2">
             <Label htmlFor="date" className="text-base">Date</Label>
             <Input id="date" name="date" type="date" defaultValue={dateValue} required className="h-12 text-base" />
@@ -180,7 +224,8 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
             <Input id="notes" name="notes" defaultValue={log.notes ?? ""} className="h-12 text-base" />
           </div>
 
-          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
+          {nothingChanged && !review && <p role="status" className="text-sm text-muted-foreground">Nothing was changed.</p>}
+          {!review && error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
           {conflict && (
             <Button type="button" variant="outline" className="h-11" onClick={reloadLatest}>
               Reload latest version

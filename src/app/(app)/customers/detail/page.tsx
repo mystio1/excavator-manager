@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
-import { CalendarDays, Clock, FileText, Pencil, Truck } from "lucide-react";
+import { useState } from "react";
+import { CalendarDays, ChevronDown, ChevronUp, Clock, FileText, Pencil, Truck } from "lucide-react";
 import type { getCustomerDetail } from "@/lib/services/customers";
 import type { Plain } from "@/lib/plain";
 import { swrFetcher } from "@/lib/api-client";
@@ -15,12 +16,108 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/native-select";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatCurrencyCompact } from "@/lib/utils/currency";
-import { formatDateRange } from "@/lib/utils/dates";
+import { formatDate, formatDateRange } from "@/lib/utils/dates";
 import { formatHours } from "@/lib/utils/hours";
 import { StatusBadge } from "@/components/status-badge";
 import Loading from "../../loading";
+import { EditSessionButton } from "../../excavators/detail/edit-session-button";
+import { EditReadingButton } from "../../excavators/detail/edit-reading-button";
+import { DeleteReadingButton } from "../../excavators/detail/delete-reading-button";
 
 type CustomerDetail = Plain<NonNullable<Awaited<ReturnType<typeof getCustomerDetail>>>>;
+type Work = CustomerDetail["machineHistory"][number];
+
+/** One job for this customer: the summary, a "Details" view with every recorded value, and admin edit. */
+function WorkCard({ work: h, invalidateKey }: { work: Work; invalidateKey: string }) {
+  const [open, setOpen] = useState(false);
+  const row = (label: string, value: string | number | null | undefined) => (
+    <>
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right font-semibold">{value === null || value === undefined || value === "" ? "—" : value}</span>
+    </>
+  );
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-1">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="font-bold">{h.excavatorName}</p>
+            {h.machineNumber && <p className="text-sm text-muted-foreground">{h.machineNumber}</p>}
+          </div>
+          <div className="flex items-center gap-1">
+            {h.status === "ACTIVE" && <StatusBadge status="WORKING" />}
+            <EditSessionButton session={h} invalidateKey={invalidateKey} />
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground">{h.siteName}</p>
+        <p className="text-sm">{formatDateRange(h.startDate, h.endDate)}</p>
+        <div className="mt-1 flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Operator: {h.operatorName}</span>
+          <span className="font-semibold">{formatHours(h.totalHours)}</span>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mt-1 self-start"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+          {open ? "Hide details" : "View details"}
+        </Button>
+        {open && (
+          <div className="mt-1 flex flex-col gap-2 border-t pt-2">
+            <div className="grid grid-cols-2 gap-y-1 text-sm">
+              {row("Tool / attachment", h.attachment)}
+              {row("Start reading", formatHours(h.startHourMeter))}
+              {row("End reading", h.endHourMeter != null ? formatHours(h.endHourMeter) : null)}
+              {row("Total hours", formatHours(h.totalHours))}
+              {row(
+                "Diesel taken",
+                h.dieselLiters != null ? `${h.dieselLiters} L${h.dieselDate ? ` (${formatDate(new Date(h.dieselDate))})` : ""}` : null,
+              )}
+              {row("Status", h.status === "ACTIVE" ? "Working" : "Completed")}
+              {row("Billed", h.billed ? "Yes" : "No")}
+              {row("Notes", h.notes)}
+            </div>
+            {h.dailyLogs.length > 0 && (
+              <div className="flex flex-col border-t pt-2">
+                <p className="pb-1 text-xs font-semibold text-muted-foreground">Daily readings</p>
+                {h.dailyLogs.map((log) => (
+                  <div key={log.id} className="flex flex-col gap-0.5 py-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">
+                        {formatDate(new Date(log.date))}
+                        {log.status !== "APPROVED" && <span className="ml-2 text-xs text-muted-foreground">({log.status.toLowerCase()})</span>}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-semibold">{formatHours(log.hoursWorked)}</span>
+                        <EditReadingButton log={log} invalidateKey={invalidateKey} />
+                        <DeleteReadingButton logId={log.id} version={log.version} invalidateKey={invalidateKey} />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {log.startHourMeter != null && log.endHourMeter != null
+                        ? `Meter ${formatHours(log.startHourMeter)} → ${formatHours(log.endHourMeter)}`
+                        : log.startTime && log.stopTime
+                          ? `${log.startTime} – ${log.stopTime}${log.breakMinutes ? ` (break ${log.breakMinutes} min)` : ""}`
+                          : null}
+                      {log.attachment ? ` · Tool: ${log.attachment}` : ""}
+                      {log.dieselLiters != null ? ` · Diesel: ${log.dieselLiters} L` : ""}
+                      {log.operatorName ? ` · ${log.operatorName}` : ""}
+                    </p>
+                    {log.notes && <p className="text-xs text-muted-foreground">{log.notes}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function CustomerDetailPage() {
   const searchParams = useSearchParams();
@@ -38,6 +135,7 @@ export default function CustomerDetailPage() {
 
   const { data } = useSWR<{ detail: CustomerDetail }>(id ? `/api/customers/detail?${query.toString()}` : null, swrFetcher);
 
+  const invalidateKey = `/api/customers/detail?${query.toString()}`;
   if (!data) return <Loading />;
   const {
     customer,
@@ -174,23 +272,7 @@ export default function CustomerDetailPage() {
             </Card>
           )}
           {machineHistory.map((h) => (
-            <Card key={h.id}>
-              <CardContent className="flex flex-col gap-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-bold">{h.excavatorName}</p>
-                    {h.machineNumber && <p className="text-sm text-muted-foreground">{h.machineNumber}</p>}
-                  </div>
-                  {h.status === "ACTIVE" && <StatusBadge status="WORKING" />}
-                </div>
-                <p className="text-sm text-muted-foreground">{h.siteName}</p>
-                <p className="text-sm">{formatDateRange(h.startDate, h.endDate)}</p>
-                <div className="mt-1 flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Operator: {h.operatorName}</span>
-                  <span className="font-semibold">{formatHours(h.totalHours)}</span>
-                </div>
-              </CardContent>
-            </Card>
+            <WorkCard key={h.id} work={h} invalidateKey={invalidateKey} />
           ))}
         </div>
       </div>

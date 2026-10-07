@@ -276,7 +276,27 @@ export async function getCustomerDetail(businessId: string, id: string, filters:
       excavator: { select: { id: true, name: true, machineNumber: true } },
       site: { select: { name: true } },
       operator: { select: { name: true } },
-      dailyLogs: { select: { date: true } },
+      // Explicit select: the work card on the customer page shows (and lets the admin edit) every reading.
+      dailyLogs: {
+        orderBy: { date: "asc" },
+        select: {
+          id: true,
+          version: true,
+          date: true,
+          startTime: true,
+          stopTime: true,
+          breakMinutes: true,
+          startHourMeter: true,
+          endHourMeter: true,
+          hoursWorked: true,
+          operatorName: true,
+          dieselLiters: true,
+          notes: true,
+          attachment: true,
+          status: true,
+        },
+      },
+      _count: { select: { billItems: true } },
     },
   });
 
@@ -321,6 +341,20 @@ export async function getCustomerDetail(businessId: string, id: string, filters:
       endDate: s.endDate,
       totalHours: s.totalHours,
       status: s.status,
+      // Added for the full work view / admin edit (additive: older clients ignore them).
+      version: s.version,
+      excavatorId: s.excavatorId,
+      customerId: s.customerId,
+      operatorId: s.operatorId,
+      site: { name: s.site.name },
+      startHourMeter: s.startHourMeter,
+      endHourMeter: s.endHourMeter,
+      dieselLiters: s.dieselLiters,
+      dieselDate: s.dieselDate,
+      attachment: s.attachment,
+      notes: s.notes,
+      billed: s._count.billItems > 0,
+      dailyLogs: s.dailyLogs,
     })),
   };
 }

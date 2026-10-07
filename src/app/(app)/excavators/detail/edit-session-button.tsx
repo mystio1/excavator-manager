@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/native-select";
 import { AttachmentPicker } from "@/components/attachment-picker";
+import { ChangeReview } from "@/components/change-review";
+import { summarizeChanges, type FieldChange } from "@/lib/utils/change-summary";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export type EditableSession = {
@@ -28,6 +30,8 @@ export type EditableSession = {
   attachment: string | null;
   notes: string | null;
   status: string;
+  /** True when the job is already on a bill (the confirmation step warns that the bill is not rewritten). */
+  billed?: boolean;
 };
 
 const day = (d: string | Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
@@ -44,6 +48,9 @@ export function EditSessionButton({ session, invalidateKey }: { session: Editabl
   // they actually started from.
   const [loadedVersion, setLoadedVersion] = useState(session.version);
   const [conflict, setConflict] = useState(false);
+  // After "Save": the changes waiting for the admin to answer "Are you sure you want to change this?".
+  const [review, setReview] = useState<{ body: Record<string, unknown>; changes: FieldChange[] } | null>(null);
+  const [nothingChanged, setNothingChanged] = useState(false);
   const { data: customersData } = useSWR<{ customers: { id: string; name: string }[] }>(
     open ? "/api/customers/options" : null,
     swrFetcher,
@@ -70,6 +77,8 @@ export function EditSessionButton({ session, invalidateKey }: { session: Editabl
       setLoadedVersion(session.version);
       setConflict(false);
       setDeleteError(null);
+      setReview(null);
+      setNothingChanged(false);
     }
     setOpen(next);
   }
@@ -82,13 +91,13 @@ export function EditSessionButton({ session, invalidateKey }: { session: Editabl
 
   async function refresh() {
     await mutate(invalidateKey);
-    await mutate((k) => typeof k === "string" && (k.startsWith("/api/excavators") || k.startsWith("/api/dashboard")));
+    await mutate((k) => typeof k === "string" && (k.startsWith("/api/excavators") || k.startsWith("/api/dashboard") || k.startsWith("/api/customers")));
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    const ok = await run({
+    const body = {
       customerId: fd.get("customerId"),
       operatorId: fd.get("operatorId"),
       siteName: fd.get("siteName"),
@@ -100,9 +109,32 @@ export function EditSessionButton({ session, invalidateKey }: { session: Editabl
       dieselLiters: fd.get("dieselLiters") || undefined,
       attachment: fd.get("attachment") || undefined,
       notes: fd.get("notes") || undefined,
-    });
+    };
+    const nameOf = (list: { id: string; name: string }[], id: unknown) => list.find((x) => x.id === id)?.name ?? String(id ?? "");
+    const changes = summarizeChanges([
+      { label: "Customer", before: nameOf(customers, session.customerId), after: nameOf(customers, body.customerId) },
+      { label: "Operator", before: nameOf(operators, session.operatorId), after: nameOf(operators, body.operatorId) },
+      { label: "Site", before: session.site.name, after: body.siteName },
+      { label: "Start date", before: day(session.startDate), after: body.startDate },
+      { label: "End date", before: day(session.endDate), after: body.endDate },
+      { label: "Start reading", before: session.startHourMeter, after: body.startHourMeter },
+      { label: "End reading", before: session.endHourMeter, after: body.endHourMeter },
+      { label: "Total hours", before: session.totalHours, after: body.totalHours },
+      { label: "Diesel (L)", before: session.dieselLiters, after: body.dieselLiters },
+      { label: "Tool / attachment", before: session.attachment, after: body.attachment },
+      { label: "Note", before: session.notes, after: body.notes },
+    ]);
+    setNothingChanged(changes.length === 0);
+    if (changes.length > 0) setReview({ body, changes });
+  }
+
+  /** The admin answered "Yes" to "Are you sure you want to change this?". */
+  async function confirmSave() {
+    if (!review) return;
+    const ok = await run(review.body);
     if (ok) {
       await refresh();
+      setReview(null);
       setOpen(false);
     }
   }
@@ -140,7 +172,18 @@ export function EditSessionButton({ session, invalidateKey }: { session: Editabl
         <DialogHeader>
           <DialogTitle>Edit Work Record</DialogTitle>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        {review && (
+          <ChangeReview
+            changes={review.changes}
+            pending={pending}
+            error={error}
+            note={session.billed ? "This work is already on a bill. Saving does not change that bill; edit the bill separately if its figures should change." : null}
+            onBack={() => setReview(null)}
+            onConfirm={confirmSave}
+          />
+        )}
+        {/* Kept mounted (just hidden) while confirming, so "No, go back" returns to exactly what was typed. */}
+        <form onSubmit={onSubmit} className={review ? "hidden" : "flex flex-col gap-4"}>
           <div className="flex flex-col gap-2">
             <Label htmlFor="customerId">Customer</Label>
             <NativeSelect id="customerId" name="customerId" defaultValue={session.customerId} required className="h-11">
@@ -206,7 +249,8 @@ export function EditSessionButton({ session, invalidateKey }: { session: Editabl
             <Input id="notes" name="notes" defaultValue={session.notes ?? ""} className="h-11" />
           </div>
 
-          {(error || deleteError) && <p role="alert" className="text-sm font-medium text-destructive">{error ?? deleteError}</p>}
+          {nothingChanged && !review && <p role="status" className="text-sm text-muted-foreground">Nothing was changed.</p>}
+          {((!review && error) || deleteError) && <p role="alert" className="text-sm font-medium text-destructive">{deleteError ?? error}</p>}
           {conflict && (
             <Button type="button" variant="outline" className="h-11" onClick={reloadLatest}>
               Reload latest version
