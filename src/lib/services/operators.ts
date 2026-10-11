@@ -3,12 +3,13 @@ import type { Operator, Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { ApiHttpError, fail } from "@/lib/api-error";
 import { recordAudit, type AuditActor } from "@/lib/audit";
-import { round2 } from "@/lib/money";
+import { Decimal, dec, round2 } from "@/lib/money";
 import { LEGACY_LIMIT, pageArgs, toPage, type PageParams } from "@/lib/pagination";
 import { hashPassword } from "@/lib/password";
 import { consumeRateLimit } from "@/lib/rateLimit";
 import { isStale, resourceModified, withTx, type Tx } from "@/lib/tx";
 import { normalizeBusinessCode } from "@/lib/utils/businessCode";
+import { ensureInitialPeriod } from "./workingPeriods";
 import {
   JOIN_CODE_PATTERN,
   NEW_PIN_MESSAGE,
@@ -168,6 +169,16 @@ export async function createOperator(
       // The row goes back to the browser: credentials never leave the server.
       omit: { pinHash: true },
     });
+    // Every operator starts with ONE working period from the joining date (see workingPeriods.ts).
+    await tx.operatorWorkingPeriod.create({
+      data: {
+        businessId,
+        operatorId: operator.id,
+        startDate: operator.joiningDate ?? operator.createdAt,
+        status: "ACTIVE",
+        monthlySalary: operator.defaultMonthlySalary,
+      },
+    });
     await recordAudit(tx, {
       businessId,
       actor,
@@ -197,6 +208,19 @@ export async function updateOperator(
     if (!before) return operatorNotFound();
     if (isStale(before.version, input.expectedVersion)) return resourceModified("operator");
 
+    // Validate the period consequences BEFORE writing anything (a returned failure does not roll back).
+    const periods = await ensureInitialPeriod(tx, before);
+    const active = periods.find((p) => p.status === "ACTIVE");
+    const newStart = input.joiningDate ? new Date(input.joiningDate) : before.createdAt;
+    const only = periods.length === 1 ? periods[0]! : null;
+    if (only && only.startDate.getTime() !== newStart.getTime()) {
+      if (only.endDate && newStart.getTime() > only.endDate.getTime()) {
+        return fail("CONFLICT", "The joining date cannot be after the end of the working period.");
+      }
+      const leaves = await tx.operatorLeave.count({ where: { businessId, operatorId: id, endDate: { gte: newStart } } });
+      if (leaves > 0) return fail("CONFLICT", "The joining date overlaps a recorded leave. Remove the leave first.");
+    }
+
     const after = await tx.operator.update({
       where: { id },
       data: {
@@ -208,6 +232,34 @@ export async function updateOperator(
         version: { increment: 1 },
       },
     });
+    // Keep the working periods consistent with the profile: the ACTIVE period follows the monthly salary;
+    // with exactly one period the joining date is its start. Closed periods of a multi-period history stay.
+    const periodData: { monthlySalary?: Decimal; startDate?: Date; version: { increment: number } } = {
+      version: { increment: 1 },
+    };
+    let periodChanged = false;
+    if (active && !dec(active.monthlySalary).equals(after.defaultMonthlySalary)) {
+      periodData.monthlySalary = after.defaultMonthlySalary;
+      periodChanged = true;
+    }
+    if (only && only.startDate.getTime() !== newStart.getTime()) {
+      periodData.startDate = newStart;
+      periodChanged = true;
+    }
+    if (periodChanged) {
+      const target = only ?? active!;
+      const updatedPeriod = await tx.operatorWorkingPeriod.update({ where: { id: target.id }, data: periodData });
+      await recordAudit(tx, {
+        businessId,
+        actor,
+        action: "operator.period.update",
+        entityType: "OperatorWorkingPeriod",
+        entityId: target.id,
+        before: target,
+        after: updatedPeriod,
+        details: { operatorId: id, via: "operator.update" },
+      });
+    }
     await recordAudit(tx, {
       businessId,
       actor,

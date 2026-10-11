@@ -2,8 +2,9 @@ import { requireBusinessApi } from "@/lib/api-auth";
 import { errorResponse } from "@/lib/api-error";
 import { parsePagination } from "@/lib/pagination";
 import { getOperatorDetail } from "@/lib/services/operators";
-import { listCategories, listTransactionsPage } from "@/lib/services/operatorTransactions";
+import { getMostFrequentAmount, listCategories, listTransactionsPage } from "@/lib/services/operatorTransactions";
 import { computeSalaryForMonth, getLifetimeSalarySummary } from "@/lib/services/salary";
+import { getOperatorPeriodsOverview } from "@/lib/services/workingPeriods";
 import { json, withApi } from "@/lib/with-api";
 
 const MONTH_PARAM_RE = /^(\d{4})-(\d{1,2})$/;
@@ -36,11 +37,13 @@ export const GET = withApi("operators.detail", async (req) => {
   const detail = await getOperatorDetail(businessId, id);
   if (!detail) return errorResponse("NOT_FOUND", "Operator not found");
 
-  const [categories, transactionPage, salary, lifetimeSalary] = await Promise.all([
+  const [categories, transactionPage, salary, lifetimeSalary, periodsSummary, suggestedAmount] = await Promise.all([
     listCategories(businessId),
     listTransactionsPage(businessId, id, parsePagination(req)),
     computeSalaryForMonth(businessId, id, salaryDate.getFullYear(), salaryDate.getMonth()),
     getLifetimeSalarySummary(businessId, id),
+    getOperatorPeriodsOverview(businessId, id),
+    getMostFrequentAmount(businessId, id),
   ]);
 
   return json({
@@ -50,5 +53,8 @@ export const GET = withApi("operators.detail", async (req) => {
     nextCursor: transactionPage.nextCursor,
     salary,
     lifetimeSalary,
+    periodsSummary,
+    // Most frequently used transaction amount → quick-add chip in the UI.
+    suggestedAmount,
   });
 });

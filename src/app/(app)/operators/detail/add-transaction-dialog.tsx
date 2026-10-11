@@ -20,12 +20,15 @@ import { todayLocal } from "@/lib/utils/dates";
 export function AddTransactionDialog({
   operatorId,
   categories,
+  suggestedAmount,
 }: {
   operatorId: string;
   categories: { id: string; name: string }[];
+  suggestedAmount?: number | null;
 }) {
   const { mutate } = useSWRConfig();
   const [open, setOpen] = useState(false);
+  const [quickAmount, setQuickAmount] = useState<number | null>(null);
   const today = todayLocal();
   const defaultCategoryId = categories.find((c) => c.name === "Salary Advance")?.id ?? "";
 
@@ -49,7 +52,10 @@ export function AddTransactionDialog({
   });
 
   function onOpenChange(next: boolean) {
-    if (next) setIdempotencyKey(newIdempotencyKey());
+    if (next) {
+      setIdempotencyKey(newIdempotencyKey());
+      setQuickAmount(null);
+    }
     setOpen(next);
   }
 
@@ -72,28 +78,53 @@ export function AddTransactionDialog({
     }
   }
 
+  const formattedSuggestion = suggestedAmount != null
+    ? new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(suggestedAmount)
+    : null;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger render={<Button size="lg" className="h-11" />}>
-        <IndianRupee className="size-4" />
-        Add Money Transaction
-      </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Add Money Transaction</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <TransactionFormFields categories={categories} defaultCategoryId={defaultCategoryId} defaultDate={today} />
+    <div className="flex flex-col gap-2">
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogTrigger render={<Button size="lg" className="h-11" />}>
+          <IndianRupee className="size-4" />
+          Add Money Transaction
+        </DialogTrigger>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Add Money Transaction</DialogTitle>
+          </DialogHeader>
+          <form key={quickAmount ?? "default"} onSubmit={onSubmit} className="flex flex-col gap-4">
+            <TransactionFormFields
+              categories={categories}
+              defaultCategoryId={defaultCategoryId}
+              defaultDate={today}
+              defaultAmount={quickAmount ?? undefined}
+            />
 
-          {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
+            {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
-          <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-            <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
-              {pending ? "Saving..." : "Save Transaction"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+            <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
+              <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
+                {pending ? "Saving..." : "Save Transaction"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {formattedSuggestion && (
+        <button
+          type="button"
+          onClick={() => {
+            setQuickAmount(suggestedAmount!);
+            onOpenChange(true);
+          }}
+          className="flex items-center gap-1.5 self-start rounded-full border border-primary/30 bg-primary/5 px-3 py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
+        >
+          <IndianRupee className="size-3.5" />
+          Quick add ₹{formattedSuggestion}
+        </button>
+      )}
+    </div>
   );
 }

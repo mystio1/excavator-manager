@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/native-select";
+import { AttachmentPicker } from "@/components/attachment-picker";
+import { TOOL_REQUIRED_MESSAGE } from "@/lib/attachments";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +24,8 @@ import {
 export function ApproveWorkRequestDialog({
   requestId,
   operatorName,
+  startDate,
+  endDate,
   startHourMeter,
   endHourMeter,
   attachment,
@@ -30,9 +34,15 @@ export function ApproveWorkRequestDialog({
   dieselDate,
   notes,
   customers,
+  lastCustomerId,
+  lastSiteName,
+  onApproved,
 }: {
   requestId: string;
   operatorName: string;
+  /** The work dates the operator entered (the admin can correct them). */
+  startDate: Date | string;
+  endDate: Date | string | null;
   startHourMeter: number;
   endHourMeter: number;
   attachment: string | null;
@@ -41,19 +51,42 @@ export function ApproveWorkRequestDialog({
   dieselDate: Date | null;
   notes: string | null;
   customers: { id: string; name: string; companyName: string | null }[];
+  /** Customer id from the operator's most recent approved session — pre-fills the picker. */
+  lastCustomerId?: string | null;
+  /** Site name from the operator's most recent approved session — used to detect a site change. */
+  lastSiteName?: string | null;
+  /** Called right before the dialog closes on a successful approval. */
+  onApproved?: () => void;
 }) {
   const { mutate } = useSWRConfig();
   const [open, setOpen] = useState(false);
   const [addingCustomer, setAddingCustomer] = useState(customers.length === 0);
+  const [toolError, setToolError] = useState<string | null>(null);
+  const [currentSiteName, setCurrentSiteName] = useState(siteName ?? "");
+  // Show site-change prompt when the admin edits the site to something different
+  // from the operator's last job — offer to keep the previous customer.
+  const siteChanged =
+    lastSiteName != null &&
+    currentSiteName.trim() !== "" &&
+    currentSiteName.trim().toLowerCase() !== lastSiteName.trim().toLowerCase();
+  const defaultCustomerId = lastCustomerId ?? "";
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch(`/api/work-requests/${requestId}/approve`, { method: "POST", body: JSON.stringify(body) });
   });
 
   const dieselDateValue = dieselDate ? new Date(dieselDate).toISOString().slice(0, 10) : "";
+  // Work dates are stored as the UTC midnight of the chosen day.
+  const startDateValue = new Date(startDate).toISOString().slice(0, 10);
+  const endDateValue = endDate ? new Date(endDate).toISOString().slice(0, 10) : startDateValue;
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    // The tool is compulsory — an older request with none must be given one here.
+    if (!fd.get("attachment")) {
+      setToolError(TOOL_REQUIRED_MESSAGE);
+      return;
+    }
     const ok = await run({
       customerId: fd.get("customerId") || undefined,
       newCustomerName: fd.get("newCustomerName") || undefined,
@@ -61,13 +94,16 @@ export function ApproveWorkRequestDialog({
       siteName: fd.get("siteName"),
       startHourMeter: Number(fd.get("startHourMeter")),
       endHourMeter: Number(fd.get("endHourMeter")),
-      attachment: fd.get("attachment") || undefined,
+      startDate: fd.get("startDate") || undefined,
+      endDate: fd.get("endDate") || undefined,
+      attachment: fd.get("attachment"),
       dieselLiters: fd.get("dieselLiters") || undefined,
       dieselDate: fd.get("dieselDate") || undefined,
       notes: fd.get("notes") || undefined,
     });
     if (ok) {
-      await mutate((key) => typeof key === "string" && key.startsWith("/api/excavators"));
+      onApproved?.();
+      await mutate((key) => typeof key === "string" && (key.startsWith("/api/excavators") || key === "/api/approvals"));
       setOpen(false);
     }
   }
@@ -92,9 +128,14 @@ export function ApproveWorkRequestDialog({
             <Label htmlFor={addingCustomer ? "approve-newCustomerName" : "approve-customerId"} className="text-base">
               Customer
             </Label>
+            {siteChanged && (
+              <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+                Site changed from <strong>{lastSiteName}</strong> to <strong>{currentSiteName}</strong>. Should the customer change too?
+              </div>
+            )}
             {!addingCustomer ? (
               <>
-                <NativeSelect id="approve-customerId" name="customerId" defaultValue="" className="h-12 text-base">
+                <NativeSelect id="approve-customerId" name="customerId" defaultValue={defaultCustomerId} className="h-12 text-base">
                   <option value="" disabled>
                     Select customer
                   </option>
@@ -167,6 +208,36 @@ export function ApproveWorkRequestDialog({
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`approve-startDate-${requestId}`} className="text-base">
+                Work Date
+              </Label>
+              <Input
+                key={startDateValue}
+                id={`approve-startDate-${requestId}`}
+                name="startDate"
+                type="date"
+                defaultValue={startDateValue}
+                required
+                className="h-12 text-base"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`approve-endDate-${requestId}`} className="text-base">
+                Work End Date
+              </Label>
+              <Input
+                key={endDateValue}
+                id={`approve-endDate-${requestId}`}
+                name="endDate"
+                type="date"
+                defaultValue={endDateValue}
+                className="h-12 text-base"
+              />
+            </div>
+          </div>
+
           <div className="flex flex-col gap-2">
             <Label htmlFor={`approve-siteName-${requestId}`} className="text-base">
               Site
@@ -179,22 +250,19 @@ export function ApproveWorkRequestDialog({
               defaultValue={siteName ?? ""}
               required
               className="h-12 text-base"
+              onChange={(e) => setCurrentSiteName(e.target.value)}
             />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`approve-attachment-${requestId}`} className="text-base">
-              Attachment / Tool Used
-            </Label>
-            <Input
-              key={attachment}
-              id={`approve-attachment-${requestId}`}
-              name="attachment"
-              placeholder="e.g. Bucket, Breaker"
-              defaultValue={attachment ?? ""}
-              className="h-12 text-base"
-            />
-          </div>
+          <AttachmentPicker
+            key={attachment ?? "none"}
+            name="attachment"
+            defaultValue={attachment}
+            label="Attachment / Tool Used"
+            required
+            error={toolError}
+            onValueChange={() => setToolError(null)}
+          />
 
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">

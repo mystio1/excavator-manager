@@ -4,6 +4,7 @@ import { fail } from "@/lib/api-error";
 import { recordAudit, type AuditActor } from "@/lib/audit";
 import { dec, round2, sum } from "@/lib/money";
 import { LEGACY_LIMIT, pageArgs, toPage, type PageParams } from "@/lib/pagination";
+import { billTotalsByCustomer, sumBills } from "@/lib/services/financials";
 import { isStale, resourceModified, withTx, type Tx } from "@/lib/tx";
 import type { AddCustomerInput } from "@/lib/validation/customer";
 
@@ -70,11 +71,10 @@ export async function listCustomers(
   const [pageTotals, summary] = await Promise.all([
     items.length === 0
       ? Promise.resolve([])
-      : db.bill.groupBy({
-          by: ["customerId"],
-          where: { businessId, customerId: { in: items.map((c) => c.id) } },
-          _sum: { totalAmount: true, paidAmount: true },
-        }),
+      : billTotalsByCustomer(
+          businessId,
+          items.map((c) => c.id),
+        ),
     page.cursor ? Promise.resolve(null) : getCustomerListSummary(businessId, where),
   ]);
   const totalsByCustomer = new Map(pageTotals.map((t) => [t.customerId, t._sum]));
@@ -264,10 +264,8 @@ export async function getCustomerDetail(businessId: string, id: string, filters:
   });
   if (!customer) return null;
 
-  const billed = sum(customer.bills.map((b) => b.totalAmount));
-  const paid = sum(customer.bills.map((b) => b.paidAmount));
-  const totalRevenue = round2(billed).toNumber();
-  const pending = round2(billed.minus(paid)).toNumber();
+  // Same bill arithmetic as the dashboard and Site Analysis (financials.ts).
+  const { billed: totalRevenue, pending } = sumBills(customer.bills);
 
   const sessions = await db.workSession.findMany({
     where: { customerId: id, businessId },

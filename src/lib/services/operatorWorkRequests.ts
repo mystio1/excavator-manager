@@ -3,6 +3,7 @@ import { fail } from "@/lib/api-error";
 import { recordAudit, type AuditActor } from "@/lib/audit";
 import { withTx, type Tx } from "@/lib/tx";
 import { calcHoursFromMeter } from "@/lib/utils/hours";
+import { TOOL_REQUIRED_MESSAGE } from "@/lib/attachments";
 import type {
   ApproveWorkRequestInput,
   EditOperatorWorkRequestInput,
@@ -16,6 +17,17 @@ const OPEN_STATUSES: string[] = ["ACTIVE", "PENDING", "REJECTED"];
 /** Hour-meter readings and diesel litres are measurements (Float columns), not
  * money: kept to 2 dp when written, so 1234.5000000001 never reaches the DB. */
 const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/** A "YYYY-MM-DD" work day as the UTC-midnight instant stored in the database
+ * (the same convention the daily-log date uses). Any longer ISO string is cut
+ * to its date part so a stray time never shifts the day. */
+const workDay = (value: string) => new Date(value.slice(0, 10));
+
+/** Diesel without a date takes the day the work was done (not the submission day). */
+function dieselDateFor(input: { dieselLiters?: number | null; dieselDate?: string | null }, workDate: Date) {
+  if (input.dieselDate) return new Date(input.dieselDate);
+  return input.dieselLiters != null && input.dieselLiters > 0 ? workDate : null;
+}
 
 /** Serializes writers of one work request (SELECT … FOR UPDATE) — two admins
  * approving the same request at once must produce exactly ONE work session,
@@ -71,17 +83,20 @@ export async function startOperatorWork(
     }
 
     const startHourMeter = r2(input.startHourMeter);
+    // The day the work was DONE, entered by the operator — not "now" (they may
+    // be submitting days later). createdAt remains the start submission time.
+    const startDate = workDay(input.startDate);
     const request = await tx.operatorWorkRequest.create({
       data: {
         businessId,
         excavatorId: excavator.id,
         operatorId,
-        startDate: new Date(),
+        startDate,
         startHourMeter,
-        attachment: input.attachment || null,
+        attachment: input.attachment,
         siteName: input.siteName || excavator.currentSite?.name || null,
         dieselLiters: input.dieselLiters == null ? null : r2(input.dieselLiters),
-        dieselDate: input.dieselDate ? new Date(input.dieselDate) : null,
+        dieselDate: dieselDateFor(input, startDate),
         notes: input.notes || null,
         status: "ACTIVE",
       },
@@ -133,10 +148,23 @@ export async function endOperatorWork(
       return fail("VALIDATION_FAILED", "End hour meter must be greater than the starting hour meter");
     }
 
+    // The tool is compulsory: it may be supplied now, but a job that already
+    // has one never needs it again.
+    const attachment = input.attachment ?? request.attachment;
+    if (!attachment) return fail("VALIDATION_FAILED", TOOL_REQUIRED_MESSAGE);
+
+    // Work end date: defaults to the work date; never before it.
+    const endDate = input.endDate ? workDay(input.endDate) : request.startDate;
+    if (endDate < request.startDate) {
+      return fail("VALIDATION_FAILED", "The work end date can't be before the work date");
+    }
+
     const updated = await tx.operatorWorkRequest.update({
       where: { id: request.id },
       data: {
-        endDate: new Date(),
+        endDate,
+        submittedAt: new Date(),
+        attachment,
         endHourMeter,
         status: "PENDING",
         rejectionNote: null,
@@ -179,18 +207,20 @@ export async function editOperatorWorkRequest(
     if (!request) return fail("NOT_FOUND", "Job request not found or already reviewed");
 
     const startHourMeter = r2(input.startHourMeter);
+    // Work dates are only touched when sent (older clients omit them).
+    const startDate = input.startDate ? workDay(input.startDate) : request.startDate;
     const sharedFields = {
-      attachment: input.attachment || null,
+      attachment: input.attachment,
       siteName: input.siteName || null,
       dieselLiters: input.dieselLiters == null ? null : r2(input.dieselLiters),
-      dieselDate: input.dieselDate ? new Date(input.dieselDate) : null,
+      dieselDate: dieselDateFor(input, startDate),
       notes: input.notes || null,
     };
 
     if (request.status === "ACTIVE") {
       const updated = await tx.operatorWorkRequest.update({
         where: { id: request.id },
-        data: { startHourMeter, ...sharedFields },
+        data: { startHourMeter, startDate, ...sharedFields },
       });
       await tx.excavator.update({
         where: { id: request.excavatorId },
@@ -212,9 +242,13 @@ export async function editOperatorWorkRequest(
     if (endHourMeter == null || endHourMeter <= startHourMeter) {
       return fail("VALIDATION_FAILED", "End hour meter must be greater than the starting hour meter");
     }
+    const endDate = input.endDate ? workDay(input.endDate) : request.endDate ?? startDate;
+    if (endDate < startDate) {
+      return fail("VALIDATION_FAILED", "The work end date can't be before the work date");
+    }
     const updated = await tx.operatorWorkRequest.update({
       where: { id: request.id },
-      data: { startHourMeter, endHourMeter, ...sharedFields },
+      data: { startHourMeter, endHourMeter, startDate, endDate, ...sharedFields },
     });
     await recordAudit(tx, {
       businessId,
@@ -251,11 +285,29 @@ export async function listRecentOperatorRequests(operatorId: string, excavatorId
 /** The approval queue. `operator` is returned WITHOUT its credentials
  * (pinHash / tokenVersion) — this list is sent to the browser as JSON. */
 export async function listPendingWorkRequests(businessId: string) {
-  return db.operatorWorkRequest.findMany({
+  const requests = await db.operatorWorkRequest.findMany({
     where: { businessId, status: "PENDING" },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     include: { excavator: true, operator: { omit: { pinHash: true, tokenVersion: true } } },
   });
+
+  // For each request, look up the most recent approved work session for that
+  // operator so the Approve dialog can pre-fill the customer (avoiding "select
+  // customer every time").  One batch query per unique operatorId.
+  const opIds = [...new Set(requests.map((r) => r.operatorId))];
+  const lastSessions = await db.workSession.findMany({
+    where: { businessId, operatorId: { in: opIds }, status: "COMPLETED" },
+    orderBy: [{ endDate: "desc" }, { id: "desc" }],
+    select: { operatorId: true, customerId: true, site: { select: { name: true } } },
+    distinct: ["operatorId"],
+  });
+  const lastByOp = new Map(lastSessions.map((s) => [s.operatorId, { customerId: s.customerId, siteName: s.site.name }]));
+
+  return requests.map((r) => ({
+    ...r,
+    lastCustomerId: lastByOp.get(r.operatorId)?.customerId ?? null,
+    lastSiteName: lastByOp.get(r.operatorId)?.siteName ?? null,
+  }));
 }
 
 export async function countPendingWorkRequests(businessId: string) {
@@ -325,6 +377,14 @@ export async function approveWorkRequest(
     const endHourMeter = r2(input.endHourMeter);
     const totalHours = calcHoursFromMeter(startHourMeter, endHourMeter);
 
+    // The WORK dates (what the bill and every report show), defaulting to the
+    // ones the operator entered; the admin may correct them here.
+    const startDate = input.startDate ? workDay(input.startDate) : request.startDate;
+    const endDate = input.endDate ? workDay(input.endDate) : (request.endDate ?? startDate);
+    if (endDate < startDate) return fail("VALIDATION_FAILED", "The work end date can't be before the work date");
+    // The operator's submission time is kept apart from the work dates.
+    const submittedAt = request.submittedAt ?? request.createdAt;
+
     const session = await tx.workSession.create({
       data: {
         businessId,
@@ -332,14 +392,15 @@ export async function approveWorkRequest(
         customerId,
         siteId: site.id,
         operatorId: request.operatorId,
-        startDate: request.startDate,
-        endDate: request.endDate,
+        startDate,
+        endDate,
+        submittedAt,
         startHourMeter,
         endHourMeter,
         totalHours,
-        attachment: input.attachment || null,
+        attachment: input.attachment,
         dieselLiters: input.dieselLiters == null ? null : r2(input.dieselLiters),
-        dieselDate: input.dieselDate ? new Date(input.dieselDate) : null,
+        dieselDate: dieselDateFor(input, startDate),
         notes: input.notes || null,
         status: "COMPLETED",
       },

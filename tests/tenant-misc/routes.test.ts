@@ -330,7 +330,7 @@ describe("dashboard / site-analysis routes", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Object.keys(body).sort()).toEqual(
-      ["activity", "alerts", "cards", "hoursTrend", "machineHours", "ownerName", "paymentCollection", "profit", "revenueTrend", "topCustomers"].sort(),
+      ["activity", "alerts", "cards", "hoursTrend", "machineHours", "ownerName", "paymentCollection", "profit", "revenueTrend", "siteTotals", "topCustomers"].sort(),
     );
     expect(typeof body.cards.revenueThisMonth).toBe("number");
     expect(typeof body.cards.pendingPayments).toBe("number");

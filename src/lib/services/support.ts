@@ -159,7 +159,10 @@ export async function setBusinessLimits(
  * its Operator (driver) records, AND every OperatorTransaction/
  * TransactionCategory — an operator's full salary/money history (advances,
  * deductions, bonuses, payments) survives untouched, since that's real
- * money already paid or owed, not mistaken revenue. This is a reset of
+ * money already paid or owed, not mistaken revenue. The operators' working
+ * periods (OperatorWorkingPeriod) and leaves (OperatorLeave) are kept for the
+ * same reason: salary is computed from them, so wiping them would silently
+ * change what each operator is owed. This is a reset of
  * mistaken/test business data, not a delete-the-tenant operation.
  *
  * AuditLog is never touched (the table is append-only at the database level

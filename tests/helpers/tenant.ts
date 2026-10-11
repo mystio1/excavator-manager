@@ -93,11 +93,16 @@ export async function cleanupTenant(businessId: string) {
       await tx.serviceRecord.deleteMany({ where: { businessId } });
       await tx.excavatorExpense.deleteMany({ where: { businessId } });
       await tx.operatorTransaction.deleteMany({ where: { businessId } });
+      await tx.operatorLeave.deleteMany({ where: { businessId } });
+      // A carried-forward period references its source period (Restrict), so delete the carried ones first.
+      await tx.operatorWorkingPeriod.deleteMany({ where: { businessId, openingSourcePeriodId: { not: null } } });
+      await tx.operatorWorkingPeriod.deleteMany({ where: { businessId } });
       await tx.transactionCategory.deleteMany({ where: { businessId } });
       await tx.operatorAssignment.deleteMany({ where: { businessId } });
       await tx.excavator.deleteMany({ where: { businessId } });
       await tx.operator.deleteMany({ where: { businessId } });
       await tx.customer.deleteMany({ where: { businessId } });
+      await tx.siteRateHistory.deleteMany({ where: { businessId } });
       await tx.site.deleteMany({ where: { businessId } });
       await tx.serviceItem.deleteMany({ where: { businessId } });
       await tx.bankAccount.deleteMany({ where: { businessId } });

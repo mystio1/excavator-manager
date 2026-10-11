@@ -98,13 +98,13 @@ describe("assign-operator route", () => {
 describe("operator portal routes", () => {
   it("signed out is the standard 401", async () => {
     auth.operator = null;
-    const res = await post(portalStart, "/api/operator/work/start", { startHourMeter: 1 });
+    const res = await post(portalStart, "/api/operator/work/start", { startHourMeter: 1, startDate: "2026-10-01", attachment: "Bucket" });
     expect(res.status).toBe(401);
     expect((await res.json()).code).toBe("UNAUTHORIZED");
   });
 
   it("start without an assigned machine: 403 FORBIDDEN, message kept as a string", async () => {
-    const res = await post(portalStart, "/api/operator/work/start", { startHourMeter: 1 });
+    const res = await post(portalStart, "/api/operator/work/start", { startHourMeter: 1, startDate: "2026-10-01", attachment: "Bucket" });
     expect(res.status).toBe(403);
     const json = await res.json();
     expect(json.error).toBe("You are not assigned to a machine.");
@@ -115,12 +115,12 @@ describe("operator portal routes", () => {
   it("start / end / edit keep their { request } response shape and string-coerced readings still work", async () => {
     await post(assignRoute, `/api/excavators/${t.excavatorId}/assign-operator`, { operatorId: t.operatorId }, idCtx(t.excavatorId));
 
-    const started = await post(portalStart, "/api/operator/work/start", { startHourMeter: "50.5", siteName: "Gamma" });
+    const started = await post(portalStart, "/api/operator/work/start", { startHourMeter: "50.5", siteName: "Gamma", startDate: "2026-10-01", attachment: "Bucket" });
     expect(started.status).toBe(200);
     const { request } = await started.json();
     expect(request).toMatchObject({ status: "ACTIVE", startHourMeter: 50.5, siteName: "Gamma", operatorId: t.operatorId });
 
-    const edited = await post(portalEdit, "/api/operator/work/edit", { requestId: request.id, startHourMeter: 51 });
+    const edited = await post(portalEdit, "/api/operator/work/edit", { requestId: request.id, startHourMeter: 51, attachment: "Bucket" });
     expect(edited.status).toBe(200);
     expect((await edited.json()).request.startHourMeter).toBe(51);
 
@@ -152,7 +152,7 @@ describe("operator portal routes", () => {
 describe("work-request review routes", () => {
   async function pending() {
     await post(assignRoute, `/api/excavators/${t.excavatorId}/assign-operator`, { operatorId: t.operatorId }, idCtx(t.excavatorId));
-    const { request } = await (await post(portalStart, "/api/operator/work/start", { startHourMeter: 100 })).json();
+    const { request } = await (await post(portalStart, "/api/operator/work/start", { startHourMeter: 100, startDate: "2026-10-01", attachment: "Bucket" })).json();
     await post(portalEnd, "/api/operator/work/end", { requestId: request.id, endHourMeter: 106.25 });
     return request.id as string;
   }
@@ -161,6 +161,7 @@ describe("work-request review routes", () => {
     siteName: "Delta",
     startHourMeter: 100,
     endHourMeter: 106.25,
+    attachment: "Bucket",
     ...over,
   });
 

@@ -38,6 +38,7 @@ export const GET = withApi("dashboard.get", async () => {
     cards: summary.cards,
     alerts: summary.alerts,
     ownerName: summary.ownerName,
+    siteTotals: summary.siteTotals,
     hoursTrend,
     revenueTrend,
     activity,

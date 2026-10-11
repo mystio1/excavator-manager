@@ -48,7 +48,7 @@ describe("concurrent writers", () => {
     const m = await newMachine(t);
     const s = await newActiveSession(t, m.id);
     ok(
-      await submitDailyLog(t.operatorId, {
+      await submitDailyLog(t.operatorId, { attachment: "Bucket",
         workSessionId: s.id,
         date: "2026-10-01",
         startHourMeter: 100,

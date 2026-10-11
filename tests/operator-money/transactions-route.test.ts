@@ -319,7 +319,7 @@ describe("GET list and detail", () => {
       const text = await res.text();
       expect(text).not.toContain("very-secret-hash");
       const json = JSON.parse(text);
-      expect(Object.keys(json).sort()).toEqual(["categories", "detail", "lifetimeSalary", "nextCursor", "salary", "transactions"]);
+      expect(Object.keys(json).sort()).toEqual(["categories", "detail", "lifetimeSalary", "nextCursor", "periodsSummary", "salary", "suggestedAmount", "transactions"]);
       expect(json.salary.baseSalary).toBe(1000.1);
       expect(json.salary.alreadyPaid).toBe(100.05);
       expect(json.salary.payable).toBe(900.05);

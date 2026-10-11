@@ -44,7 +44,7 @@ async function pendingRequest(tenant = t, readings = { start: 100, end: 108.5 })
   const actor = operatorActor(tenant);
   ok(await assignOperator(tenant.businessId, tenant.actor, { excavatorId: tenant.excavatorId, operatorId: tenant.operatorId }));
   const started = ok(
-    await startOperatorWork(tenant.businessId, tenant.operatorId, actor, { startHourMeter: readings.start, siteName: "Alpha Site", attachment: "bucket" }),
+    await startOperatorWork(tenant.businessId, tenant.operatorId, actor, { startDate: "2026-10-01", startHourMeter: readings.start, siteName: "Alpha Site", attachment: "Bucket" }),
   );
   const ended = ok(
     await endOperatorWork(tenant.businessId, tenant.operatorId, actor, { requestId: started.request.id, endHourMeter: readings.end }),
@@ -82,12 +82,12 @@ describe("operator start / end / edit", () => {
   it("start requires an assigned machine (FORBIDDEN) and never crosses tenants", async () => {
     const lone = await createTenant("wreq-lone");
     try {
-      const unassigned = await startOperatorWork(lone.businessId, lone.operatorId, operatorActor(lone), { startHourMeter: 5 });
+      const unassigned = await startOperatorWork(lone.businessId, lone.operatorId, operatorActor(lone), { startDate: "2026-10-01", attachment: "Bucket", startHourMeter: 5 });
       expect(unassigned).toMatchObject({ code: "FORBIDDEN" });
 
       // An operator id from another tenant paired with this business finds no machine.
       await assignOperator(other.businessId, other.actor, { excavatorId: other.excavatorId, operatorId: other.operatorId });
-      const crossTenant = await startOperatorWork(lone.businessId, other.operatorId, operatorActor(other), { startHourMeter: 5 });
+      const crossTenant = await startOperatorWork(lone.businessId, other.operatorId, operatorActor(other), { startDate: "2026-10-01", attachment: "Bucket", startHourMeter: 5 });
       expect(crossTenant).toMatchObject({ code: "FORBIDDEN" });
       expect(await db.operatorWorkRequest.count({ where: { businessId: lone.businessId } })).toBe(0);
     } finally {
@@ -99,7 +99,7 @@ describe("operator start / end / edit", () => {
     await assignOperator(t.businessId, t.actor, { excavatorId: t.excavatorId, operatorId: t.operatorId });
     const before = await db.excavator.findUniqueOrThrow({ where: { id: t.excavatorId } });
 
-    const { request } = ok(await startOperatorWork(t.businessId, t.operatorId, operator, { startHourMeter: 200.126, attachment: "breaker" }));
+    const { request } = ok(await startOperatorWork(t.businessId, t.operatorId, operator, { startDate: "2026-10-01", startHourMeter: 200.126, attachment: "Breaker" }));
     expect(request.status).toBe("ACTIVE");
     expect(request.startHourMeter).toBe(200.13); // meter readings are kept to 2 dp
 
@@ -129,7 +129,7 @@ describe("operator start / end / edit", () => {
           status: "ACTIVE",
         },
       });
-      const result = await startOperatorWork(own.businessId, own.operatorId, operatorActor(own), { startHourMeter: 11 });
+      const result = await startOperatorWork(own.businessId, own.operatorId, operatorActor(own), { startDate: "2026-10-01", attachment: "Bucket", startHourMeter: 11 });
       expect(result).toMatchObject({ code: "CONFLICT" });
     } finally {
       await cleanupTenant(own.businessId);
@@ -138,7 +138,7 @@ describe("operator start / end / edit", () => {
 
   it("end moves ACTIVE -> PENDING with before/after audit, and rejects an end reading <= start", async () => {
     await assignOperator(t.businessId, t.actor, { excavatorId: t.excavatorId, operatorId: t.operatorId });
-    const { request } = ok(await startOperatorWork(t.businessId, t.operatorId, operator, { startHourMeter: 300 }));
+    const { request } = ok(await startOperatorWork(t.businessId, t.operatorId, operator, { startDate: "2026-10-01", attachment: "Bucket", startHourMeter: 300 }));
 
     const tooLow = await endOperatorWork(t.businessId, t.operatorId, operator, { requestId: request.id, endHourMeter: 300 });
     expect(tooLow).toMatchObject({ code: "VALIDATION_FAILED" });
@@ -154,7 +154,7 @@ describe("operator start / end / edit", () => {
 
   it("an operator can only end their own request, in their own business", async () => {
     await assignOperator(t.businessId, t.actor, { excavatorId: t.excavatorId, operatorId: t.operatorId });
-    const { request } = ok(await startOperatorWork(t.businessId, t.operatorId, operator, { startHourMeter: 400 }));
+    const { request } = ok(await startOperatorWork(t.businessId, t.operatorId, operator, { startDate: "2026-10-01", attachment: "Bucket", startHourMeter: 400 }));
     const second = await db.operator.create({ data: { businessId: t.businessId, name: "Other Driver", mobile: "9666666666" } });
     const wrongOperator = await endOperatorWork(t.businessId, second.id, { type: "OPERATOR", id: second.id, name: "x" }, { requestId: request.id, endHourMeter: 410 });
     expect(wrongOperator).toMatchObject({ code: "NOT_FOUND" });
@@ -165,16 +165,16 @@ describe("operator start / end / edit", () => {
 
   it("edit corrects an ACTIVE start reading (re-syncing the machine) and a PENDING pair of readings, each audited", async () => {
     await assignOperator(t.businessId, t.actor, { excavatorId: t.excavatorId, operatorId: t.operatorId });
-    const { request } = ok(await startOperatorWork(t.businessId, t.operatorId, operator, { startHourMeter: 500 }));
+    const { request } = ok(await startOperatorWork(t.businessId, t.operatorId, operator, { startDate: "2026-10-01", attachment: "Bucket", startHourMeter: 500 }));
 
-    const fixedStart = ok(await editOperatorWorkRequest(t.businessId, t.operatorId, operator, { requestId: request.id, startHourMeter: 501, siteName: "Beta" }));
+    const fixedStart = ok(await editOperatorWorkRequest(t.businessId, t.operatorId, operator, { requestId: request.id, attachment: "Bucket", startHourMeter: 501, siteName: "Beta" }));
     expect(fixedStart.request).toMatchObject({ startHourMeter: 501, siteName: "Beta", status: "ACTIVE" });
     expect((await db.excavator.findUniqueOrThrow({ where: { id: t.excavatorId } })).currentHourMeter).toBe(501);
 
     ok(await endOperatorWork(t.businessId, t.operatorId, operator, { requestId: request.id, endHourMeter: 510 }));
-    const missingEnd = await editOperatorWorkRequest(t.businessId, t.operatorId, operator, { requestId: request.id, startHourMeter: 501 });
+    const missingEnd = await editOperatorWorkRequest(t.businessId, t.operatorId, operator, { requestId: request.id, attachment: "Bucket", startHourMeter: 501 });
     expect(missingEnd).toMatchObject({ code: "VALIDATION_FAILED" });
-    const fixedBoth = ok(await editOperatorWorkRequest(t.businessId, t.operatorId, operator, { requestId: request.id, startHourMeter: 502, endHourMeter: 511 }));
+    const fixedBoth = ok(await editOperatorWorkRequest(t.businessId, t.operatorId, operator, { requestId: request.id, attachment: "Bucket", startHourMeter: 502, endHourMeter: 511 }));
     expect(fixedBoth.request).toMatchObject({ startHourMeter: 502, endHourMeter: 511, status: "PENDING" });
 
     const edits = (await auditFor(t, request.id)).filter((a) => a.action === "operator.workRequest.edit");
@@ -225,8 +225,8 @@ describe("approveWorkRequest", () => {
 
   it("the admin may correct every reading on the way through; the session reflects the corrected values", async () => {
     const request = await pendingRequest();
-    const { session } = ok(await approveWorkRequest(t.businessId, t.actor, approval(request.id, { startHourMeter: 100, endHourMeter: 107.25, attachment: "breaker", notes: "fixed" })));
-    expect(session).toMatchObject({ totalHours: 7.25, endHourMeter: 107.25, attachment: "breaker", notes: "fixed" });
+    const { session } = ok(await approveWorkRequest(t.businessId, t.actor, approval(request.id, { startHourMeter: 100, endHourMeter: 107.25, attachment: "Breaker", notes: "fixed" })));
+    expect(session).toMatchObject({ totalHours: 7.25, endHourMeter: 107.25, attachment: "Breaker", notes: "fixed" });
   });
 
   it("a second approval of the same request is CONFLICT and creates no second session", async () => {
@@ -301,7 +301,7 @@ describe("approveWorkRequest", () => {
   });
 
   it("body schema: end must be after start and a customer (or a new name) is required", () => {
-    const fields = { siteName: "S", startHourMeter: 10, endHourMeter: 12, customerId: "c1" };
+    const fields = { siteName: "S", startHourMeter: 10, endHourMeter: 12, customerId: "c1", attachment: "Bucket" };
     expect(approveWorkRequestBodySchema.safeParse(fields).success).toBe(true);
     expect(approveWorkRequestBodySchema.safeParse({ ...fields, endHourMeter: 10 }).success).toBe(false);
     expect(approveWorkRequestBodySchema.safeParse({ ...fields, customerId: undefined }).success).toBe(false);

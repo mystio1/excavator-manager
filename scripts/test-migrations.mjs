@@ -130,7 +130,7 @@ await withScratchSchema("fresh", async ({ url, client, schema }) => {
   const tables = (
     await client.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = $1`, [schema])
   ).rows.map((r) => r.table_name);
-  for (const t of ["IdempotencyKey", "RateLimitBucket", "SupportSession", "OperatorJoinRequest", "AuditLog", "Bill"]) {
+  for (const t of ["IdempotencyKey", "RateLimitBucket", "SupportSession", "OperatorJoinRequest", "AuditLog", "Bill", "OperatorWorkingPeriod", "OperatorLeave", "SiteRateHistory"]) {
     check(tables.includes(t), `table ${t} exists`);
   }
   const numeric = await client.query(
@@ -143,7 +143,7 @@ await withScratchSchema("fresh", async ({ url, client, schema }) => {
     [schema],
   );
   check(idx.rowCount === 1, "BillItem.workSessionId unique index exists");
-  for (const name of ["DailyWorkLog_session_date_live_key", "OperatorJoinRequest_pending_mobile_key", "User_resetTokenHash_idx"]) {
+  for (const name of ["DailyWorkLog_session_date_live_key", "OperatorJoinRequest_pending_mobile_key", "User_resetTokenHash_idx", "OperatorWorkingPeriod_one_active_per_operator"]) {
     const found = await client.query(`SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND indexname = $2`, [schema, name]);
     check(found.rowCount === 1, `index ${name} exists`);
   }

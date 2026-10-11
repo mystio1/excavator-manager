@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AttachmentPicker } from "@/components/attachment-picker";
+import { todayLocal } from "@/lib/utils/dates";
 import { ot, otMsg, type OperatorLang } from "@/lib/i18n/operator";
 import {
   Dialog,
@@ -23,6 +24,8 @@ import {
 export function EditWorkDialog({
   requestId,
   status,
+  startDate,
+  endDate,
   startHourMeter,
   endHourMeter,
   attachment,
@@ -34,6 +37,8 @@ export function EditWorkDialog({
 }: {
   requestId: string;
   status: "ACTIVE" | "PENDING";
+  startDate: Date;
+  endDate: Date | null;
   startHourMeter: number;
   endHourMeter: number | null;
   attachment: string | null;
@@ -45,21 +50,33 @@ export function EditWorkDialog({
 }) {
   const { mutate } = useSWRConfig();
   const [open, setOpen] = useState(false);
+  const [toolError, setToolError] = useState<string | null>(null);
+  const today = todayLocal();
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch("/api/operator/work/edit", { method: "POST", body: JSON.stringify(body) });
   });
   const t = (key: string) => ot(lang, key);
 
   const dieselDateValue = dieselDate ? dieselDate.toISOString().slice(0, 10) : "";
+  // Work dates are stored as the UTC midnight of the chosen day.
+  const startDateValue = new Date(startDate).toISOString().slice(0, 10);
+  const endDateValue = endDate ? new Date(endDate).toISOString().slice(0, 10) : "";
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    // The tool is compulsory (the picker's hidden input can't use native `required`).
+    if (!fd.get("attachment")) {
+      setToolError(t("tool.required"));
+      return;
+    }
     const ok = await run({
       requestId,
       startHourMeter: fd.get("startHourMeter"),
       endHourMeter: fd.get("endHourMeter") || undefined,
-      attachment: fd.get("attachment") || undefined,
+      startDate: fd.get("startDate") || undefined,
+      endDate: fd.get("endDate") || undefined,
+      attachment: fd.get("attachment"),
       siteName: fd.get("siteName") || undefined,
       dieselLiters: fd.get("dieselLiters") || undefined,
       dieselDate: fd.get("dieselDate") || undefined,
@@ -100,6 +117,39 @@ export function EditWorkDialog({
             />
           </div>
 
+          <div className="flex flex-col gap-2">
+            <Label htmlFor={`edit-startDate-${requestId}`} className="text-base">
+              {t("editWork.workDate")}
+            </Label>
+            <Input
+              key={startDateValue}
+              id={`edit-startDate-${requestId}`}
+              name="startDate"
+              type="date"
+              defaultValue={startDateValue}
+              max={today}
+              required
+              className="h-12 text-base"
+            />
+          </div>
+
+          {status === "PENDING" && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`edit-endDate-${requestId}`} className="text-base">
+                {t("editWork.workEndDate")}
+              </Label>
+              <Input
+                key={endDateValue}
+                id={`edit-endDate-${requestId}`}
+                name="endDate"
+                type="date"
+                defaultValue={endDateValue || startDateValue}
+                max={today}
+                className="h-12 text-base"
+              />
+            </div>
+          )}
+
           {status === "PENDING" && (
             <div className="flex flex-col gap-2">
               <Label htmlFor={`edit-endHourMeter-${requestId}`} className="text-base">
@@ -138,6 +188,9 @@ export function EditWorkDialog({
             name="attachment"
             defaultValue={attachment}
             label={t("editWork.attachment")}
+            required
+            error={toolError}
+            onValueChange={() => setToolError(null)}
             optionLabels={{ Bucket: t("tool.bucket"), Breaker: t("tool.breaker"), Chaining: t("tool.chaining") }}
           />
 

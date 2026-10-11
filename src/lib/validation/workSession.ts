@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isFutureWorkDate, toolField, workDateField } from "@/lib/validation/operatorWorkRequest";
 
 /** A calendar date typed into an <input type="date"> ("YYYY-MM-DD") or an ISO
  * timestamp. Rejecting anything Date can't parse here means a garbage string is
@@ -83,11 +84,38 @@ export const dailyLogSchema = z
 
 export type DailyLogInput = z.infer<typeof dailyLogSchema>;
 
+/** The operator-portal submission of a day's reading: identical to the admin
+ * one except the tool (attachment) is compulsory and must be a known value.
+ * Admin add/edit keeps it optional. */
+export const operatorDailyLogSchema = z
+  .object({ workSessionId: z.string().min(1), ...dailyLogFields, attachment: toolField })
+  .refine(hasReadingOrTimes, { message: "Enter either hour meter readings or start/stop time" })
+  .refine(endAfterStart, { message: "End hour meter must be greater than start hour meter" });
+
+/** Operator "Diesel only" entry: diesel was taken but no work was done. Only
+ * litres and a date are required; the tool and a note are optional. */
+export const dieselOnlySchema = z.object({
+  dieselLiters: z.coerce.number().positive("Enter the diesel litres (more than 0)").max(MAX_LITERS),
+  date: workDateField("Select the diesel date").refine((v) => !isFutureWorkDate(v), "The diesel date can't be in the future"),
+  attachment: toolField.optional(),
+  notes: z.string().trim().optional(),
+});
+
+export type DieselOnlyInput = z.infer<typeof dieselOnlySchema>;
+
 /** Admin correction of one reading. The session is derived from the log id in
  * the URL, so no workSessionId here. */
 export const updateDailyLogSchema = z
-  .object({ ...dailyLogFields, expectedVersion: expectedVersionField })
-  .refine(hasReadingOrTimes, { message: "Enter either hour meter readings or start/stop time" })
+  .object({
+    ...dailyLogFields,
+    // "DIESEL_ONLY" corrections need no hours (litres and date only); the
+    // service ignores this for a stored WORK reading.
+    kind: z.enum(["WORK", "DIESEL_ONLY"]).optional(),
+    expectedVersion: expectedVersionField,
+  })
+  .refine((d) => d.kind === "DIESEL_ONLY" || hasReadingOrTimes(d), {
+    message: "Enter either hour meter readings or start/stop time",
+  })
   .refine(endAfterStart, { message: "End hour meter must be greater than start hour meter" });
 
 export type UpdateDailyLogInput = z.infer<typeof updateDailyLogSchema>;

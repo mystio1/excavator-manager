@@ -4,6 +4,7 @@ import { recordAudit, type AuditActor } from "@/lib/audit";
 import { round2 } from "@/lib/money";
 import { LEGACY_LIMIT, pageArgs, toPage, type PageParams } from "@/lib/pagination";
 import { isStale, resourceModified, withTx, type Tx } from "@/lib/tx";
+import { resolvePeriodIdForDate } from "./workingPeriods";
 import {
   DEFAULT_TRANSACTION_CATEGORIES,
   type AddTransactionInput,
@@ -35,6 +36,33 @@ export async function listTransactionsPage(businessId: string, operatorId: strin
     ...pageArgs(page),
   });
   return toPage(rows, page.limit);
+}
+
+/** Returns the single amount that appears most often across the operator's last
+ * 100 transactions (ties broken by the higher amount). Returns null when there
+ * are no transactions or every amount is unique. Used for the quick-add chip. */
+export async function getMostFrequentAmount(businessId: string, operatorId: string): Promise<number | null> {
+  const rows = await db.operatorTransaction.findMany({
+    where: { businessId, operatorId },
+    orderBy: [{ date: "desc" }, { id: "desc" }],
+    take: 100,
+    select: { amount: true },
+  });
+  if (rows.length === 0) return null;
+  const freq = new Map<number, number>();
+  for (const r of rows) {
+    const n = Number(r.amount);
+    freq.set(n, (freq.get(n) ?? 0) + 1);
+  }
+  let best: number | null = null;
+  let bestCount = 0;
+  for (const [amount, count] of freq) {
+    if (count > bestCount || (count === bestCount && best !== null && amount > best)) {
+      best = amount;
+      bestCount = count;
+    }
+  }
+  return bestCount > 1 ? best : null;
 }
 
 /** Legacy shape (a plain array) — bounded to the first LEGACY_LIMIT rows, never
@@ -90,20 +118,24 @@ export async function createTransaction(
   return withTx(opts?.tx, async (tx) => {
     const operator = await tx.operator.findFirst({
       where: { id: input.operatorId, businessId },
-      select: { id: true },
     });
     if (!operator) return fail("NOT_FOUND", "Operator not found");
 
     const category = await resolveCategoryId(tx, businessId, input.categoryId, input.newCategoryName);
     if ("error" in category) return category;
 
+    // The working period is derived server-side from the date (never client-supplied).
+    const date = new Date(input.date);
+    const workingPeriodId = await resolvePeriodIdForDate(tx, operator, date);
+
     const created = await tx.operatorTransaction.create({
       data: {
         businessId,
         operatorId: operator.id,
+        workingPeriodId,
         categoryId: category.categoryId,
         amount: round2(input.amount),
-        date: new Date(input.date),
+        date,
         notes: input.notes || null,
         deductFromSalary: input.deductFromSalary ?? true,
         businessEffect: input.businessEffect,
@@ -145,9 +177,14 @@ export async function updateTransaction(
     const category = await resolveCategoryId(tx, businessId, input.categoryId, input.newCategoryName);
     if ("error" in category) return category;
 
+    // Re-derive the period from the (possibly new) date, server-side.
+    const operator = await tx.operator.findFirstOrThrow({ where: { id: before.operatorId, businessId } });
+    const workingPeriodId = await resolvePeriodIdForDate(tx, operator, new Date(input.date));
+
     const after = await tx.operatorTransaction.update({
       where: { id: before.id },
       data: {
+        workingPeriodId,
         categoryId: category.categoryId,
         amount: round2(input.amount),
         date: new Date(input.date),

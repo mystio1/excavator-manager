@@ -6,10 +6,11 @@ import useSWRInfinite, { unstable_serialize } from "swr/infinite";
 import type { listWorkHistory } from "@/lib/services/workSessions";
 import { swrFetcher } from "@/lib/api-client";
 import type { Plain } from "@/lib/plain";
-import { formatDate, formatDateRange } from "@/lib/utils/dates";
+import { formatDate, formatDateRange, formatDateTime } from "@/lib/utils/dates";
 import { formatHours } from "@/lib/utils/hours";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/native-select";
@@ -139,7 +140,11 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
               </div>
             </div>
             <p className="text-sm text-muted-foreground">{session.site.name}</p>
+            {/* The WORK dates are the main date; when the operator submitted it is a separate, secondary line. */}
             <p className="text-sm">{formatDateRange(session.startDate, session.endDate)}</p>
+            {session.submittedAt && (
+              <p className="text-xs text-muted-foreground">Submitted {formatDateTime(session.submittedAt)}</p>
+            )}
             <div className="mt-1 flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Operator: {session.operator.name}</span>
               <span className="font-semibold">{formatHours(session.totalHours)}</span>
@@ -168,13 +173,26 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
                     <span className="text-xs text-muted-foreground">
                       {formatDate(log.date)}
                       {log.operatorName && ` — ${log.operatorName}`}
+                      {log.source === "OPERATOR" && (
+                        <span className="block">Submitted {formatDateTime(log.createdAt)}</span>
+                      )}
                     </span>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-semibold">{formatHours(log.hoursWorked)}</span>
-                      <EditReadingButton
-                        log={log}
-                        invalidateKey={invalidateKey}
-                      />
+                      {log.kind === "DIESEL_ONLY" ? (
+                        <>
+                          <Badge className="bg-idle text-idle-foreground">Diesel only</Badge>
+                          <span className="text-xs font-semibold">{log.dieselLiters ?? 0} L</span>
+                          <span className="text-xs text-muted-foreground">0 h</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-xs font-semibold">{formatHours(log.hoursWorked)}</span>
+                          <EditReadingButton
+                            log={log}
+                            invalidateKey={invalidateKey}
+                          />
+                        </>
+                      )}
                       <DeleteReadingButton
                         logId={log.id}
                         version={log.version}

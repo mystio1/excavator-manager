@@ -13,9 +13,18 @@ import { SubmitReadingDialog } from "../submit-reading-dialog";
 import { StartWorkDialog } from "../start-work-dialog";
 import { EndWorkDialog } from "../end-work-dialog";
 import { EditWorkDialog } from "../edit-work-dialog";
+import { DieselOnlyDialog } from "../diesel-only-dialog";
 import { OperatorLanguageSwitcher } from "../operator-language-switcher";
 
-type DailyLog = { id: string; date: Date; hoursWorked: number; status: string };
+type DailyLog = {
+  id: string;
+  date: Date;
+  hoursWorked: number;
+  status: string;
+  kind?: "WORK" | "DIESEL_ONLY";
+  dieselLiters?: number | null;
+  createdAt?: Date;
+};
 type WorkRequest = {
   id: string;
   status: "ACTIVE" | "PENDING" | "APPROVED" | "REJECTED";
@@ -29,6 +38,9 @@ type WorkRequest = {
   dieselDate: Date | null;
   notes: string | null;
   rejectionNote: string | null;
+  createdAt?: Date;
+  /** When the operator submitted (the work dates above are when it was DONE). */
+  submittedAt?: Date | null;
 };
 type Excavator = {
   id: string;
@@ -49,6 +61,9 @@ type HomeData = {
   activeSession: ActiveSession | null;
   openRequests: WorkRequest[];
   recentRequests: WorkRequest[];
+  /** End meter from the most recent non-rejected daily log (pending included).
+   * Use this as the default start reading for a new daily log submission. */
+  latestEndMeter: number;
 };
 
 export default function OperatorHomePage() {
@@ -65,7 +80,7 @@ export default function OperatorHomePage() {
     );
   }
 
-  const { operatorLang: lang, excavator, activeSession, openRequests, recentRequests } = data;
+  const { operatorLang: lang, excavator, activeSession, openRequests, recentRequests, latestEndMeter } = data;
   const t = (key: string, vars?: Record<string, string | number>) => ot(lang, key, vars);
 
   const LOG_STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -116,7 +131,8 @@ export default function OperatorHomePage() {
           </CardContent>
         </Card>
 
-        <SubmitReadingDialog workSessionId={activeSession.id} currentHourMeter={excavator.currentHourMeter} lang={lang} />
+        <SubmitReadingDialog workSessionId={activeSession.id} currentHourMeter={latestEndMeter ?? excavator.currentHourMeter} lang={lang} />
+        <DieselOnlyDialog lang={lang} />
 
         <div className="flex flex-col gap-2">
           <p className="text-sm font-semibold text-muted-foreground">{t("home.recentReadings")}</p>
@@ -132,7 +148,16 @@ export default function OperatorHomePage() {
                 <CardContent className="flex items-center justify-between">
                   <div>
                     <p className="font-semibold">{formatDate(log.date)}</p>
-                    <p className="text-sm text-muted-foreground">{formatHours(log.hoursWorked)}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {log.kind === "DIESEL_ONLY"
+                        ? `${t("home.dieselOnly")} - ${t("home.dieselOnlyLine", { litres: log.dieselLiters ?? 0 })}`
+                        : formatHours(log.hoursWorked)}
+                    </p>
+                    {log.createdAt && (
+                      <p className="text-xs text-muted-foreground">
+                        {t("home.submitted")} {formatDateTime(log.createdAt)}
+                      </p>
+                    )}
                   </div>
                   <Badge className={badge.className}>{badge.label}</Badge>
                 </CardContent>
@@ -163,11 +188,17 @@ export default function OperatorHomePage() {
         </CardContent>
       </Card>
 
-      <StartWorkDialog
-        currentHourMeter={excavator.currentHourMeter}
-        currentSiteName={excavator.currentSite?.name ?? null}
-        lang={lang}
-      />
+      {/* Hide Start Work when an active job is already running (the End Work button is on the job card). */}
+      {!openRequests.some((r) => r.status === "ACTIVE") && (
+        <>
+          <StartWorkDialog
+            currentHourMeter={excavator.currentHourMeter}
+            currentSiteName={excavator.currentSite?.name ?? null}
+            lang={lang}
+          />
+          <DieselOnlyDialog lang={lang} />
+        </>
+      )}
 
       {openRequests.length === 0 && (
         <p className="text-center text-sm text-muted-foreground">{t("home.noJobRunning")}</p>
@@ -192,14 +223,14 @@ export default function OperatorHomePage() {
               )}
 
               <div className="grid grid-cols-2 gap-y-1 text-sm">
-                <span className="text-muted-foreground">{t("home.started")}</span>
-                <span className="text-right font-semibold">{formatDateTime(req.startDate)}</span>
+                <span className="text-muted-foreground">{t("home.workDate")}</span>
+                <span className="text-right font-semibold">{formatDate(req.startDate)}</span>
                 <span className="text-muted-foreground">{t("home.startingReading")}</span>
                 <span className="text-right font-semibold">{formatHours(req.startHourMeter)}</span>
                 {req.endHourMeter != null && (
                   <>
                     <span className="text-muted-foreground">{t("home.ended")}</span>
-                    <span className="text-right font-semibold">{req.endDate ? formatDateTime(req.endDate) : "—"}</span>
+                    <span className="text-right font-semibold">{req.endDate ? formatDate(req.endDate) : "—"}</span>
                     <span className="text-muted-foreground">{t("home.endingReading")}</span>
                     <span className="text-right font-semibold">{formatHours(req.endHourMeter)}</span>
                   </>
@@ -230,6 +261,14 @@ export default function OperatorHomePage() {
                     <span className="text-right font-semibold">{req.notes}</span>
                   </>
                 )}
+                {(req.submittedAt ?? req.createdAt) && (
+                  <>
+                    <span className="text-muted-foreground">{t("home.submitted")}</span>
+                    <span className="text-right font-semibold">
+                      {formatDateTime((req.submittedAt ?? req.createdAt) as Date)}
+                    </span>
+                  </>
+                )}
               </div>
 
               <div className="flex gap-2 pt-1">
@@ -237,6 +276,8 @@ export default function OperatorHomePage() {
                   <EditWorkDialog
                     requestId={req.id}
                     status={req.status}
+                    startDate={req.startDate}
+                    endDate={req.endDate}
                     startHourMeter={req.startHourMeter}
                     endHourMeter={req.endHourMeter}
                     attachment={req.attachment}
@@ -249,7 +290,13 @@ export default function OperatorHomePage() {
                 )}
                 {req.status === "ACTIVE" && (
                   <div className="flex-1">
-                    <EndWorkDialog requestId={req.id} currentHourMeter={excavator.currentHourMeter} lang={lang} />
+                    <EndWorkDialog
+                      requestId={req.id}
+                      currentHourMeter={excavator.currentHourMeter}
+                      startDate={req.startDate}
+                      attachment={req.attachment}
+                      lang={lang}
+                    />
                   </div>
                 )}
                 {req.status === "REJECTED" && (
@@ -257,6 +304,9 @@ export default function OperatorHomePage() {
                     <EndWorkDialog
                       requestId={req.id}
                       currentHourMeter={req.endHourMeter ?? excavator.currentHourMeter}
+                      startDate={req.startDate}
+                      endDate={req.endDate}
+                      attachment={req.attachment}
                       triggerLabel={t("edit.resubmit")}
                       lang={lang}
                     />

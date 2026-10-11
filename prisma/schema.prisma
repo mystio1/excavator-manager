@@ -242,22 +242,54 @@ model OperatorAssignment {
 }
 
 model Site {
-  id         String   @id @default(cuid())
-  businessId String
-  name       String
-  address    String?
-  createdAt  DateTime @default(now())
+  id          String   @id @default(cuid())
+  version     Int      @default(0) // optimistic concurrency: bumped on every update
+  businessId  String
+  name        String
+  address     String? // shown as the site's "location"
+  // "CUSTOMER_SITE" | "SELF_SITE". A self site (own work) needs no customer.
+  type        String   @default("CUSTOMER_SITE")
+  // "ACTIVE" | "COMPLETED" | "ON_HOLD"
+  status      String   @default("ACTIVE")
+  customerId  String?
+  // CURRENT hourly rates for work at this site. Every change is also written to
+  // SiteRateHistory (effective-dated) so earlier work is always valued at the rate
+  // that applied then, and bills keep their own snapshot (BillItem.ratePerHour).
+  bucketRate  Decimal? @db.Decimal(14, 2)
+  breakerRate Decimal? @db.Decimal(14, 2)
+  createdAt   DateTime @default(now())
 
-  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business     Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer     Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  rateHistory  SiteRateHistory[]
   workSessions WorkSession[]
   // Machines currently parked/working at this site — Excavator.currentSiteId,
   // the stable admin-set default the operator sees (see that field's comment).
-  excavators   Excavator[]   @relation("ExcavatorCurrentSite")
+  excavators   Excavator[]       @relation("ExcavatorCurrentSite")
 
   @@index([businessId])
+  @@index([customerId])
+}
+
+// Effective-dated rate history for a site: the rate in force on a day is the latest row whose
+// effectiveFrom is on or before that day. Append-only in practice (a rate change adds a row).
+model SiteRateHistory {
+  id            String   @id @default(cuid())
+  businessId    String
+  siteId        String
+  bucketRate    Decimal? @db.Decimal(14, 2)
+  breakerRate   Decimal? @db.Decimal(14, 2)
+  effectiveFrom DateTime
+  createdAt     DateTime @default(now())
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([siteId, effectiveFrom])
 }
 
 model Customer {
+  sites       Site[]
   id          String   @id @default(cuid())
   version     Int      @default(0) // optimistic concurrency: bumped on every update
   businessId  String
@@ -306,9 +338,59 @@ model Operator {
   assignedExcavators   Excavator[]
   assignments          OperatorAssignment[]
   operatorWorkRequests OperatorWorkRequest[]
+  workingPeriods       OperatorWorkingPeriod[]
+  leaves               OperatorLeave[]
 
   @@index([businessId])
   @@index([mobile])
+}
+
+// A continuous stretch during which an operator works and salary accrues. An operator who goes on
+// leave and returns gets a NEW period; the joining date is never changed and closed periods are never
+// rewritten. status: "ACTIVE" | "CLOSED". At most one ACTIVE period per operator (partial unique index).
+// openingBalance + openingSourcePeriodId record a carry-forward from an earlier period (a transfer of
+// what was owed, NOT new salary); openingSourcePeriodId is unique so a period can be carried only once.
+model OperatorWorkingPeriod {
+  id                    String    @id @default(cuid())
+  version               Int       @default(0)
+  businessId            String
+  operatorId            String
+  startDate             DateTime
+  endDate               DateTime?
+  status                String    @default("ACTIVE")
+  monthlySalary         Decimal   @default(0) @db.Decimal(14, 2)
+  salaryBasisDays       Int       @default(30)
+  openingBalance        Decimal   @default(0) @db.Decimal(14, 2)
+  openingSourcePeriodId String?   @unique
+  notes                 String?
+  createdAt             DateTime  @default(now())
+  closedAt              DateTime?
+
+  operator  Operator               @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  source    OperatorWorkingPeriod? @relation("PeriodCarry", fields: [openingSourcePeriodId], references: [id], onDelete: Restrict)
+  carriedTo OperatorWorkingPeriod? @relation("PeriodCarry")
+
+  @@index([businessId])
+  @@index([operatorId, startDate])
+}
+
+// A non-working gap between two periods. Unpaid leave accrues nothing; paid leave is recorded for the
+// timeline (the salary rules for paid leave are the business's, see docs/operations.md).
+// type: "UNPAID" | "PAID"
+model OperatorLeave {
+  id         String   @id @default(cuid())
+  businessId String
+  operatorId String
+  startDate  DateTime
+  endDate    DateTime
+  type       String   @default("UNPAID")
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  operator Operator @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+
+  @@index([businessId])
+  @@index([operatorId, startDate])
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +421,8 @@ model WorkSession {
   dieselDate     DateTime?
   status         String    @default("ACTIVE")
   notes          String?
+  // When the operator submitted this work (null for admin-entered work); the work dates are startDate/endDate.
+  submittedAt    DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -391,6 +475,9 @@ model OperatorWorkRequest {
   rejectionNote  String?
   workSessionId  String?   @unique
   createdAt      DateTime  @default(now())
+  // When the operator actually submitted the work. startDate/endDate are the dates the work was DONE
+  // (entered by the operator); this is the separate submission time.
+  submittedAt    DateTime?
   reviewedAt     DateTime?
 
   business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
@@ -443,6 +530,8 @@ model DailyWorkLog {
   // WorkSession.attachment once APPROVED, since it represents the current
   // tool rather than a quantity to sum.
   attachment     String?
+  // "WORK" | "DIESEL_ONLY" (litres + date only: start = end = the previous ending reading, 0 hours)
+  kind           String    @default("WORK")
   source         String    @default("ADMIN")
   status         String    @default("APPROVED")
   reviewedAt     DateTime?
@@ -490,6 +579,8 @@ model OperatorTransaction {
   notes            String?
   deductFromSalary Boolean  @default(true)
   businessEffect   String   @default("ADVANCE_RECOVERABLE")
+  // Optional explicit link to a working period; when null the period is derived from `date`.
+  workingPeriodId  String?
   createdAt        DateTime @default(now())
 
   operator Operator             @relation(fields: [operatorId], references: [id], onDelete: Restrict)

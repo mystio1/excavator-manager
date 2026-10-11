@@ -38,6 +38,7 @@ type DetailData = {
   nextCursor?: string | null;
   salary: Plain<Awaited<ReturnType<typeof computeSalaryForMonth>>>;
   lifetimeSalary: Plain<Awaited<ReturnType<typeof getLifetimeSalarySummary>>>;
+  suggestedAmount?: number | null;
 };
 
 type Transaction = Plain<Awaited<ReturnType<typeof listTransactions>>[number]>;
@@ -74,7 +75,7 @@ export default function OperatorDetailPage() {
 
   if (!data) return <Loading />;
   const { operator, assignedExcavator, pastWork } = data.detail;
-  const { categories, salary, lifetimeSalary } = data;
+  const { categories, salary, lifetimeSalary, suggestedAmount } = data;
   const extra = more && more.base === data ? more : null;
   const transactions = extra ? [...data.transactions, ...extra.items] : data.transactions;
   const nextCursor = extra ? extra.nextCursor : (data.nextCursor ?? null);
@@ -186,7 +187,7 @@ export default function OperatorDetailPage() {
           </TabsContent>
 
           <TabsContent value="transactions" className="flex flex-col gap-4 pt-4">
-            <AddTransactionDialog operatorId={operator.id} categories={categories} />
+            <AddTransactionDialog operatorId={operator.id} categories={categories} suggestedAmount={suggestedAmount} />
             {transactions.length === 0 && (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">No transactions yet.</CardContent>

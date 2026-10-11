@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
 import { dec, round2, sum, toNumber } from "@/lib/money";
+import { billTotalsByCustomer } from "@/lib/services/financials";
+import { getSiteTotals } from "@/lib/services/siteAnalysis";
 import { computeServiceStatus } from "@/lib/services/serviceStatus";
 import { getSalaryBreakdownForMonth, getTotalSalaryDue } from "@/lib/services/salary";
 import { currentMonthRange } from "@/lib/utils/dates";
@@ -331,6 +333,7 @@ export async function getDashboardSummary(businessId: string) {
     activeWorkRequests,
     operatorSalaryDue,
     componentAlerts,
+    siteTotals,
   ] = await Promise.all([
     db.business.findUniqueOrThrow({
       where: { id: businessId },
@@ -383,6 +386,8 @@ export async function getDashboardSummary(businessId: string) {
     // Run alongside the rest instead of after — see the same change in
     // getAlerts above for why.
     getComponentMaintenanceAlerts(businessId),
+    // Site Analysis totals come from the Site Analysis service itself (no separate formulas here).
+    getSiteTotals(businessId),
   ]);
 
   const revenueThisMonth = round2(revenueAgg._sum.totalAmount).toNumber();
@@ -468,7 +473,7 @@ export async function getDashboardSummary(businessId: string) {
 
   alerts.push(...componentAlerts);
 
-  return { cards, alerts, ownerName: business.ownerName };
+  return { cards, alerts, ownerName: business.ownerName, siteTotals };
 }
 
 export type ActivityEvent = {
@@ -616,11 +621,7 @@ export type PaymentCollectionCustomer = { id: string; name: string; billed: numb
 export async function getPaymentCollectionStatus(businessId: string) {
   // Per-customer billed/paid totals summed by the database (exact NUMERIC),
   // then one lookup for the names — no bill row ever loaded into memory.
-  const perCustomer = await db.bill.groupBy({
-    by: ["customerId"],
-    where: { businessId },
-    _sum: { totalAmount: true, paidAmount: true },
-  });
+  const perCustomer = await billTotalsByCustomer(businessId);
   const customers = perCustomer.length
     ? await db.customer.findMany({
         where: { businessId, id: { in: perCustomer.map((c) => c.customerId) } },
@@ -715,11 +716,7 @@ export async function getOverduePayments(businessId: string, limit = 5) {
 /** "Top Customers": ranked by all-time revenue, with how much of that is
  * still outstanding. */
 export async function getTopCustomersByRevenue(businessId: string, limit = 5) {
-  const perCustomer = await db.bill.groupBy({
-    by: ["customerId"],
-    where: { businessId },
-    _sum: { totalAmount: true, paidAmount: true },
-  });
+  const perCustomer = await billTotalsByCustomer(businessId);
 
   const top = perCustomer
     .map((c) => ({

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AttachmentPicker } from "@/components/attachment-picker";
+import { todayLocal } from "@/lib/utils/dates";
 import { ot, otMsg, type OperatorLang } from "@/lib/i18n/operator";
 import {
   Dialog,
@@ -31,6 +32,8 @@ export function StartWorkDialog({
 }) {
   const { mutate } = useSWRConfig();
   const [open, setOpen] = useState(false);
+  const [toolError, setToolError] = useState<string | null>(null);
+  const today = todayLocal();
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch("/api/operator/work/start", { method: "POST", body: JSON.stringify(body) });
   });
@@ -39,9 +42,15 @@ export function StartWorkDialog({
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    // The tool is compulsory (the picker's hidden input can't use native `required`).
+    if (!fd.get("attachment")) {
+      setToolError(t("tool.required"));
+      return;
+    }
     const ok = await run({
       startHourMeter: fd.get("startHourMeter"),
-      attachment: fd.get("attachment") || undefined,
+      startDate: fd.get("startDate"),
+      attachment: fd.get("attachment"),
       siteName: fd.get("siteName") || undefined,
       dieselLiters: fd.get("dieselLiters") || undefined,
       dieselDate: fd.get("dieselDate") || undefined,
@@ -83,6 +92,22 @@ export function StartWorkDialog({
           </div>
 
           <div className="flex flex-col gap-2">
+            <Label htmlFor="startDate" className="text-base">
+              {t("startWork.workDate")}
+            </Label>
+            <Input
+              id="startDate"
+              name="startDate"
+              type="date"
+              defaultValue={today}
+              max={today}
+              required
+              className="h-12 text-base"
+            />
+            <p className="text-xs text-muted-foreground">{t("startWork.workDateHelp")}</p>
+          </div>
+
+          <div className="flex flex-col gap-2">
             <Label htmlFor="siteName" className="text-base">
               {t("startWork.site")}
             </Label>
@@ -102,6 +127,9 @@ export function StartWorkDialog({
           <AttachmentPicker
             name="attachment"
             label={t("startWork.attachment")}
+            required
+            error={toolError}
+            onValueChange={() => setToolError(null)}
             optionLabels={{ Bucket: t("tool.bucket"), Breaker: t("tool.breaker"), Chaining: t("tool.chaining") }}
           />
 

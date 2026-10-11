@@ -307,7 +307,7 @@ describe("operator submission, approval and rejection", () => {
     const s = await newActiveSession(t, m.id);
 
     const submitted = ok(
-      await submitDailyLog(t.operatorId, {
+      await submitDailyLog(t.operatorId, { attachment: "Bucket",
         workSessionId: s.id,
         date: "2026-10-01",
         startHourMeter: 100,
@@ -329,7 +329,7 @@ describe("operator submission, approval and rejection", () => {
 
     // Same day again: refused.
     const dup = failed(
-      await submitDailyLog(t.operatorId, { workSessionId: s.id, date: "2026-10-01", startHourMeter: 106, endHourMeter: 108 }),
+      await submitDailyLog(t.operatorId, { attachment: "Bucket", workSessionId: s.id, date: "2026-10-01", startHourMeter: 106, endHourMeter: 108 }),
     );
     expect(dup.code).toBe("CONFLICT");
   });
@@ -338,7 +338,7 @@ describe("operator submission, approval and rejection", () => {
     const m = await newMachine(t, { paired: false });
     const s = await newActiveSession(t, m.id);
     const result = failed(
-      await submitDailyLog(t.operatorId, { workSessionId: s.id, date: "2026-10-01", startHourMeter: 100, endHourMeter: 104 }),
+      await submitDailyLog(t.operatorId, { attachment: "Bucket", workSessionId: s.id, date: "2026-10-01", startHourMeter: 100, endHourMeter: 104 }),
     );
     expect(result.code).toBe("NOT_FOUND");
     expect(await db.dailyWorkLog.count({ where: { workSessionId: s.id } })).toBe(0);
@@ -386,7 +386,7 @@ describe("operator submission, approval and rejection", () => {
     const m = await newMachine(t);
     const s = await newActiveSession(t, m.id);
     ok(
-      await submitDailyLog(t.operatorId, {
+      await submitDailyLog(t.operatorId, { attachment: "Bucket",
         workSessionId: s.id,
         date: "2026-10-01",
         startHourMeter: 100,
@@ -410,7 +410,7 @@ describe("operator submission, approval and rejection", () => {
 
     // A rejected day can be submitted again.
     ok(
-      await submitDailyLog(t.operatorId, { workSessionId: s.id, date: "2026-10-01", startHourMeter: 100, endHourMeter: 107 }),
+      await submitDailyLog(t.operatorId, { attachment: "Bucket", workSessionId: s.id, date: "2026-10-01", startHourMeter: 100, endHourMeter: 107 }),
     );
 
     // And a reviewed reading cannot be rejected a second time.

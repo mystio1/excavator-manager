@@ -28,6 +28,13 @@ export async function lockBusiness(tx: Tx, businessId: string) {
   await tx.$queryRaw`SELECT 1 FROM "Business" WHERE "id" = ${businessId} FOR UPDATE`;
 }
 
+/** Serializes writers of one operator's money/period state (working periods, leaves, transactions
+ * attribution). Returns false when the operator is not in this business. */
+export async function lockOperatorRow(tx: Tx, businessId: string, operatorId: string) {
+  const rows = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Operator" WHERE "id" = ${operatorId} AND "businessId" = ${businessId} FOR UPDATE`;
+  return rows.length > 0;
+}
+
 /** Optimistic concurrency: the client sends the `version` it loaded. If the row
  * has moved on, refuse instead of silently overwriting someone else's change.
  * `expected === undefined` (older clients) skips the check. */

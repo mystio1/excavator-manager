@@ -42,6 +42,15 @@ import { POST as joinApprovePOST } from "@/app/api/operators/join-requests/[requ
 import { POST as joinDeclinePOST } from "@/app/api/operators/join-requests/[requestId]/decline/route";
 import { POST as legacyApprovePOST } from "@/app/api/operators/[id]/approve-join/route";
 import { POST as legacyDeclinePOST } from "@/app/api/operators/[id]/decline-join/route";
+import { GET as periodsGET, POST as periodsPOST } from "@/app/api/operators/[id]/periods/route";
+import { GET as periodDetailGET, PATCH as periodDetailPATCH } from "@/app/api/operators/[id]/periods/[periodId]/route";
+import { GET as leavesGET, POST as leavesPOST } from "@/app/api/operators/[id]/leaves/route";
+import { DELETE as leaveDeleteDELETE } from "@/app/api/operators/[id]/leaves/[leaveId]/route";
+import { GET as siteDetailGET, PATCH as siteDetailPATCH } from "@/app/api/sites/[id]/route";
+import { PATCH as siteRatesPATCH } from "@/app/api/sites/[id]/rates/route";
+import { GET as siteAnalysisDetailGET } from "@/app/api/sites/[id]/analysis/route";
+import { GET as siteDailyGET } from "@/app/api/sites/[id]/daily/route";
+import { GET as siteDieselGET } from "@/app/api/sites/[id]/diesel/route";
 
 import { GET as billsListGET } from "@/app/api/bills/route";
 import { GET as customersListGET } from "@/app/api/customers/route";
@@ -113,6 +122,16 @@ beforeAll(async () => {
   ids.joinRequestId = (
     await db.operatorJoinRequest.create({
       data: { businessId: A.businessId, name: "Joiner", mobile: "9000012345", pinHash: "h", verificationHash: "", status: "PENDING", expiresAt: new Date(Date.now() + 86_400_000) },
+    })
+  ).id;
+  ids.periodId = (
+    await db.operatorWorkingPeriod.create({
+      data: { businessId: A.businessId, operatorId: A.operatorId, startDate: new Date("2026-03-01"), status: "ACTIVE", monthlySalary: 30000 },
+    })
+  ).id;
+  ids.leaveId = (
+    await db.operatorLeave.create({
+      data: { businessId: A.businessId, operatorId: A.operatorId, startDate: new Date("2026-08-27"), endDate: new Date("2026-09-13"), type: "UNPAID" },
     })
   ).id;
 }, 180_000);
@@ -187,13 +206,28 @@ const WRITES_AND_READS = (): Case[] => [
   c("DELETE bank account", () => bankDELETE(req("DELETE", "/x"), ctx({ id: ids.bankId }))),
   // ---- approvals
   c("POST approve work request", () =>
-    wrApprovePOST(req("POST", "/x", { body: { newCustomerName: "Evil", siteName: "S", startHourMeter: 0, endHourMeter: 5 } }), ctx({ id: ids.workRequestId })),
+    wrApprovePOST(req("POST", "/x", { body: { newCustomerName: "Evil", siteName: "S", startHourMeter: 0, endHourMeter: 5, attachment: "Bucket" } }), ctx({ id: ids.workRequestId })),
   ),
   c("POST reject work request", () => wrRejectPOST(req("POST", "/x", { body: {} }), ctx({ id: ids.workRequestId }))),
   c("POST approve join request", () => joinApprovePOST(req("POST", "/x", { body: {} }), ctx({ requestId: ids.joinRequestId }))),
   c("POST decline join request", () => joinDeclinePOST(req("POST", "/x", { body: {} }), ctx({ requestId: ids.joinRequestId }))),
   c("POST legacy approve-join", () => legacyApprovePOST(req("POST", "/x", { body: {} }), ctx({ id: ids.joinRequestId }))),
   c("POST legacy decline-join", () => legacyDeclinePOST(req("POST", "/x", { body: {} }), ctx({ id: ids.joinRequestId }))),
+  // ---- working periods & leaves
+  c("GET operator periods", () => periodsGET(req("GET", "/x"), ctx({ id: A.operatorId }))),
+  c("POST operator period", () => periodsPOST(req("POST", "/x", { body: { startDate: day, reason: "RETURNED_FROM_LEAVE" } }), ctx({ id: A.operatorId }))),
+  c("GET operator period detail", () => periodDetailGET(req("GET", "/x"), ctx({ id: A.operatorId, periodId: ids.periodId }))),
+  c("PATCH operator period", () => periodDetailPATCH(req("PATCH", "/x", { body: { notes: "hijack" } }), ctx({ id: A.operatorId, periodId: ids.periodId }))),
+  c("GET operator leaves", () => leavesGET(req("GET", "/x"), ctx({ id: A.operatorId }))),
+  c("POST operator leave", () => leavesPOST(req("POST", "/x", { body: { startDate: day, endDate: day, type: "UNPAID" } }), ctx({ id: A.operatorId }))),
+  c("DELETE operator leave", () => leaveDeleteDELETE(req("DELETE", "/x"), ctx({ id: A.operatorId, leaveId: ids.leaveId }))),
+  // ---- sites
+  c("GET site detail", () => siteDetailGET(req("GET", "/x"), ctx({ id: A.siteId }))),
+  c("PATCH site detail", () => siteDetailPATCH(req("PATCH", "/x", { body: { name: "Hijack" } }), ctx({ id: A.siteId }))),
+  c("PATCH site rates", () => siteRatesPATCH(req("PATCH", "/x", { body: { bucketRate: 100, breakerRate: 200 } }), ctx({ id: A.siteId }))),
+  c("GET site analysis", () => siteAnalysisDetailGET(req("GET", "/x"), ctx({ id: A.siteId }))),
+  c("GET site daily", () => siteDailyGET(req("GET", "/x"), ctx({ id: A.siteId }))),
+  c("GET site diesel", () => siteDieselGET(req("GET", "/x"), ctx({ id: A.siteId }))),
 ];
 
 async function snapshotA() {

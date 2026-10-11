@@ -150,7 +150,7 @@ describe("business A cannot touch business B's jobs and readings", () => {
   it("an operator can only submit readings to jobs of THEIR OWN business", async () => {
     // A's operator, B's job (even though B's machine is paired with B's operator, not A's).
     const result = failed(
-      await submitDailyLog(a.operatorId, { workSessionId: bSession.id, date: "2026-10-07", startHourMeter: 110, endHourMeter: 112 }),
+      await submitDailyLog(a.operatorId, { attachment: "Bucket", workSessionId: bSession.id, date: "2026-10-07", startHourMeter: 110, endHourMeter: 112 }),
     );
     expect(result.code).toBe("NOT_FOUND");
     expect(await db.dailyWorkLog.count({ where: { workSessionId: bSession.id } })).toBe(2);

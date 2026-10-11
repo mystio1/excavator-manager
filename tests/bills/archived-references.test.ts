@@ -70,7 +70,7 @@ describe("new records cannot reference an archived customer", () => {
       data: { businessId: t.businessId, excavatorId: t.excavatorId, operatorId: t.operatorId, startDate: new Date(), startHourMeter: 0, endDate: new Date(), endHourMeter: 5, status: "PENDING" },
     });
     const approve = failed(
-      await approveWorkRequest(t.businessId, t.actor, { requestId: request.id, customerId: c.id, siteName: "S", startHourMeter: 0, endHourMeter: 5 }),
+      await approveWorkRequest(t.businessId, t.actor, { requestId: request.id, customerId: c.id, siteName: "S", startHourMeter: 0, endHourMeter: 5, attachment: "Bucket" }),
     );
     expect(approve.code).toBe("CONFLICT");
     expect((await db.operatorWorkRequest.findUniqueOrThrow({ where: { id: request.id } })).status).toBe("PENDING"); // untouched

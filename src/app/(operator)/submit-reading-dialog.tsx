@@ -35,6 +35,7 @@ export function SubmitReadingDialog({
   const [mode, setMode] = useState<"meter" | "time">("meter");
   const today = todayLocal();
   const [open, setOpen] = useState(false);
+  const [toolError, setToolError] = useState<string | null>(null);
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch("/api/operator/daily-log", { method: "POST", body: JSON.stringify(body) });
   });
@@ -43,6 +44,11 @@ export function SubmitReadingDialog({
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    // The tool is compulsory (the picker's hidden input can't use native `required`).
+    if (!fd.get("attachment")) {
+      setToolError(t("tool.required"));
+      return;
+    }
     const ok = await run({
       workSessionId,
       date: fd.get("date"),
@@ -53,7 +59,7 @@ export function SubmitReadingDialog({
       breakMinutes: fd.get("breakMinutes") || undefined,
       dieselLiters: fd.get("dieselLiters") || undefined,
       notes: fd.get("notes") || undefined,
-      attachment: fd.get("attachment") || undefined,
+      attachment: fd.get("attachment"),
     });
     if (ok) {
       await mutate("/api/operator/home");
@@ -163,6 +169,9 @@ export function SubmitReadingDialog({
           <AttachmentPicker
             name="attachment"
             label={t("startWork.attachment")}
+            required
+            error={toolError}
+            onValueChange={() => setToolError(null)}
             optionLabels={{ Bucket: t("tool.bucket"), Breaker: t("tool.breaker"), Chaining: t("tool.chaining") }}
           />
 

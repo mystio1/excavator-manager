@@ -1,25 +1,53 @@
 import { cache } from "react";
 import { db } from "@/lib/db";
 import { Decimal, ZERO, dec, round2 } from "@/lib/money";
+import {
+  accrueBaseSalary,
+  applyTransaction,
+  emptyTotals,
+  monthKey,
+  presentAccrual,
+  toMoney,
+  type AccrualBreakdown,
+  type MonthTotals,
+} from "./salaryCore";
+import {
+  calculateOperatorPeriods,
+  dayIndex,
+  isLegacyShape,
+  loadPeriodContext,
+  type LeaveRow,
+  type PeriodRow,
+} from "./workingPeriods";
 
-// All salary arithmetic is exact (Decimal / NUMERIC) — see money.ts. The
-// figures handed back to callers are plain numbers rounded to 2 dp (the same
-// shape the UI always received), converted only at the very end.
-type MonthTotals = { bonus: Decimal; deductions: Decimal; paid: Decimal };
+export type { AccrualBreakdown };
 
-const emptyTotals = (): MonthTotals => ({ bonus: ZERO, deductions: ZERO, paid: ZERO });
-
-/** Exact Decimal → the 2 dp number the API/UI works with. */
-const toMoney = (value: Decimal) => round2(value).toNumber();
-
-function monthKey(date: Date) {
-  return `${date.getFullYear()}-${date.getMonth()}`;
-}
-
-function applyTransaction(entry: MonthTotals, tx: { businessEffect: string; deductFromSalary: boolean; amount: Decimal }) {
-  if (tx.businessEffect === "SALARY_PAYMENT") entry.paid = entry.paid.plus(tx.amount);
-  else if (tx.businessEffect === "BONUS_INCENTIVE") entry.bonus = entry.bonus.plus(tx.amount);
-  else if (tx.deductFromSalary) entry.deductions = entry.deductions.plus(tx.amount);
+/**
+ * Base salary for the calendar month starting at `monthStart` for an operator with several working periods
+ * or leaves: the monthly salary of the (latest) working period overlapping that month, the preceding
+ * period's rate for a month touched only by PAID leave, and ZERO for a month entirely before the first
+ * period or inside an unpaid leave gap. Legacy-shaped operators use a constant base instead.
+ */
+function periodMonthBase(periods: PeriodRow[], leaves: LeaveRow[]) {
+  return (monthStart: Date): Decimal => {
+    const m0 = dayIndex(monthStart);
+    const m1 = dayIndex(new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0));
+    let rate: Decimal | null = null;
+    for (const p of periods) {
+      const s = dayIndex(p.startDate);
+      const e = p.endDate ? dayIndex(p.endDate) : Number.MAX_SAFE_INTEGER;
+      if (s <= m1 && e >= m0) rate = dec(p.monthlySalary);
+    }
+    if (rate === null) {
+      for (const l of leaves) {
+        if (l.type !== "PAID" || dayIndex(l.startDate) > m1 || dayIndex(l.endDate) < m0) continue;
+        let prev: PeriodRow | null = null;
+        for (const p of periods) if (p.endDate && dayIndex(p.endDate) < dayIndex(l.startDate)) prev = p;
+        if (prev) rate = dec(prev.monthlySalary);
+      }
+    }
+    return rate ?? ZERO;
+  };
 }
 
 /**
@@ -32,7 +60,7 @@ function applyTransaction(entry: MonthTotals, tx: { businessEffect: string; dedu
  * every later month's total until it's actually settled.
  */
 function carriedForwardBalance(
-  baseSalary: Decimal,
+  baseFor: (monthStart: Date) => Decimal,
   salaryStartsFrom: Date,
   monthStart: Date,
   byMonth: Map<string, MonthTotals>,
@@ -41,7 +69,7 @@ function carriedForwardBalance(
   let balance = ZERO;
   while (cursor < monthStart) {
     const entry = byMonth.get(monthKey(cursor)) ?? emptyTotals();
-    balance = balance.plus(baseSalary).plus(entry.bonus).minus(entry.deductions).minus(entry.paid);
+    balance = balance.plus(baseFor(cursor)).plus(entry.bonus).minus(entry.deductions).minus(entry.paid);
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
   }
   return balance;
@@ -88,8 +116,17 @@ export async function computeSalaryForMonth(businessId: string, operatorId: stri
     byMonth.set(key, entry);
   }
 
-  const baseSalary = dec(operator.defaultMonthlySalary);
-  const carriedForward = carriedForwardBalance(baseSalary, salaryStartsFrom, start, byMonth);
+  // One ACTIVE period and no leaves: the original computation, untouched. Otherwise a month earns
+  // salary only while a working period (or paid leave) covers it.
+  const periodCtx = await loadPeriodContext(db, operator);
+  const baseFor = isLegacyShape(periodCtx.periods, periodCtx.leaves)
+    ? (() => {
+        const constant = dec(operator.defaultMonthlySalary);
+        return () => constant;
+      })()
+    : periodMonthBase(periodCtx.periods, periodCtx.leaves);
+  const baseSalary = baseFor(start);
+  const carriedForward = carriedForwardBalance(baseFor, salaryStartsFrom, start, byMonth);
 
   const thisMonth = byMonth.get(monthKey(start)) ?? emptyTotals();
   const transactions = allTransactions.filter((tx) => tx.date >= start && tx.date < end);
@@ -108,117 +145,6 @@ export async function computeSalaryForMonth(businessId: string, operatorId: stri
   };
 }
 
-/** Same date, `n` months later — clamped to the last day of the target
- * month when the start day doesn't exist there (joined the 31st -> lands on
- * Feb 28/29, not March 3). Calendar-day arithmetic only, no time-of-day. */
-function addMonthsClamped(date: Date, n: number) {
-  const target = new Date(date.getFullYear(), date.getMonth() + n, 1);
-  const daysInTargetMonth = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
-  target.setDate(Math.min(date.getDate(), daysInTargetMonth));
-  return target;
-}
-
-export type AccrualBreakdown = {
-  fullCycles: number;
-  fullCyclesAmount: number;
-  cycleStart: Date;
-  cycleEnd: Date;
-  cycleDays: number;
-  elapsedDays: number;
-  dailyRate: number;
-  partialAmount: number;
-  total: number;
-};
-
-/** Exact accrual: `totalExact` keeps the un-rounded partial-cycle amount so
- * the final payable is rounded ONCE, exactly like the original float math did
- * (rounding each part separately could shift a paisa). */
-type Accrual = {
-  fullCycles: number;
-  fullCyclesAmount: Decimal;
-  cycleStart: Date;
-  cycleEnd: Date;
-  cycleDays: number;
-  elapsedDays: number;
-  dailyRate: Decimal;
-  partialExact: Decimal;
-  totalExact: Decimal;
-};
-
-/**
- * Base salary earned from `joinDate` through `asOf`, accrued day by day
- * instead of by whole calendar months — this is the "not monthly full
- * payment, calculate till the date" behavior: each complete join-date
- * anniversary cycle (e.g. 7 Jun -> 7 Jul) counts as one full baseSalary: a
- * cycle that hasn't finished yet is prorated by the days elapsed into it
- * over that specific cycle's own length (28-31 days, whichever months it
- * spans), not a flat 30 — so "8 Jul" (1 day into the 7 Jul -> 7 Aug cycle)
- * adds baseSalary / 31 for that one day, and so on up to `asOf`. Returns
- * every intermediate figure, not just the total, so a caller (the Overview
- * tab's "Detail" breakdown) can show exactly how the number was reached
- * instead of restating the total in prose.
- */
-function accrueBaseSalary(joinDate: Date, asOf: Date, baseSalary: Decimal): Accrual {
-  const join = new Date(joinDate.getFullYear(), joinDate.getMonth(), joinDate.getDate());
-  const today = new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate());
-  if (today <= join) {
-    return {
-      fullCycles: 0,
-      fullCyclesAmount: ZERO,
-      cycleStart: join,
-      cycleEnd: join,
-      cycleDays: 0,
-      elapsedDays: 0,
-      dailyRate: ZERO,
-      partialExact: ZERO,
-      totalExact: ZERO,
-    };
-  }
-
-  let fullCycles = 0;
-  let cycleStart = join;
-  let cycleEnd = addMonthsClamped(join, 1);
-  while (cycleEnd <= today) {
-    fullCycles++;
-    cycleStart = cycleEnd;
-    cycleEnd = addMonthsClamped(join, fullCycles + 1);
-  }
-
-  const cycleDays = Math.round((cycleEnd.getTime() - cycleStart.getTime()) / 86_400_000);
-  const elapsedDays = Math.round((today.getTime() - cycleStart.getTime()) / 86_400_000);
-  const dailyRate = cycleDays > 0 ? baseSalary.div(cycleDays) : ZERO;
-  const fullCyclesAmount = baseSalary.times(fullCycles);
-  // One division (base × days ÷ cycle) instead of (base ÷ cycle) × days keeps
-  // the most precision before the single final rounding.
-  const partialExact = cycleDays > 0 ? baseSalary.times(elapsedDays).div(cycleDays) : ZERO;
-
-  return {
-    fullCycles,
-    fullCyclesAmount,
-    cycleStart,
-    cycleEnd,
-    cycleDays,
-    elapsedDays,
-    dailyRate,
-    partialExact,
-    totalExact: fullCyclesAmount.plus(partialExact),
-  };
-}
-
-function presentAccrual(accrual: Accrual): AccrualBreakdown {
-  return {
-    fullCycles: accrual.fullCycles,
-    fullCyclesAmount: toMoney(accrual.fullCyclesAmount),
-    cycleStart: accrual.cycleStart,
-    cycleEnd: accrual.cycleEnd,
-    cycleDays: accrual.cycleDays,
-    elapsedDays: accrual.elapsedDays,
-    dailyRate: toMoney(accrual.dailyRate),
-    partialAmount: toMoney(accrual.partialExact),
-    total: toMoney(accrual.totalExact),
-  };
-}
-
 /**
  * Lifetime totals from the operator's joining date through today — what the
  * Overview tab shows: Total Payable (base salary accrued day-by-day per
@@ -234,6 +160,28 @@ export async function getLifetimeSalarySummary(businessId: string, operatorId: s
   const operator = await db.operator.findFirstOrThrow({ where: { id: operatorId, businessId } });
 
   const now = new Date();
+
+  // Several working periods (or any leave, or a closed sole period): the figures come from the periods �
+  // "remaining" is the operator's Total Outstanding across all sessions. Same response shape.
+  const periodCtx = await loadPeriodContext(db, operator);
+  if (!isLegacyShape(periodCtx.periods, periodCtx.leaves)) {
+    const allTx = await db.operatorTransaction.findMany({ where: { businessId, operatorId } });
+    const calc = calculateOperatorPeriods(periodCtx.periods, periodCtx.leaves, allTx, now);
+    const current = calc.periods.find((p) => p.status === "ACTIVE") ?? calc.periods[calc.periods.length - 1]!;
+    return {
+      joiningDate: calc.periods[0]!.startDate,
+      asOf: now,
+      baseSalary: current.monthlySalary,
+      accrual: current.accrual,
+      bonus: toMoney(calc.exact.bonus),
+      deductions: toMoney(calc.exact.deductions),
+      totalPayable: toMoney(calc.exact.outstanding.plus(calc.exact.paid)),
+      totalPaid: toMoney(calc.exact.paid),
+      remaining: calc.summary.totalOutstanding,
+      multiPeriod: true,
+    };
+  }
+
   const salaryStartsFrom = operator.joiningDate ?? operator.createdAt;
   const rangeEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
@@ -258,7 +206,27 @@ export async function getLifetimeSalarySummary(businessId: string, operatorId: s
     totalPayable: toMoney(totalPayable),
     totalPaid: toMoney(totals.paid),
     remaining: toMoney(totalPayable.minus(totals.paid)),
+    multiPeriod: false,
   };
+}
+
+/** Which of these operators need the period-based computation (more than one period, a leave, or a closed
+ * sole period), with their periods and leaves � 2 queries regardless of operator count. */
+async function complexOperators(businessId: string, operatorIds: string[]) {
+  const [periods, leaves] = await Promise.all([
+    db.operatorWorkingPeriod.findMany({
+      where: { businessId, operatorId: { in: operatorIds } },
+      orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
+    }),
+    db.operatorLeave.findMany({ where: { businessId, operatorId: { in: operatorIds } }, orderBy: { startDate: "asc" } }),
+  ]);
+  const periodsOf = new Map<string, PeriodRow[]>();
+  for (const p of periods) periodsOf.set(p.operatorId, [...(periodsOf.get(p.operatorId) ?? []), p]);
+  const leavesOf = new Map<string, LeaveRow[]>();
+  for (const l of leaves) leavesOf.set(l.operatorId, [...(leavesOf.get(l.operatorId) ?? []), l]);
+  const complex = new Set<string>();
+  for (const [id, ps] of periodsOf) if (!isLegacyShape(ps, leavesOf.get(id) ?? [])) complex.add(id);
+  return { complex, periodsOf, leavesOf };
 }
 
 /**
@@ -283,9 +251,11 @@ export async function getLifetimeSalaryBreakdown(businessId: string) {
 
   const transactions = await db.operatorTransaction.findMany({
     where: { businessId, date: { gte: earliestStart, lt: rangeEnd } },
-    select: { operatorId: true, date: true, amount: true, businessEffect: true, deductFromSalary: true },
+    select: { operatorId: true, date: true, amount: true, businessEffect: true, deductFromSalary: true, workingPeriodId: true },
   });
 
+  // Operators with several periods / any leave use their period totals (Total Outstanding).
+  const { complex, periodsOf, leavesOf } = await complexOperators(businessId, operators.map((o) => o.id));
   const byOperator = new Map<string, MonthTotals>();
   for (const tx of transactions) {
     if (tx.date < (startByOperator.get(tx.operatorId) ?? earliestStart)) continue;
@@ -295,6 +265,11 @@ export async function getLifetimeSalaryBreakdown(businessId: string) {
   }
 
   return operators.map((op) => {
+    if (complex.has(op.id)) {
+      const mine = transactions.filter((tx) => tx.operatorId === op.id);
+      const calc = calculateOperatorPeriods(periodsOf.get(op.id)!, leavesOf.get(op.id) ?? [], mine, now);
+      return { operatorId: op.id, remaining: calc.summary.totalOutstanding };
+    }
     const totals = byOperator.get(op.id) ?? emptyTotals();
     const salaryStartsFrom = startByOperator.get(op.id)!;
     const totalPayable = accrueBaseSalary(salaryStartsFrom, now, dec(op.defaultMonthlySalary)).totalExact
@@ -344,14 +319,37 @@ const salaryBreakdownExact = cache(async function salaryBreakdownExact(businessI
     byOperatorMonth.set(tx.operatorId, byMonth);
   }
 
+  // Operators with several periods / any leave: gap-aware month base, and their period-based Total
+  // Outstanding (as of now) for the dashboard's "salary due".
+  const { complex, periodsOf, leavesOf } = await complexOperators(businessId, operators.map((o) => o.id));
+  const complexTx =
+    complex.size > 0
+      ? await db.operatorTransaction.findMany({ where: { businessId, operatorId: { in: [...complex] } } })
+      : [];
+
   return operators.map((op) => {
     const byMonth = byOperatorMonth.get(op.id) ?? new Map<string, MonthTotals>();
     const salaryStartsFrom = op.joiningDate ?? op.createdAt;
-    const baseSalary = dec(op.defaultMonthlySalary);
-    const carriedForward = carriedForwardBalance(baseSalary, salaryStartsFrom, start, byMonth);
+    const isComplex = complex.has(op.id);
+    const baseFor = isComplex
+      ? periodMonthBase(periodsOf.get(op.id)!, leavesOf.get(op.id) ?? [])
+      : (() => {
+          const constant = dec(op.defaultMonthlySalary);
+          return () => constant;
+        })();
+    const baseSalary = baseFor(start);
+    const carriedForward = carriedForwardBalance(baseFor, salaryStartsFrom, start, byMonth);
     const thisMonth = byMonth.get(monthKey(start)) ?? emptyTotals();
     const payable = baseSalary.plus(thisMonth.bonus).minus(thisMonth.deductions).minus(thisMonth.paid).plus(carriedForward);
-    return { operatorId: op.id, baseSalary, bonus: thisMonth.bonus, payable };
+    const outstanding = isComplex
+      ? calculateOperatorPeriods(
+          periodsOf.get(op.id)!,
+          leavesOf.get(op.id) ?? [],
+          complexTx.filter((tx) => tx.operatorId === op.id),
+          new Date(),
+        ).exact.outstanding
+      : null;
+    return { operatorId: op.id, baseSalary, bonus: thisMonth.bonus, payable, outstanding };
   });
 });
 
@@ -376,7 +374,7 @@ export async function getTotalSalaryDue(businessId: string) {
   // the per-operator figures shown elsewhere.
   let total = ZERO;
   for (const op of breakdown) {
-    const payable = round2(op.payable);
+    const payable = round2(op.outstanding ?? op.payable);
     if (payable.gt(0)) total = total.plus(payable);
   }
   return toMoney(total);

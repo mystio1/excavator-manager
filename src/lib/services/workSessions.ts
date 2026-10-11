@@ -7,8 +7,10 @@ import { LEGACY_LIMIT, pageArgs, toPage, type PageParams } from "@/lib/paginatio
 import { isStale, resourceModified, withTx, type Tx } from "@/lib/tx";
 import { calcHoursFromClock, calcHoursFromMeter } from "@/lib/utils/hours";
 import { findOrCreateSite } from "@/lib/services/sites";
+import { ATTACHMENT_VALUES, TOOL_REQUIRED_MESSAGE } from "@/lib/attachments";
 import type {
   DailyLogInput,
+  DieselOnlyInput,
   StartWorkInput,
   StopWorkInput,
   UpdateDailyLogInput,
@@ -61,10 +63,13 @@ async function lockOwnedSession(tx: Tx, businessId: string, workSessionId: strin
 // ---------------------------------------------------------------------------
 
 /** Number of approved readings and their exact total hours. Only APPROVED
- * readings ever count (maintenance/billing must never see a pending one). */
+ * readings ever count (maintenance/billing must never see a pending one), and
+ * only WORK readings: a DIESEL_ONLY entry carries 0 hours and must neither
+ * count as a reading (a session with just diesel entries still bills off its
+ * meter hours) nor move the machine's meter. */
 async function approvedHours(tx: Tx, workSessionId: string) {
   const logs = await tx.dailyWorkLog.findMany({
-    where: { workSessionId, status: "APPROVED" },
+    where: { workSessionId, status: "APPROVED", kind: "WORK" },
     select: { hoursWorked: true },
   });
   return { count: logs.length, total: roundHours(sum(logs.map((l) => l.hoursWorked)).toNumber()) };
@@ -73,7 +78,7 @@ async function approvedHours(tx: Tx, workSessionId: string) {
 /** The most recent approved reading of a job (by day, then entry time). */
 function latestApprovedLog(tx: Tx, workSessionId: string) {
   return tx.dailyWorkLog.findFirst({
-    where: { workSessionId, status: "APPROVED" },
+    where: { workSessionId, status: "APPROVED", kind: "WORK" },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
   });
 }
@@ -431,6 +436,11 @@ export async function submitDailyLog(operatorId: string, input: DailyLogInput) {
     });
     if (!session) return fail("NOT_FOUND", "No active job found for your assigned machine");
 
+    // The tool is compulsory on the operator path (admin add/edit stays optional).
+    if (!input.attachment || !(ATTACHMENT_VALUES as readonly string[]).includes(input.attachment)) {
+      return fail("VALIDATION_FAILED", TOOL_REQUIRED_MESSAGE);
+    }
+
     if (await hasDuplicateLog(tx, session.id, input.date)) {
       return fail("CONFLICT", "A reading for this date is already submitted");
     }
@@ -458,6 +468,97 @@ export async function submitDailyLog(operatorId: string, input: DailyLogInput) {
     });
 
     return { hoursWorked } as const;
+  });
+}
+
+/** Operator "Diesel only" entry: diesel was taken but there is no work to
+ * report. It becomes a PENDING DIESEL_ONLY reading (0 hours, start = end = the
+ * machine's previous ending reading) on the machine's ACTIVE job, or else on
+ * its most recent job of any status; a machine that has never worked has
+ * nothing to attach to. Approval (approveDailyLog) adds the litres to the
+ * job's diesel total — hours and the machine's meter never move, so billing
+ * is unaffected.
+ *
+ * One live (PENDING/APPROVED) reading per job per day is enforced by a unique
+ * index (DailyWorkLog_session_date_live_key), so a diesel-only entry on a day
+ * that already has a reading — or another diesel entry — is a clear 409. */
+export async function submitDieselOnly(operatorId: string, input: DieselOnlyInput, opts?: { tx?: Tx }) {
+  const actor: AuditActor = { type: "OPERATOR", id: operatorId, name: `operator:${operatorId}` };
+  return withTx(opts?.tx, async (tx) => {
+    const operator = await tx.operator.findUnique({ where: { id: operatorId }, select: { businessId: true } });
+    if (!operator) return fail("FORBIDDEN", "You are not assigned to a machine.");
+    const { businessId } = operator;
+
+    const assigned = await tx.excavator.findFirst({
+      where: { businessId, currentOperatorId: operatorId },
+      select: { id: true },
+    });
+    if (!assigned) return fail("FORBIDDEN", "You are not assigned to a machine.");
+    // Serializes with job start/stop on this machine so "the active job" can't change underneath us.
+    await lockOwnedExcavator(tx, businessId, assigned.id);
+    const excavator = await tx.excavator.findFirst({
+      where: { id: assigned.id, businessId },
+      select: { id: true, currentHourMeter: true },
+    });
+    if (!excavator) return fail("FORBIDDEN", "You are not assigned to a machine.");
+
+    const session =
+      (await tx.workSession.findFirst({
+        where: { businessId, excavatorId: excavator.id, status: "ACTIVE" },
+        orderBy: [{ startDate: "desc" }, { createdAt: "desc" }],
+      })) ??
+      (await tx.workSession.findFirst({
+        where: { businessId, excavatorId: excavator.id },
+        orderBy: [{ startDate: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+      }));
+    if (!session) return fail("NOT_FOUND", "No previous work found for this machine");
+
+    if (!(await lockOwnedSession(tx, businessId, session.id))) {
+      return fail("NOT_FOUND", "No previous work found for this machine");
+    }
+
+    const existing = await tx.dailyWorkLog.findFirst({
+      where: { workSessionId: session.id, date: new Date(input.date), status: { in: ["APPROVED", "PENDING"] } },
+      select: { kind: true },
+    });
+    if (existing) {
+      return fail(
+        "CONFLICT",
+        existing.kind === "DIESEL_ONLY"
+          ? "A diesel entry for this date is already submitted"
+          : "A reading for this date already exists — add the diesel to that day's reading instead",
+      );
+    }
+
+    // "Previous ending reading": where the machine's meter stands now.
+    const meter = roundHours(excavator.currentHourMeter);
+    const log = await tx.dailyWorkLog.create({
+      data: {
+        workSessionId: session.id,
+        kind: "DIESEL_ONLY",
+        date: new Date(input.date),
+        startHourMeter: meter,
+        endHourMeter: meter,
+        hoursWorked: 0,
+        dieselLiters: roundHours(input.dieselLiters),
+        notes: input.notes || null,
+        attachment: input.attachment || null,
+        source: "OPERATOR",
+        status: "PENDING",
+      },
+    });
+
+    await recordAudit(tx, {
+      businessId,
+      actor,
+      action: "dailyLog.add",
+      entityType: "DailyWorkLog",
+      entityId: log.id,
+      after: log,
+      details: { workSessionId: session.id, excavatorId: session.excavatorId, source: "OPERATOR", kind: "DIESEL_ONLY" },
+    });
+
+    return { logId: log.id, workSessionId: session.id, dieselLiters: log.dieselLiters, hoursWorked: 0 } as const;
   });
 }
 
@@ -524,6 +625,7 @@ export async function approveDailyLog(businessId: string, actor: AuditActor, log
     if (isStale(log.version, opts?.expectedVersion)) return resourceModified("reading");
 
     const session = log.workSession;
+    const dieselOnly = log.kind === "DIESEL_ONLY";
     const approvedLog = await tx.dailyWorkLog.update({
       where: { id: log.id },
       data: { status: "APPROVED", reviewedAt: new Date(), version: { increment: 1 } },
@@ -534,16 +636,18 @@ export async function approveDailyLog(businessId: string, actor: AuditActor, log
     // currentHourMeter below — diesel is added to whatever's already on the
     // session (see addDailyLog/stopWork), attachment is set since it's the
     // current tool, not a quantity to sum.
+    // A DIESEL_ONLY entry only adds its litres (dated by the entry): total
+    // hours, the tool and the machine's meter are left exactly as they were.
     const updatedSession = await tx.workSession.update({
       where: { id: session.id, businessId },
       data: {
-        totalHours: approved.total,
+        ...(!dieselOnly && { totalHours: approved.total }),
         version: { increment: 1 },
         ...(log.dieselLiters != null && {
           dieselLiters: addQty(session.dieselLiters, log.dieselLiters),
           dieselDate: log.date,
         }),
-        ...(log.attachment && { attachment: log.attachment }),
+        ...(!dieselOnly && log.attachment && { attachment: log.attachment }),
       },
     });
 
@@ -551,7 +655,9 @@ export async function approveDailyLog(businessId: string, actor: AuditActor, log
     // that already finished, approving an old reading may only move the
     // meter forward, never rewind what stopWork recorded.
     let excavatorMeter: { from: number; to: number } | null;
-    if (session.status === "ACTIVE") {
+    if (dieselOnly) {
+      excavatorMeter = null;
+    } else if (session.status === "ACTIVE") {
       const latest = await latestApprovedLog(tx, session.id);
       excavatorMeter = await syncExcavatorMeter(tx, businessId, session.excavatorId, latest ? meterOf(latest) : null);
     } else {
@@ -630,23 +736,39 @@ export async function updateDailyLog(
       return fail("CONFLICT", "Another reading already exists for that date");
     }
 
-    const hoursWorked = computeHours(fields);
-    if (!(hoursWorked > 0)) return fail("VALIDATION_FAILED", INVALID_HOURS);
+    // A DIESEL_ONLY entry has no hours: only its litres, date, tool and note
+    // can be corrected, and nothing but the job's diesel total follows.
+    const dieselOnly = log.kind === "DIESEL_ONLY";
+    if (dieselOnly && !(fields.dieselLiters != null && fields.dieselLiters > 0)) {
+      return fail("VALIDATION_FAILED", "Enter the diesel litres (more than 0)");
+    }
+    const hoursWorked = dieselOnly ? 0 : computeHours(fields);
+    if (!dieselOnly && !(hoursWorked > 0)) return fail("VALIDATION_FAILED", INVALID_HOURS);
 
     const updatedLog = await tx.dailyWorkLog.update({
       where: { id: log.id },
-      data: {
-        ...logData(fields, hoursWorked),
-        operatorName: fields.operatorName || null,
-        version: { increment: 1 },
-      },
+      data: dieselOnly
+        ? {
+            date,
+            dieselLiters: roundOrNull(fields.dieselLiters),
+            notes: fields.notes || null,
+            attachment: fields.attachment || null,
+            version: { increment: 1 },
+          }
+        : {
+            ...logData(fields, hoursWorked),
+            operatorName: fields.operatorName || null,
+            version: { increment: 1 },
+          },
     });
 
     // Everything this edit changes on the job goes in ONE session write, and
     // only when something actually changed (so the version doesn't churn).
     const sessionChanges: Prisma.WorkSessionUpdateInput = {};
-    const approved = await approvedHours(tx, session.id);
-    if (approved.total !== session.totalHours) sessionChanges.totalHours = approved.total;
+    if (!dieselOnly) {
+      const approved = await approvedHours(tx, session.id);
+      if (approved.total !== session.totalHours) sessionChanges.totalHours = approved.total;
+    }
 
     let excavatorMeter: { from: number; to: number } | null = null;
     if (log.status === "APPROVED") {
@@ -654,10 +776,10 @@ export async function updateDailyLog(
       if (!dieselDiff.isZero()) {
         sessionChanges.dieselLiters = Math.max(0, roundHours(dec(session.dieselLiters).plus(dieselDiff).toNumber()));
       }
-      if (updatedLog.attachment && updatedLog.attachment !== session.attachment) {
+      if (!dieselOnly && updatedLog.attachment && updatedLog.attachment !== session.attachment) {
         sessionChanges.attachment = updatedLog.attachment;
       }
-      if (session.status === "ACTIVE") {
+      if (!dieselOnly && session.status === "ACTIVE") {
         const latest = await latestApprovedLog(tx, session.id);
         excavatorMeter = await syncExcavatorMeter(tx, businessId, session.excavatorId, latest ? meterOf(latest) : null);
       }
@@ -708,9 +830,14 @@ export async function deleteDailyLog(businessId: string, actor: AuditActor, logI
 
     await tx.dailyWorkLog.delete({ where: { id: log.id } });
 
+    // Removing a DIESEL_ONLY entry only unwinds its litres — it never carried
+    // hours, so total hours, the tool and the machine's meter stay put.
+    const dieselOnly = log.kind === "DIESEL_ONLY";
     const sessionChanges: Prisma.WorkSessionUpdateInput = {};
-    const approved = await approvedHours(tx, session.id);
-    if (approved.total !== session.totalHours) sessionChanges.totalHours = approved.total;
+    if (!dieselOnly) {
+      const approved = await approvedHours(tx, session.id);
+      if (approved.total !== session.totalHours) sessionChanges.totalHours = approved.total;
+    }
 
     // Only an APPROVED log's diesel was ever rolled into the session (see
     // approveDailyLog/addDailyLog) — a still-PENDING one never touched it, so
@@ -721,7 +848,7 @@ export async function deleteDailyLog(businessId: string, actor: AuditActor, logI
     }
 
     let excavatorMeter: { from: number; to: number } | null = null;
-    if (session.status === "ACTIVE") {
+    if (!dieselOnly && session.status === "ACTIVE") {
       const latest = await latestApprovedLog(tx, session.id);
       excavatorMeter = await syncExcavatorMeter(
         tx,
@@ -925,7 +1052,19 @@ export async function getOperatorPortalState(operatorId: string, businessId: str
     include: { customer: { select: { id: true, name: true } }, site: true, dailyLogs: { orderBy: { date: "desc" } } },
   });
 
-  return { excavator, activeSession };
+  // The start meter for the next daily reading should be the END meter from the
+  // most recent non-REJECTED log (PENDING logs are included — the operator
+  // entered them; if approved the admin may have edited endHourMeter, which is
+  // what we store). Falls back to excavator.currentHourMeter when no logs exist.
+  let latestEndMeter: number = excavator.currentHourMeter;
+  if (activeSession) {
+    const candidate = activeSession.dailyLogs.find(
+      (l) => l.status !== "REJECTED" && l.endHourMeter != null,
+    );
+    if (candidate?.endHourMeter != null) latestEndMeter = candidate.endHourMeter;
+  }
+
+  return { excavator, activeSession, latestEndMeter };
 }
 
 export type WorkHistoryFilters = {

@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatDateTime } from "@/lib/utils/dates";
+import { formatDate, formatDateTime } from "@/lib/utils/dates";
 import { formatHours } from "@/lib/utils/hours";
 import { ApproveWorkRequestDialog } from "./approve-work-request-dialog";
 import { RejectWorkRequestDialog } from "./reject-work-request-dialog";
@@ -17,6 +17,9 @@ type OpenRequest = {
   dieselLiters: number | null;
   dieselDate: Date | null;
   notes: string | null;
+  createdAt?: Date;
+  /** When the operator submitted (startDate/endDate are when the work was DONE). */
+  submittedAt?: Date | null;
   operator: { name: string };
 };
 
@@ -39,14 +42,14 @@ export function OperatorWorkRequestCard({
         <div className="grid grid-cols-2 gap-y-2 text-sm">
           <p className="text-muted-foreground">Operator</p>
           <p className="text-right font-semibold">{request.operator.name}</p>
-          <p className="text-muted-foreground">Started</p>
-          <p className="text-right font-semibold">{formatDateTime(request.startDate)}</p>
+          <p className="text-muted-foreground">Work date</p>
+          <p className="text-right font-semibold">{formatDate(request.startDate)}</p>
           <p className="text-muted-foreground">Starting Reading</p>
           <p className="text-right font-semibold">{formatHours(request.startHourMeter)}</p>
           {request.status === "PENDING" && (
             <>
-              <p className="text-muted-foreground">Ended</p>
-              <p className="text-right font-semibold">{request.endDate ? formatDateTime(request.endDate) : "—"}</p>
+              <p className="text-muted-foreground">Work ended</p>
+              <p className="text-right font-semibold">{request.endDate ? formatDate(request.endDate) : "—"}</p>
               <p className="text-muted-foreground">Ending Reading</p>
               <p className="text-right font-semibold">{formatHours(request.endHourMeter ?? 0)}</p>
             </>
@@ -67,7 +70,7 @@ export function OperatorWorkRequestCard({
             <>
               <p className="text-muted-foreground">Diesel</p>
               <p className="text-right font-semibold">
-                {request.dieselLiters} L{request.dieselDate ? ` (${formatDateTime(request.dieselDate)})` : ""}
+                {request.dieselLiters} L{request.dieselDate ? ` (${formatDate(request.dieselDate)})` : ""}
               </p>
             </>
           )}
@@ -75,6 +78,14 @@ export function OperatorWorkRequestCard({
             <>
               <p className="text-muted-foreground">Note</p>
               <p className="text-right font-semibold">{request.notes}</p>
+            </>
+          )}
+          {(request.submittedAt ?? request.createdAt) && (
+            <>
+              <p className="text-muted-foreground">Submitted</p>
+              <p className="text-right text-muted-foreground">
+                {formatDateTime((request.submittedAt ?? request.createdAt) as Date)}
+              </p>
             </>
           )}
         </div>
@@ -85,6 +96,8 @@ export function OperatorWorkRequestCard({
             <ApproveWorkRequestDialog
               requestId={request.id}
               operatorName={request.operator.name}
+              startDate={request.startDate}
+              endDate={request.endDate}
               startHourMeter={request.startHourMeter}
               endHourMeter={request.endHourMeter}
               attachment={request.attachment}

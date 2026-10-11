@@ -3,7 +3,7 @@
 import useSWR, { useSWRConfig } from "swr";
 import { useState } from "react";
 import { swrFetcher, apiFetch } from "@/lib/api-client";
-import { formatDate } from "@/lib/utils/dates";
+import { formatDate, formatDateTime } from "@/lib/utils/dates";
 import { formatHours } from "@/lib/utils/hours";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,8 @@ type DailyLog = {
   dieselLiters: number | null;
   notes: string | null;
   attachment: string | null;
+  kind?: string;
+  createdAt?: Date;
 };
 
 type ActiveWork = {
@@ -55,6 +57,8 @@ type ActiveWork = {
   attachment: string | null;
   notes: string | null;
   status: string;
+  /** When the operator submitted this work (absent for admin-entered work). */
+  submittedAt?: Date | null;
   dailyLogs: DailyLog[];
 } | null;
 
@@ -70,6 +74,8 @@ type OperatorWorkRequest = {
   dieselLiters: number | null;
   dieselDate: Date | null;
   notes: string | null;
+  createdAt?: Date;
+  submittedAt?: Date | null;
   operator: { name: string };
 };
 
@@ -78,6 +84,7 @@ type CustomerOption = { id: string; name: string; companyName: string | null };
 function DailyLogRow({ excavatorId, log }: { excavatorId: string; log: DailyLog }) {
   const { mutate } = useSWRConfig();
   const badge = LOG_STATUS_BADGE[log.status] ?? LOG_STATUS_BADGE.APPROVED;
+  const dieselOnly = log.kind === "DIESEL_ONLY";
   const [pending, setPending] = useState<"approve" | "reject" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,11 +111,22 @@ function DailyLogRow({ excavatorId, log }: { excavatorId: string; log: DailyLog 
           {formatDate(log.date)}
           {log.source === "OPERATOR" && <span className="ml-1.5 text-xs text-muted-foreground">(operator)</span>}
           {log.operatorName && <span className="ml-1.5 text-xs text-muted-foreground">— {log.operatorName}</span>}
+          {log.source === "OPERATOR" && log.createdAt && (
+            <span className="block text-xs text-muted-foreground">Submitted {formatDateTime(log.createdAt)}</span>
+          )}
         </span>
         <div className="flex items-center gap-1.5">
-          <span className="text-sm font-semibold">{formatHours(log.hoursWorked)}</span>
+          {dieselOnly ? (
+            <>
+              <Badge className="bg-idle text-idle-foreground">Diesel only</Badge>
+              <span className="text-sm font-semibold">{log.dieselLiters ?? 0} L</span>
+              <span className="text-xs text-muted-foreground">0 h</span>
+            </>
+          ) : (
+            <span className="text-sm font-semibold">{formatHours(log.hoursWorked)}</span>
+          )}
           <Badge className={badge.className}>{badge.label}</Badge>
-          <EditReadingButton log={log} invalidateKey={`/api/excavators/${excavatorId}`} />
+          {!dieselOnly && <EditReadingButton log={log} invalidateKey={`/api/excavators/${excavatorId}`} />}
           <DeleteReadingButton logId={log.id} version={log.version} invalidateKey={`/api/excavators/${excavatorId}`} />
         </div>
       </div>
@@ -200,6 +218,12 @@ export function CurrentWorkTab({
             <p className="text-right font-semibold">{currentOperatorName ?? "—"}</p>
             <p className="text-muted-foreground">Started</p>
             <p className="text-right font-semibold">{formatDate(activeWork.startDate)}</p>
+            {activeWork.submittedAt && (
+              <>
+                <p className="text-muted-foreground">Submitted</p>
+                <p className="text-right text-muted-foreground">{formatDateTime(activeWork.submittedAt)}</p>
+              </>
+            )}
             <p className="text-muted-foreground">Hours So Far</p>
             <p className="text-right font-semibold">{formatHours(activeWork.totalHours)}</p>
           </div>
