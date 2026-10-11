@@ -161,7 +161,7 @@ export async function getLifetimeSalarySummary(businessId: string, operatorId: s
 
   const now = new Date();
 
-  // Several working periods (or any leave, or a closed sole period): the figures come from the periods —
+  // Several working periods (or any leave, or a closed sole period): the figures come from the periods â€”
   // "remaining" is the operator's Total Outstanding across all sessions. Same response shape.
   const periodCtx = await loadPeriodContext(db, operator);
   if (!isLegacyShape(periodCtx.periods, periodCtx.leaves)) {
@@ -211,7 +211,7 @@ export async function getLifetimeSalarySummary(businessId: string, operatorId: s
 }
 
 /** Which of these operators need the period-based computation (more than one period, a leave, or a closed
- * sole period), with their periods and leaves — 2 queries regardless of operator count. */
+ * sole period), with their periods and leaves â€” 2 queries regardless of operator count. */
 async function complexOperators(businessId: string, operatorIds: string[]) {
   const [periods, leaves] = await Promise.all([
     db.operatorWorkingPeriod.findMany({
