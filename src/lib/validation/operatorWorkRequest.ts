@@ -26,6 +26,7 @@ const notFuture = { check: (v: string) => !isFutureWorkDate(v), message: FUTURE_
 
 const dieselFields = {
   dieselLiters: z.coerce.number().min(0, "Enter a valid amount").optional(),
+  remainingDieselLiters: z.coerce.number().min(0).optional(),
   dieselDate: z.string().optional(),
   notes: z.string().trim().optional(),
 };

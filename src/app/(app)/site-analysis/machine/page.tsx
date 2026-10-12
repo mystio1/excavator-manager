@@ -96,7 +96,23 @@ export default function SiteMachinePage() {
               <div className="grid grid-cols-2 gap-y-1 text-sm">
                 <KeyValue label="Total Diesel" value={`${diesel.total} L`} />
                 <KeyValue label="Average / Day" value={`${diesel.avgPerDay} L`} />
-                <KeyValue label="Average / Hour" value={`${diesel.avgPerHour} L/hr`} />
+                <KeyValue label="Avg L / Hr (ratio)" value={`${diesel.avgPerHour} L/hr`} />
+                {diesel.consumption?.avgLPerHour != null && (
+                  <>
+                    <KeyValue label="Consumption Rate" value={`${diesel.consumption.avgLPerHour} L/hr`} strong />
+                    {diesel.consumption.currentTank != null && (
+                      <KeyValue label="Tank at Last Fill" value={`${diesel.consumption.currentTank} L`} />
+                    )}
+                    {diesel.consumption.predictedHours != null && (
+                      <KeyValue label="Predicted Runtime" value={`${diesel.consumption.predictedHours} hrs`} strong />
+                    )}
+                  </>
+                )}
+                {!diesel.consumption?.avgLPerHour && (
+                  <p className="col-span-2 text-xs text-muted-foreground pt-1">
+                    Enter remaining diesel on next fill to unlock consumption rate & prediction.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>

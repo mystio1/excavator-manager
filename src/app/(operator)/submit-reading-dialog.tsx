@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { todayLocal } from "@/lib/utils/dates";
+
 export function SubmitReadingDialog({
   workSessionId,
   currentHourMeter,
@@ -36,17 +37,21 @@ export function SubmitReadingDialog({
   const today = todayLocal();
   const [open, setOpen] = useState(false);
   const [toolError, setToolError] = useState<string | null>(null);
+  const [confirmSkipRemaining, setConfirmSkipRemaining] = useState(false);
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch("/api/operator/daily-log", { method: "POST", body: JSON.stringify(body) });
   });
   const t = (key: string) => ot(lang, key);
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    // The tool is compulsory (the picker's hidden input can't use native `required`).
+  async function submit(fd: FormData, skipRemainingCheck = false) {
     if (!fd.get("attachment")) {
       setToolError(t("tool.required"));
+      return;
+    }
+    const diesel = fd.get("dieselLiters");
+    const remaining = fd.get("remainingDieselLiters");
+    if (!skipRemainingCheck && diesel && !remaining) {
+      setConfirmSkipRemaining(true);
       return;
     }
     const ok = await run({
@@ -57,7 +62,8 @@ export function SubmitReadingDialog({
       startTime: fd.get("startTime") || undefined,
       stopTime: fd.get("stopTime") || undefined,
       breakMinutes: fd.get("breakMinutes") || undefined,
-      dieselLiters: fd.get("dieselLiters") || undefined,
+      dieselLiters: diesel || undefined,
+      remainingDieselLiters: remaining || undefined,
       notes: fd.get("notes") || undefined,
       attachment: fd.get("attachment"),
     });
@@ -67,8 +73,18 @@ export function SubmitReadingDialog({
     }
   }
 
+  function handleOpen(v: boolean) {
+    setOpen(v);
+    if (!v) setConfirmSkipRemaining(false);
+  }
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await submit(new FormData(e.currentTarget));
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpen}>
       <DialogTrigger render={<Button size="lg" className="h-12 w-full text-base" />}>
         <Clock className="size-5" />
         {t("submitReading.trigger")}
@@ -77,7 +93,7 @@ export function SubmitReadingDialog({
         <DialogHeader>
           <DialogTitle>{t("submitReading.title")}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <form id="submit-reading-form" onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="date" className="text-base">
               {t("submitReading.date")}
@@ -175,12 +191,68 @@ export function SubmitReadingDialog({
             optionLabels={{ Bucket: t("tool.bucket"), Breaker: t("tool.breaker"), Chaining: t("tool.chaining") }}
           />
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="dieselLiters" className="text-base">
-              {t("startWork.dieselReceived")}
-            </Label>
-            <Input id="dieselLiters" name="dieselLiters" type="number" step="0.1" min="0" className="h-12 text-base" />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="dieselLiters" className="text-base">
+                {t("startWork.dieselReceived")}
+              </Label>
+              <Input
+                id="dieselLiters"
+                name="dieselLiters"
+                type="number"
+                step="0.1"
+                min="0"
+                className="h-12 text-base"
+                onChange={() => setConfirmSkipRemaining(false)}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="remainingDieselLiters" className="text-base">
+                Remaining before fill
+              </Label>
+              <Input
+                id="remainingDieselLiters"
+                name="remainingDieselLiters"
+                type="number"
+                step="0.1"
+                min="0"
+                placeholder="e.g. 70"
+                className="h-12 text-base"
+                onChange={() => setConfirmSkipRemaining(false)}
+              />
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Diesel in tank before today&apos;s fill — used to calculate consumption rate.
+          </p>
+
+          {confirmSkipRemaining && (
+            <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-3 text-sm">
+              <p className="font-semibold text-amber-700 dark:text-amber-300">No remaining diesel entered</p>
+              <p className="mt-1 text-amber-700/80 dark:text-amber-300/80">
+                Without it, we can&apos;t calculate the actual consumption rate. Skip anyway?
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const form = document.getElementById("submit-reading-form") as HTMLFormElement | null;
+                    if (form) submit(new FormData(form), true);
+                  }}
+                  className="flex-1 rounded-lg bg-amber-500 py-2 text-sm font-semibold text-white"
+                >
+                  Yes, skip
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmSkipRemaining(false)}
+                  className="flex-1 rounded-lg bg-muted py-2 text-sm font-semibold text-foreground"
+                >
+                  Enter it
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="notes" className="text-base">
@@ -191,11 +263,13 @@ export function SubmitReadingDialog({
 
           {error && <p role="alert" className="text-sm font-medium text-destructive">{otMsg(lang, error)}</p>}
 
-          <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-            <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
-              {pending ? t("submitReading.submitting") : t("submitReading.submit")}
-            </Button>
-          </DialogFooter>
+          {!confirmSkipRemaining && (
+            <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
+              <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
+                {pending ? t("submitReading.submitting") : t("submitReading.submit")}
+              </Button>
+            </DialogFooter>
+          )}
         </form>
       </DialogContent>
     </Dialog>

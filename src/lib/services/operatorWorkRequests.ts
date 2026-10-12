@@ -400,6 +400,7 @@ export async function approveWorkRequest(
         totalHours,
         attachment: input.attachment,
         dieselLiters: input.dieselLiters == null ? null : r2(input.dieselLiters),
+        remainingDieselLiters: input.dieselLiters != null && input.remainingDieselLiters != null ? r2(input.remainingDieselLiters) : null,
         dieselDate: dieselDateFor(input, startDate),
         notes: input.notes || null,
         status: "COMPLETED",

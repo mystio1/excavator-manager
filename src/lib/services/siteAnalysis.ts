@@ -534,7 +534,7 @@ export async function getSiteAnalysis(businessId: string, siteId: string, f: Sit
   const { from, to } = parseRange(f.from, f.to);
   const scope: Scope = { businessId, siteCond: Prisma.sql`st.id = ${siteId}`, excavatorId: f.excavatorId, from, to };
 
-  const [totals, machines, machineOptions, working, rateHistory, customerFinancials] = await Promise.all([
+  const [totals, machines, machineOptions, working, rateHistory, customerFinancials, dieselConsumption] = await Promise.all([
     aggregateAll(scope),
     aggregateByMachine(scope),
     db.excavator.findMany({
@@ -549,6 +549,7 @@ export async function getSiteAnalysis(businessId: string, siteId: string, f: Sit
       take: 10,
     }),
     site.customerId ? getCustomerBillTotals(businessId, site.customerId) : Promise.resolve<BillTotals | null>(null),
+    f.excavatorId ? getDieselConsumptionStats(businessId, f.excavatorId) : Promise.resolve(null),
   ]);
 
   const machineFilterId = f.excavatorId;
@@ -590,6 +591,7 @@ export async function getSiteAnalysis(businessId: string, siteId: string, f: Sit
       total: totals.diesel,
       avgPerDay: totals.avgDieselPerDay,
       avgPerHour: totals.avgDieselPerHour,
+      consumption: dieselConsumption,
     },
     rateHistory: rateHistory.map((h) => ({
       id: h.id,
@@ -600,6 +602,80 @@ export async function getSiteAnalysis(businessId: string, siteId: string, f: Sit
     // The customer's own totals across ALL their bills / sites (not summed from sites: no double counting).
     customerFinancials,
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Diesel consumption rate (per-machine, cross-site)
+// ---------------------------------------------------------------------------------------------
+
+/** Computes actual L/hr consumption from fill pairs where the operator/admin
+ * entered the remaining diesel before a new fill.
+ * consumed = prev.dieselLiters - current.remainingDieselLiters
+ * hours    = approved hoursWorked between the two diesel dates */
+async function getDieselConsumptionStats(businessId: string, excavatorId: string) {
+  // All diesel fills (DailyWorkLog + WorkSession-level) ordered by date
+  const [logFills, sessionFills] = await Promise.all([
+    db.dailyWorkLog.findMany({
+      where: {
+        status: "APPROVED",
+        dieselLiters: { gt: 0 },
+        workSession: { businessId, excavatorId },
+      },
+      select: { date: true, dieselLiters: true, remainingDieselLiters: true },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    }),
+    db.workSession.findMany({
+      where: { businessId, excavatorId, status: "COMPLETED", dieselLiters: { gt: 0 } },
+      select: { startDate: true, dieselLiters: true, remainingDieselLiters: true },
+      orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
+    }),
+  ]);
+
+  // Merge and sort all diesel entries chronologically
+  type FillEntry = { date: Date; litres: number; remaining: number | null };
+  const fills: FillEntry[] = [
+    ...logFills.map((l) => ({ date: l.date, litres: l.dieselLiters!, remaining: l.remainingDieselLiters ?? null })),
+    ...sessionFills.map((s) => ({ date: s.startDate, litres: s.dieselLiters!, remaining: s.remainingDieselLiters ?? null })),
+  ].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  if (fills.length === 0) return null;
+
+  // All approved hours logs for this machine (for summing hours between fills)
+  const hourLogs = await db.dailyWorkLog.findMany({
+    where: { status: "APPROVED", hoursWorked: { gt: 0 }, workSession: { businessId, excavatorId } },
+    select: { date: true, hoursWorked: true },
+    orderBy: { date: "asc" },
+  });
+
+  // Compute consumption rate from consecutive fill pairs where remaining is known
+  const rates: number[] = [];
+  for (let i = 1; i < fills.length; i++) {
+    const curr = fills[i];
+    const prev = fills[i - 1];
+    if (curr.remaining == null) continue;
+    const consumed = prev.litres - curr.remaining;
+    if (consumed <= 0) continue;
+    // Sum hours worked between prev fill date (exclusive) and curr fill date (inclusive)
+    const hours = hourLogs
+      .filter((l) => l.date > prev.date && l.date <= curr.date)
+      .reduce((s, l) => s + l.hoursWorked, 0);
+    if (hours <= 0) continue;
+    rates.push(consumed / hours);
+  }
+
+  const avgLPerHour = rates.length > 0
+    ? Math.round((rates.reduce((s, r) => s + r, 0) / rates.length) * 100) / 100
+    : null;
+
+  const last = fills[fills.length - 1];
+  const currentTank = last.remaining != null
+    ? Math.round((last.remaining + last.litres) * 10) / 10
+    : null;
+  const predictedHours = avgLPerHour != null && currentTank != null && currentTank > 0
+    ? Math.round((currentTank / avgLPerHour) * 10) / 10
+    : null;
+
+  return { avgLPerHour, currentTank, predictedHours, fillCount: fills.length };
 }
 
 // ---------------------------------------------------------------------------------------------

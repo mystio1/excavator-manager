@@ -158,6 +158,9 @@ function logData(input: Omit<DailyLogInput, "workSessionId">, hoursWorked: numbe
     endHourMeter: roundOrNull(input.endHourMeter),
     hoursWorked,
     dieselLiters: roundOrNull(input.dieselLiters),
+    remainingDieselLiters: input.dieselLiters != null && input.remainingDieselLiters != null
+      ? roundOrNull(input.remainingDieselLiters)
+      : null,
     notes: input.notes || null,
     attachment: input.attachment || null,
   };
@@ -541,6 +544,7 @@ export async function submitDieselOnly(operatorId: string, input: DieselOnlyInpu
         endHourMeter: meter,
         hoursWorked: 0,
         dieselLiters: roundHours(input.dieselLiters),
+        remainingDieselLiters: input.remainingDieselLiters != null ? roundHours(input.remainingDieselLiters) : null,
         notes: input.notes || null,
         attachment: input.attachment || null,
         source: "OPERATOR",

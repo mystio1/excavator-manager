@@ -27,17 +27,22 @@ import {
 export function DieselOnlyDialog({ lang }: { lang: OperatorLang }) {
   const { mutate } = useSWRConfig();
   const [open, setOpen] = useState(false);
+  const [confirmSkipRemaining, setConfirmSkipRemaining] = useState(false);
   const today = todayLocal();
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch("/api/operator/diesel", { method: "POST", body: JSON.stringify(body) });
   });
   const t = (key: string) => ot(lang, key);
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
+  async function submit(fd: FormData, skipRemainingCheck = false) {
+    const remaining = fd.get("remainingDieselLiters");
+    if (!skipRemainingCheck && (!remaining || remaining === "")) {
+      setConfirmSkipRemaining(true);
+      return;
+    }
     const ok = await run({
       dieselLiters: fd.get("dieselLiters"),
+      remainingDieselLiters: remaining || undefined,
       date: fd.get("date"),
       attachment: fd.get("attachment") || undefined,
       notes: fd.get("notes") || undefined,
@@ -48,8 +53,13 @@ export function DieselOnlyDialog({ lang }: { lang: OperatorLang }) {
     }
   }
 
+  function handleOpen(v: boolean) {
+    setOpen(v);
+    if (!v) setConfirmSkipRemaining(false);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpen}>
       <DialogTrigger render={<Button size="lg" variant="secondary" className="h-12 w-full text-base" />}>
         <Fuel className="size-5" />
         {t("dieselOnly.trigger")}
@@ -58,7 +68,10 @@ export function DieselOnlyDialog({ lang }: { lang: OperatorLang }) {
         <DialogHeader>
           <DialogTitle>{t("dieselOnly.title")}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <form
+          onSubmit={(e) => { e.preventDefault(); submit(new FormData(e.currentTarget)); }}
+          className="flex flex-col gap-4"
+        >
           <p className="text-sm text-muted-foreground">{t("dieselOnly.help")}</p>
 
           <div className="grid grid-cols-2 gap-4">
@@ -93,6 +106,56 @@ export function DieselOnlyDialog({ lang }: { lang: OperatorLang }) {
             </div>
           </div>
 
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="diesel-only-remaining" className="text-base">
+              Remaining diesel in tank (before this fill)
+            </Label>
+            <Input
+              id="diesel-only-remaining"
+              name="remainingDieselLiters"
+              type="number"
+              step="0.1"
+              min="0"
+              placeholder="e.g. 70"
+              className="h-12 text-base"
+              onChange={() => setConfirmSkipRemaining(false)}
+            />
+            <p className="text-xs text-muted-foreground">
+              How many litres were left before you filled up? Used to calculate consumption rate.
+            </p>
+          </div>
+
+          {confirmSkipRemaining && (
+            <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-3 text-sm">
+              <p className="font-semibold text-amber-700 dark:text-amber-300">
+                No remaining diesel entered
+              </p>
+              <p className="mt-1 text-amber-700/80 dark:text-amber-300/80">
+                Without it, we can&apos;t calculate the actual consumption rate. Are you sure you want to skip?
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="submit"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const form = e.currentTarget.closest("form") as HTMLFormElement;
+                    submit(new FormData(form), true);
+                  }}
+                  className="flex-1 rounded-lg bg-amber-500 py-2 text-sm font-semibold text-white"
+                >
+                  Yes, skip remaining
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmSkipRemaining(false)}
+                  className="flex-1 rounded-lg bg-muted py-2 text-sm font-semibold text-foreground"
+                >
+                  Enter it
+                </button>
+              </div>
+            </div>
+          )}
+
           <AttachmentPicker
             name="attachment"
             label={t("dieselOnly.attachment")}
@@ -108,11 +171,13 @@ export function DieselOnlyDialog({ lang }: { lang: OperatorLang }) {
 
           {error && <p role="alert" className="text-sm font-medium text-destructive">{otMsg(lang, error)}</p>}
 
-          <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-            <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
-              {pending ? t("dieselOnly.submitting") : t("dieselOnly.submit")}
-            </Button>
-          </DialogFooter>
+          {!confirmSkipRemaining && (
+            <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
+              <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
+                {pending ? t("dieselOnly.submitting") : t("dieselOnly.submit")}
+              </Button>
+            </DialogFooter>
+          )}
         </form>
       </DialogContent>
     </Dialog>

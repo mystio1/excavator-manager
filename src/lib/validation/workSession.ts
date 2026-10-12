@@ -60,6 +60,7 @@ const dailyLogFields = {
   breakMinutes: z.coerce.number().int("Must be a whole number").min(0).max(1440).optional(),
   operatorName: z.string().trim().optional(),
   dieselLiters: z.coerce.number().positive("Must be greater than 0").max(MAX_LITERS).optional(),
+  remainingDieselLiters: z.coerce.number().min(0).max(MAX_LITERS).optional(),
   notes: z.string().trim().optional(),
   attachment: z.string().trim().optional(),
 };
@@ -96,6 +97,7 @@ export const operatorDailyLogSchema = z
  * litres and a date are required; the tool and a note are optional. */
 export const dieselOnlySchema = z.object({
   dieselLiters: z.coerce.number().positive("Enter the diesel litres (more than 0)").max(MAX_LITERS),
+  remainingDieselLiters: z.coerce.number().min(0).max(MAX_LITERS).optional(),
   date: workDateField("Select the diesel date").refine((v) => !isFutureWorkDate(v), "The diesel date can't be in the future"),
   attachment: toolField.optional(),
   notes: z.string().trim().optional(),

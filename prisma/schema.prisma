@@ -417,12 +417,13 @@ model WorkSession {
   endHourMeter   Float?
   totalHours     Float     @default(0)
   attachment     String? // bucket/breaker/etc. reported in use — carried over from an OperatorWorkRequest on approval
-  dieselLiters   Float? // reported diesel refill, if any, during this job — see getSiteAnalysis
-  dieselDate     DateTime?
-  status         String    @default("ACTIVE")
-  notes          String?
+  dieselLiters          Float? // reported diesel refill, if any, during this job — see getSiteAnalysis
+  remainingDieselLiters Float? // litres left before this fill; enables consumption rate calculation
+  dieselDate            DateTime?
+  status                String    @default("ACTIVE")
+  notes                 String?
   // When the operator submitted this work (null for admin-entered work); the work dates are startDate/endDate.
-  submittedAt    DateTime?
+  submittedAt           DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -523,7 +524,11 @@ model DailyWorkLog {
   // is APPROVED, same "unapproved data must never move anything real"
   // principle as startHourMeter/endHourMeter not touching
   // Excavator.currentHourMeter until then.
-  dieselLiters   Float?
+  dieselLiters          Float?
+  // How much diesel was left in the tank from the PREVIOUS fill, entered at the
+  // time of a new fill. Used to compute actual consumption:
+  // consumed = prev.dieselLiters − this.remainingDieselLiters
+  remainingDieselLiters Float?
   notes          String?
   // Tool reported in use that day ("Bucket" | "Breaker" | "Chaining", see
   // ATTACHMENT_VALUES) — set (not merged, unlike dieselLiters) onto
