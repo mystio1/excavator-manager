@@ -418,7 +418,7 @@ model WorkSession {
   totalHours     Float     @default(0)
   attachment     String? // bucket/breaker/etc. reported in use — carried over from an OperatorWorkRequest on approval
   dieselLiters          Float? // reported diesel refill, if any, during this job — see getSiteAnalysis
-  remainingDieselLiters Float? // litres left before this fill; enables consumption rate calculation
+  remainingDieselLiters Float? // closing balance: litres still in the tank at the end of this job's work
   dieselDate            DateTime?
   status                String    @default("ACTIVE")
   notes                 String?
@@ -525,9 +525,10 @@ model DailyWorkLog {
   // principle as startHourMeter/endHourMeter not touching
   // Excavator.currentHourMeter until then.
   dieselLiters          Float?
-  // How much diesel was left in the tank from the PREVIOUS fill, entered at the
-  // time of a new fill. Used to compute actual consumption:
-  // consumed = prev.dieselLiters − this.remainingDieselLiters
+  // Closing balance: litres still in the tank at the end of this entry's work.
+  // Carries into the next entry as its opening balance, so consumption is
+  // consumed = (previous closing + dieselLiters) − this closing.
+  // See dieselEntryAverage in services/siteAnalysis.ts.
   remainingDieselLiters Float?
   notes          String?
   // Tool reported in use that day ("Bucket" | "Breaker" | "Chaining", see

@@ -93,6 +93,8 @@ function entriesCte(scope: Scope): Prisma.Sql {
              (CASE WHEN l.kind = 'DIESEL_ONLY' THEN 0 ELSE round(l."hoursWorked"::numeric, 2) END) AS hours,
              l.attachment AS attachment,
              round(COALESCE(l."dieselLiters", 0)::numeric, 2) AS diesel,
+             l."remainingDieselLiters" AS closing,
+             l."createdAt" AS "enteredAt",
              l.notes AS notes
       FROM "DailyWorkLog" l
       JOIN "WorkSession" s ON s.id = l."workSessionId"
@@ -102,7 +104,7 @@ function entriesCte(scope: Scope): Prisma.Sql {
       SELECT s.id, 'SESSION'::text, s.id, s."siteId", s."excavatorId", s."operatorId",
              NULL, s."startDate", s."startHourMeter", s."endHourMeter",
              round(s."totalHours"::numeric, 2), s.attachment,
-             round(COALESCE(s."dieselLiters", 0)::numeric, 2), s.notes
+             round(COALESCE(s."dieselLiters", 0)::numeric, 2), s."remainingDieselLiters", s."createdAt", s.notes
       FROM "WorkSession" s
       JOIN "Site" st ON st.id = s."siteId"
       WHERE s."businessId" = ${b} AND st."businessId" = ${b}
@@ -534,7 +536,8 @@ export async function getSiteAnalysis(businessId: string, siteId: string, f: Sit
   const { from, to } = parseRange(f.from, f.to);
   const scope: Scope = { businessId, siteCond: Prisma.sql`st.id = ${siteId}`, excavatorId: f.excavatorId, from, to };
 
-  const [totals, machines, machineOptions, working, rateHistory, customerFinancials, dieselConsumption] = await Promise.all([
+  const [totals, machines, machineOptions, working, rateHistory, customerFinancials, dieselConsumption, closings] =
+    await Promise.all([
     aggregateAll(scope),
     aggregateByMachine(scope),
     db.excavator.findMany({
@@ -549,7 +552,10 @@ export async function getSiteAnalysis(businessId: string, siteId: string, f: Sit
       take: 10,
     }),
     site.customerId ? getCustomerBillTotals(businessId, site.customerId) : Promise.resolve<BillTotals | null>(null),
-    f.excavatorId ? getDieselConsumptionStats(businessId, f.excavatorId) : Promise.resolve(null),
+    f.excavatorId
+      ? getDieselConsumptionStats(businessId, siteId, { ...f, excavatorId: f.excavatorId })
+      : Promise.resolve(null),
+    closingBalances(businessId, siteId, f.excavatorId),
   ]);
 
   const machineFilterId = f.excavatorId;
@@ -590,7 +596,7 @@ export async function getSiteAnalysis(businessId: string, siteId: string, f: Sit
     diesel: {
       total: totals.diesel,
       avgPerDay: totals.avgDieselPerDay,
-      avgPerHour: totals.avgDieselPerHour,
+      avgPerHour: consumptionPerHour(machines, closings, f),
       consumption: dieselConsumption,
     },
     rateHistory: rateHistory.map((h) => ({
@@ -608,74 +614,25 @@ export async function getSiteAnalysis(businessId: string, siteId: string, f: Sit
 // Diesel consumption rate (per-machine, cross-site)
 // ---------------------------------------------------------------------------------------------
 
-/** Computes actual L/hr consumption from fill pairs where the operator/admin
- * entered the remaining diesel before a new fill.
- * consumed = prev.dieselLiters - current.remainingDieselLiters
- * hours    = approved hoursWorked between the two diesel dates */
-async function getDieselConsumptionStats(businessId: string, excavatorId: string) {
-  // All diesel fills (DailyWorkLog + WorkSession-level) ordered by date
-  const [logFills, sessionFills] = await Promise.all([
-    db.dailyWorkLog.findMany({
-      where: {
-        status: "APPROVED",
-        dieselLiters: { gt: 0 },
-        workSession: { businessId, excavatorId },
-      },
-      select: { date: true, dieselLiters: true, remainingDieselLiters: true },
-      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
-    }),
-    db.workSession.findMany({
-      where: { businessId, excavatorId, status: "COMPLETED", dieselLiters: { gt: 0 } },
-      select: { startDate: true, dieselLiters: true, remainingDieselLiters: true },
-      orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
-    }),
-  ]);
-
-  // Merge and sort all diesel entries chronologically
-  type FillEntry = { date: Date; litres: number; remaining: number | null };
-  const fills: FillEntry[] = [
-    ...logFills.map((l) => ({ date: l.date, litres: l.dieselLiters!, remaining: l.remainingDieselLiters ?? null })),
-    ...sessionFills.map((s) => ({ date: s.startDate, litres: s.dieselLiters!, remaining: s.remainingDieselLiters ?? null })),
-  ].sort((a, b) => a.date.getTime() - b.date.getTime());
-
-  if (fills.length === 0) return null;
-
-  // All approved hours logs for this machine (for summing hours between fills)
-  const hourLogs = await db.dailyWorkLog.findMany({
-    where: { status: "APPROVED", hoursWorked: { gt: 0 }, workSession: { businessId, excavatorId } },
-    select: { date: true, hoursWorked: true },
-    orderBy: { date: "asc" },
-  });
-
-  // Compute consumption rate from consecutive fill pairs where remaining is known
-  const rates: number[] = [];
-  for (let i = 1; i < fills.length; i++) {
-    const curr = fills[i];
-    const prev = fills[i - 1];
-    if (curr.remaining == null) continue;
-    const consumed = prev.litres - curr.remaining;
-    if (consumed <= 0) continue;
-    // Sum hours worked between prev fill date (exclusive) and curr fill date (inclusive)
-    const hours = hourLogs
-      .filter((l) => l.date > prev.date && l.date <= curr.date)
-      .reduce((s, l) => s + l.hoursWorked, 0);
-    if (hours <= 0) continue;
-    rates.push(consumed / hours);
-  }
-
-  const avgLPerHour = rates.length > 0
-    ? Math.round((rates.reduce((s, r) => s + r, 0) / rates.length) * 100) / 100
-    : null;
-
-  const last = fills[fills.length - 1];
-  const currentTank = last.remaining != null
-    ? Math.round((last.remaining + last.litres) * 10) / 10
-    : null;
-  const predictedHours = avgLPerHour != null && currentTank != null && currentTank > 0
-    ? Math.round((currentTank / avgLPerHour) * 10) / 10
-    : null;
-
-  return { avgLPerHour, currentTank, predictedHours, fillCount: fills.length };
+/** Headline rate for the machine card: the most recent entry's own average
+ * (same formula as the readings table — see dieselEntryAverage), plus how long
+ * the diesel left in the tank should last at that rate. */
+async function getDieselConsumptionStats(
+  businessId: string,
+  siteId: string,
+  f: SiteAnalysisFilters & { excavatorId: string },
+) {
+  const latest = await listDailyReadings(businessId, siteId, { ...f, page: 1, pageSize: 1 });
+  const row = latest?.rows[0];
+  if (!row || row.closingDiesel == null) return null;
+  return {
+    date: row.date,
+    avgLPerHour: row.average,
+    consumed: row.dieselConsumed,
+    currentTank: row.closingDiesel,
+    predictedHours: row.average != null && row.average > 0 ? num(row.closingDiesel / row.average) : null,
+    flagged: row.dieselFlagged,
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -698,13 +655,99 @@ export type DailyReadingRow = {
   brekarHours: number;
   otherHours: number;
   diesel: number;
-  /** Diesel litres per working hour. */
+  /** Litres left in the tank at the close of this entry. */
+  closingDiesel: number | null;
+  /** Closing balance of this machine's previous entry at this site. */
+  prevClosingDiesel: number | null;
+  /** (prevClosing + diesel) - closing, i.e. what this entry actually burned. */
+  dieselConsumed: number | null;
+  /** Diesel litres per working hour for THIS entry; null when not computable. */
   average: number | null;
+  /** Consumption came out negative — the readings need checking. */
+  dieselFlagged: boolean;
   /** totalHours - (bucket + brekar). */
   readingDifference: number;
   /** A stored end reading was lower than its start reading. */
   flagged: boolean;
 };
+
+/** Per-entry diesel average for Site Analysis. Uses only this entry and the
+ * immediately previous closing balance of the same machine at the same site —
+ * never a lifetime or cumulative average.
+ *   available = (previous closing ?? 0) + litres filled on this entry
+ *   consumed  = available - this entry's closing
+ *   average   = consumed / this entry's running hours */
+export function dieselEntryAverage(e: {
+  hours: number;
+  filled: number;
+  closing: number | null;
+  prevClosing: number | null;
+}): { average: number | null; consumed: number | null; flagged: boolean } {
+  // Without a closing balance (or anything to measure it against) an average
+  // would be a guess, so show nothing rather than something misleading.
+  if (e.closing == null || (e.prevClosing == null && e.filled <= 0)) {
+    return { average: null, consumed: null, flagged: false };
+  }
+  const consumed = num((e.prevClosing ?? 0) + e.filled - e.closing);
+  if (consumed < 0) return { average: null, consumed, flagged: true };
+  if (e.hours <= 0) return { average: null, consumed, flagged: false };
+  return { average: num(consumed / e.hours), consumed, flagged: false };
+}
+
+/** Litres actually burned per working hour across the scope — NOT litres filled
+ * per hour, which counts diesel still sitting in the tank.
+ *
+ * Summing the per-entry rule over a machine's entries telescopes neatly:
+ *   (f1 - c1) + (c1 + f2 - c2) + ... = (total filled) - (latest closing)
+ * so a machine contributes only once its closing balance is known; machines
+ * without one are left out rather than silently inflating the rate. */
+function consumptionPerHour(
+  machines: { excavatorId: string; hours: number; diesel: number }[],
+  closings: { day: string; excavatorId: string; closing: number }[],
+  f: SiteAnalysisFilters,
+): number | null {
+  const latest = new Map<string, number>();
+  for (const c of closings) {
+    if (f.from && c.day < f.from) continue;
+    if (f.to && c.day > f.to) continue;
+    latest.set(c.excavatorId, Number(c.closing)); // oldest-first, so the last write wins
+  }
+  let consumed = 0;
+  let hours = 0;
+  for (const m of machines) {
+    const closing = latest.get(m.excavatorId);
+    if (closing == null) continue;
+    consumed += m.diesel - closing;
+    hours += m.hours;
+  }
+  return hours > 0 && consumed > 0 ? num(consumed / hours) : null;
+}
+
+/** Closing balance per machine per day at one site, oldest first. Deliberately
+ * ignores the view's date filter: an entry's previous balance often predates it. */
+async function closingBalances(businessId: string, siteId: string, excavatorId?: string) {
+  const machineCond = excavatorId ? Prisma.sql`AND s."excavatorId" = ${excavatorId}` : Prisma.empty;
+  return db.$queryRaw<{ day: string; excavatorId: string; closing: number }[]>(Prisma.sql`
+    WITH c AS (
+      SELECT l.date AS date, s."excavatorId" AS "excavatorId", l.id AS "entryId",
+             l."createdAt" AS "enteredAt", l."remainingDieselLiters" AS closing
+      FROM "DailyWorkLog" l
+      JOIN "WorkSession" s ON s.id = l."workSessionId"
+      WHERE s."businessId" = ${businessId} AND s."siteId" = ${siteId} AND l.status = 'APPROVED'
+        AND l."remainingDieselLiters" IS NOT NULL ${machineCond}
+      UNION ALL
+      SELECT s."startDate", s."excavatorId", s.id, s."createdAt", s."remainingDieselLiters"
+      FROM "WorkSession" s
+      WHERE s."businessId" = ${businessId} AND s."siteId" = ${siteId}
+        AND s."remainingDieselLiters" IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM "DailyWorkLog" dl WHERE dl."workSessionId" = s.id)
+        ${machineCond}
+    )
+    SELECT to_char(date::date, 'YYYY-MM-DD') AS day, "excavatorId",
+           (array_agg(closing ORDER BY "enteredAt" DESC, "entryId" DESC))[1]::float8 AS closing
+    FROM c GROUP BY date::date, "excavatorId"
+    ORDER BY date::date ASC`);
+}
 
 async function siteScope(businessId: string, siteId: string, f: SiteAnalysisFilters): Promise<Scope | null> {
   const site = await db.site.findFirst({ where: { id: siteId, businessId }, select: { id: true } });
@@ -727,11 +770,13 @@ export async function listDailyReadings(
   const pageSize = f.pageSize ?? DEFAULT_PAGE_SIZE;
   const page = f.page ?? 1;
 
-  const rows = await db.$queryRaw<AggRow[]>(Prisma.sql`
+  const [rows, closings] = await Promise.all([
+    db.$queryRaw<AggRow[]>(Prisma.sql`
     ${entriesCte(scope)}
     SELECT to_char(date::date, 'YYYY-MM-DD') AS day, "excavatorId", min("excavatorName") AS "machineName",
            min("machineNumber") AS "machineNumber",
            (array_agg("operatorName" ORDER BY "entryId"))[1] AS "operatorName",
+           (array_agg(closing ORDER BY "enteredAt" DESC, "entryId" DESC) FILTER (WHERE closing IS NOT NULL))[1]::float8 AS closing,
            min("startMeter") AS "startReading", max("endMeter") AS "endReading",
            sum(CASE WHEN "startMeter" IS NOT NULL AND "endMeter" IS NOT NULL AND "endMeter" >= "startMeter"
                     THEN round(("endMeter" - "startMeter")::numeric, 2) ELSE hours END)::float8 AS "totalHours",
@@ -745,7 +790,27 @@ export async function listDailyReadings(
     FROM val WHERE ${dateCond(scope)}
     GROUP BY date::date, "excavatorId"
     ORDER BY date::date DESC, min("excavatorName"), "excavatorId"
-    LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`);
+    LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`),
+    closingBalances(businessId, siteId, f.excavatorId),
+  ]);
+
+  // Previous closing balance = the latest earlier day for that same machine.
+  const history = new Map<string, { day: string; closing: number }[]>();
+  for (const c of closings) {
+    const list = history.get(c.excavatorId) ?? [];
+    list.push({ day: c.day, closing: Number(c.closing) });
+    history.set(c.excavatorId, list);
+  }
+  const prevClosingFor = (excavatorId: string, day: string) => {
+    const list = history.get(excavatorId);
+    if (!list) return null;
+    let prev: number | null = null;
+    for (const c of list) {
+      if (c.day >= day) break; // list is oldest-first, days are ISO so string order == date order
+      prev = c.closing;
+    }
+    return prev;
+  };
 
   const total = rows[0] ? Number(rows[0].total) : 0;
   const mapped: DailyReadingRow[] = rows.map((r) => {
@@ -753,9 +818,19 @@ export async function listDailyReadings(
     const bucketHours = num(r.bucketHours);
     const brekarHours = num(r.brekarHours);
     const diesel = num(r.diesel);
+    const day = r.day as string;
+    const excavatorId = r.excavatorId as string;
+    const closingDiesel = r.closing === null || r.closing === undefined ? null : num(r.closing);
+    const prevClosingDiesel = prevClosingFor(excavatorId, day);
+    const d = dieselEntryAverage({
+      hours: totalHours,
+      filled: diesel,
+      closing: closingDiesel,
+      prevClosing: prevClosingDiesel,
+    });
     return {
-      date: r.day as string,
-      excavatorId: r.excavatorId as string,
+      date: day,
+      excavatorId,
       machineName: r.machineName as string,
       machineNumber: (r.machineNumber as string | null) ?? null,
       operatorName: (r.operatorName as string | null) ?? null,
@@ -767,7 +842,11 @@ export async function listDailyReadings(
       brekarHours,
       otherHours: num(r.otherHours),
       diesel,
-      average: totalHours > 0 ? num(diesel / totalHours) : null,
+      closingDiesel,
+      prevClosingDiesel,
+      dieselConsumed: d.consumed,
+      average: d.average,
+      dieselFlagged: d.flagged,
       readingDifference: num(totalHours - bucketHours - brekarHours),
       flagged: Boolean(r.flagged),
     };

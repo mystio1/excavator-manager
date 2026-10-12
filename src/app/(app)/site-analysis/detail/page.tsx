@@ -220,7 +220,12 @@ export default function SiteDetailPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <SummaryCard icon={Droplets} label="Total Diesel" value={`${diesel.total} L`} accent="warning" />
               <SummaryCard icon={CalendarDays} label="Average Diesel / Day" value={`${diesel.avgPerDay} L`} accent="warning" />
-              <SummaryCard icon={Clock} label="Average Diesel / Working Hour" value={`${diesel.avgPerHour} L/hr`} accent="warning" />
+              <SummaryCard
+                icon={Clock}
+                label="Average Diesel / Working Hour"
+                value={diesel.avgPerHour === null ? "N/A" : `${diesel.avgPerHour} L/hr`}
+                accent="warning"
+              />
             </div>
             <DieselEntriesList siteId={id} excavatorId={excavatorId || undefined} from={from || undefined} to={to || undefined} />
           </CardContent>

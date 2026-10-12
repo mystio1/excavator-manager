@@ -241,7 +241,7 @@ describe("work entries: sessionless jobs, flagged meters, other work", () => {
     const a = (await getSiteAnalysis(t.businessId, siteId))!;
     expect(a.summary).toMatchObject({ hours: 13, bucketHours: 6, breakerHours: 3, otherHours: 4, diesel: 12, revenue: 6000 + 6000 });
     expect(a.workType.other).toMatchObject({ hours: 4, revenue: 0 });
-    expect(a.diesel.avgPerHour).toBeCloseTo(12 / 13, 2);
+    expect(a.diesel.avgPerHour).toBeNull(); // no closing balance recorded, so no real consumption rate
 
     const d = (await listDailyReadings(t.businessId, siteId, { pageSize: 50 }))!;
     const chain = d.rows.find((x) => x.date === "2026-03-02")!;
@@ -250,7 +250,15 @@ describe("work entries: sessionless jobs, flagged meters, other work", () => {
     expect(flagged).toMatchObject({ flagged: true, totalHours: 3, startReading: 500, endReading: 490 });
     expect(d.rows.some((x) => x.date === "2026-03-04")).toBe(false);
     const bucket = d.rows.find((x) => x.date === "2026-03-01")!;
-    expect(bucket).toMatchObject({ totalHours: 6, bucketHours: 6, readingDifference: 0, diesel: 12, average: 2 });
+    // no closing balance was recorded for this entry, so there is no honest L/hr to show
+    expect(bucket).toMatchObject({
+      totalHours: 6,
+      bucketHours: 6,
+      readingDifference: 0,
+      diesel: 12,
+      closingDiesel: null,
+      average: null,
+    });
   });
 });
 

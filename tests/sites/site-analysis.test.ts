@@ -122,7 +122,8 @@ describe("site analysis totals (owner scenario)", () => {
     expect(entrySum).toBe(a.diesel.total);
     expect(all.totalLitres).toBe(a.diesel.total);
     expect(all.entries.some((e) => e.notes === "Top-up" && e.litres === 20)).toBe(true);
-    expect(a.diesel.avgPerHour).toBeCloseTo(a.diesel.total / 486.5, 2);
+    // no closing balances in this fixture, so litres actually burned is unknown
+    expect(a.diesel.avgPerHour).toBeNull();
     expect(a.diesel.avgPerDay).toBeCloseTo(a.diesel.total / a.summary.dataDays, 2);
 
     // two pages add up to the same figure

@@ -96,21 +96,18 @@ export default function SiteMachinePage() {
               <div className="grid grid-cols-2 gap-y-1 text-sm">
                 <KeyValue label="Total Diesel" value={`${diesel.total} L`} />
                 <KeyValue label="Average / Day" value={`${diesel.avgPerDay} L`} />
-                <KeyValue label="Avg L / Hr (ratio)" value={`${diesel.avgPerHour} L/hr`} />
-                {diesel.consumption?.avgLPerHour != null && (
+                <KeyValue label="Avg L / Hr" value={diesel.avgPerHour === null ? "N/A" : `${diesel.avgPerHour} L/hr`} />
+                {diesel.consumption?.avgLPerHour != null ? (
                   <>
-                    <KeyValue label="Consumption Rate" value={`${diesel.consumption.avgLPerHour} L/hr`} strong />
-                    {diesel.consumption.currentTank != null && (
-                      <KeyValue label="Tank at Last Fill" value={`${diesel.consumption.currentTank} L`} />
-                    )}
+                    <KeyValue label="Latest Rate" value={`${diesel.consumption.avgLPerHour} L/hr`} strong />
+                    <KeyValue label="Diesel in Tank" value={`${diesel.consumption.currentTank} L`} />
                     {diesel.consumption.predictedHours != null && (
-                      <KeyValue label="Predicted Runtime" value={`${diesel.consumption.predictedHours} hrs`} strong />
+                      <KeyValue label="Can Run For" value={`${diesel.consumption.predictedHours} hrs`} strong />
                     )}
                   </>
-                )}
-                {!diesel.consumption?.avgLPerHour && (
-                  <p className="col-span-2 text-xs text-muted-foreground pt-1">
-                    Enter remaining diesel on next fill to unlock consumption rate & prediction.
+                ) : (
+                  <p className="col-span-2 pt-1 text-xs text-muted-foreground">
+                    Enter closing diesel in tank on each entry to unlock the consumption rate & runtime prediction.
                   </p>
                 )}
               </div>

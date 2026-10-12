@@ -208,7 +208,7 @@ export function SubmitReadingDialog({
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="remainingDieselLiters" className="text-base">
-                Remaining before fill
+                Diesel left in tank (L)
               </Label>
               <Input
                 id="remainingDieselLiters"
@@ -223,7 +223,7 @@ export function SubmitReadingDialog({
             </div>
           </div>
           <p className="text-xs text-muted-foreground -mt-2">
-            Diesel in tank before today&apos;s fill — used to calculate consumption rate.
+            Diesel still in the tank at the end of today&apos;s work — used to calculate the consumption rate.
           </p>
 
           {confirmSkipRemaining && (

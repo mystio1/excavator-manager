@@ -125,7 +125,7 @@ export function StopWorkDialog({
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="stopWork-remainingDiesel" className="text-base">
-                Remaining before fill
+                Diesel left in tank (L)
               </Label>
               <Input
                 id="stopWork-remainingDiesel"
@@ -140,7 +140,7 @@ export function StopWorkDialog({
             </div>
           </div>
           <p className="text-xs text-muted-foreground -mt-2">
-            Litres left in tank before this fill — enables consumption rate &amp; runtime prediction.
+            Litres still in the tank at the end of the work — enables consumption rate &amp; runtime prediction.
           </p>
 
           {confirmSkipRemaining && (

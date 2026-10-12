@@ -55,7 +55,8 @@ export function DailyReadingsTable({
         <p className="text-base font-bold">Daily Machine Reading</p>
         <p className="flex items-start gap-1.5 text-xs text-muted-foreground" title={READING_DIFFERENCE_HELP}>
           <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          {READING_DIFFERENCE_HELP} Average = diesel litres per working hour.
+          {READING_DIFFERENCE_HELP} Average = ((previous closing + diesel filled) − closing) ÷ hours, using only
+          this machine&apos;s previous entry at this site.
         </p>
         {!data ? (
           <p className="py-6 text-center text-sm text-muted-foreground">Loading readings...</p>
@@ -75,6 +76,7 @@ export function DailyReadingsTable({
                   <TableHead className="text-right">Bucket Hours</TableHead>
                   <TableHead className="text-right">Brekar Hours</TableHead>
                   <TableHead className="text-right">Diesel (L)</TableHead>
+                  <TableHead className="text-right">Closing (L)</TableHead>
                   <TableHead className="text-right">Average (L/hr)</TableHead>
                   <TableHead className="text-right" title={READING_DIFFERENCE_HELP}>
                     Reading Difference
@@ -105,7 +107,19 @@ export function DailyReadingsTable({
                     <TableCell className="text-right tabular-nums">{hrs(r.bucketHours)}</TableCell>
                     <TableCell className="text-right tabular-nums">{hrs(r.brekarHours)}</TableCell>
                     <TableCell className="text-right tabular-nums">{r.diesel === 0 ? "—" : r.diesel}</TableCell>
-                    <TableCell className="text-right tabular-nums">{r.average === null ? "—" : r.average}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.closingDiesel === null ? "—" : r.closingDiesel}</TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums">
+                      {r.dieselFlagged ? (
+                        <span title={`Closing diesel is higher than what was available (${r.prevClosingDiesel ?? 0} L left + ${r.diesel} L filled). Check the readings.`}>
+                          <AlertTriangle className="mr-1 inline size-3.5 text-destructive" aria-label="Diesel reading needs checking" />
+                          Check
+                        </span>
+                      ) : r.average === null ? (
+                        "N/A"
+                      ) : (
+                        r.average
+                      )}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">{r.readingDifference === 0 ? "—" : r.readingDifference}</TableCell>
                   </TableRow>
                 ))}

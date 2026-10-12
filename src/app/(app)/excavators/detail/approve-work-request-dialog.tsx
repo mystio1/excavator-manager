@@ -299,7 +299,7 @@ export function ApproveWorkRequestDialog({
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor={`approve-remainingDiesel-${requestId}`} className="text-base">
-                Remaining before fill
+                Diesel left in tank (L)
               </Label>
               <Input
                 id={`approve-remainingDiesel-${requestId}`}
@@ -314,7 +314,7 @@ export function ApproveWorkRequestDialog({
             </div>
           </div>
           <p className="text-xs text-muted-foreground -mt-2">
-            Litres left in tank before this fill — used to calculate consumption rate &amp; predict runtime.
+            Litres still in the tank at the end of the work — used to calculate consumption rate &amp; predict runtime.
           </p>
 
           {confirmSkipRemaining && (

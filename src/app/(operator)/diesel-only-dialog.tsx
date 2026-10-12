@@ -108,7 +108,7 @@ export function DieselOnlyDialog({ lang }: { lang: OperatorLang }) {
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="diesel-only-remaining" className="text-base">
-              Remaining diesel in tank (before this fill)
+              Diesel left in tank after this fill (L)
             </Label>
             <Input
               id="diesel-only-remaining"
