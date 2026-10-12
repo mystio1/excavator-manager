@@ -290,6 +290,7 @@ export async function stopWork(businessId: string, actor: AuditActor, input: Sto
         // existing note is likewise left alone when none is given now.
         ...(input.dieselLiters != null && {
           dieselLiters: addQty(session.dieselLiters, input.dieselLiters),
+          remainingDieselLiters: input.remainingDieselLiters != null ? roundHours(input.remainingDieselLiters) : null,
           dieselDate: new Date(input.endDate),
         }),
         ...(input.notes && { notes: input.notes }),

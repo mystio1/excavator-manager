@@ -127,6 +127,7 @@ export const stopWorkSchema = z.object({
   endDate: dateString("Select an end date"),
   endHourMeter: z.coerce.number().min(0, "Must be 0 or more").max(MAX_HOURS),
   dieselLiters: z.coerce.number().positive("Must be greater than 0").max(MAX_LITERS).optional(),
+  remainingDieselLiters: z.coerce.number().min(0).max(MAX_LITERS).optional(),
   notes: z.string().trim().optional(),
   expectedVersion: expectedVersionField,
 });

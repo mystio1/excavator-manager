@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useSWRConfig } from "swr";
 import { Square } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
@@ -33,19 +33,26 @@ export function StopWorkDialog({
   const { mutate } = useSWRConfig();
   const today = todayLocal();
   const [open, setOpen] = useState(false);
+  const [confirmSkipRemaining, setConfirmSkipRemaining] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch(`/api/excavators/${excavatorId}/stop-work`, { method: "POST", body: JSON.stringify(body) });
   });
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
+  async function doSubmit(fd: FormData, skipRemainingCheck = false) {
+    const diesel = fd.get("dieselLiters");
+    const remaining = fd.get("remainingDieselLiters");
+    if (!skipRemainingCheck && diesel && !remaining) {
+      setConfirmSkipRemaining(true);
+      return;
+    }
     const ok = await run({
       workSessionId,
       expectedVersion: version,
       endDate: fd.get("endDate"),
       endHourMeter: Number(fd.get("endHourMeter")),
-      dieselLiters: fd.get("dieselLiters") || undefined,
+      dieselLiters: diesel || undefined,
+      remainingDieselLiters: remaining || undefined,
       notes: fd.get("notes") || undefined,
     });
     if (ok) {
@@ -54,8 +61,13 @@ export function StopWorkDialog({
     }
   }
 
+  function handleOpenChange(v: boolean) {
+    setOpen(v);
+    if (!v) setConfirmSkipRemaining(false);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
         render={
           <Button
@@ -72,7 +84,7 @@ export function StopWorkDialog({
         <DialogHeader>
           <DialogTitle>Stop Work</DialogTitle>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <form ref={formRef} onSubmit={(e) => { e.preventDefault(); doSubmit(new FormData(e.currentTarget)); }} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="endDate" className="text-base">
               End Date
@@ -96,12 +108,65 @@ export function StopWorkDialog({
             />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="dieselLiters" className="text-base">
-              Diesel Taken (L) (Optional)
-            </Label>
-            <Input id="dieselLiters" name="dieselLiters" type="number" step="0.1" min="0" className="h-12 text-base" />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="stopWork-dieselLiters" className="text-base">
+                Diesel Taken (L)
+              </Label>
+              <Input
+                id="stopWork-dieselLiters"
+                name="dieselLiters"
+                type="number"
+                step="0.1"
+                min="0"
+                className="h-12 text-base"
+                onChange={() => setConfirmSkipRemaining(false)}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="stopWork-remainingDiesel" className="text-base">
+                Remaining before fill
+              </Label>
+              <Input
+                id="stopWork-remainingDiesel"
+                name="remainingDieselLiters"
+                type="number"
+                step="0.1"
+                min="0"
+                placeholder="e.g. 70"
+                className="h-12 text-base"
+                onChange={() => setConfirmSkipRemaining(false)}
+              />
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Litres left in tank before this fill — enables consumption rate &amp; runtime prediction.
+          </p>
+
+          {confirmSkipRemaining && (
+            <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-3 text-sm">
+              <p className="font-semibold text-amber-700 dark:text-amber-300">No remaining diesel entered</p>
+              <p className="mt-1 text-amber-700/80 dark:text-amber-300/80">
+                Without it the consumption rate can&apos;t be calculated. Skip anyway?
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { if (formRef.current) doSubmit(new FormData(formRef.current), true); }}
+                  className="flex-1 rounded-lg bg-amber-500 py-2 text-sm font-semibold text-white"
+                >
+                  Yes, skip
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmSkipRemaining(false)}
+                  className="flex-1 rounded-lg bg-muted py-2 text-sm font-semibold text-foreground"
+                >
+                  Enter it
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="stopWorkNotes" className="text-base">
@@ -112,11 +177,13 @@ export function StopWorkDialog({
 
           {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
-          <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-            <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
-              {pending ? "Stopping..." : "Confirm Stop Work"}
-            </Button>
-          </DialogFooter>
+          {!confirmSkipRemaining && (
+            <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
+              <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
+                {pending ? "Stopping..." : "Confirm Stop Work"}
+              </Button>
+            </DialogFooter>
+          )}
         </form>
       </DialogContent>
     </Dialog>
