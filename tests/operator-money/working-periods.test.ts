@@ -385,6 +385,52 @@ describe("closing without a new period, and paid leave", () => {
   });
 });
 
+describe("salary paid while the operator is on holiday", () => {
+  /** The owner's example: session 1 closes owing 10,000; 2,000 is paid during the
+   * holiday and still belongs to session 1; the remaining 8,000 carries into session 2. */
+  it("counts the holiday payment in the closed session and carries only the remainder", async () => {
+    const op = await newOperator();
+    await addPayment(op.id, "2026-08-20", earned1() - 10000);
+
+    const before = (await getOperatorPeriodsOverview(t.businessId, op.id, NOW))!;
+    const period1 = before.periods[0]!;
+    const closed = await patchPeriod(
+      req("PATCH", `/api/operators/${op.id}/periods/${period1.id}`, { body: { close: true, endDate: "2026-08-26" } }),
+      ctx({ id: op.id, periodId: period1.id }),
+    );
+    expect(closed.status).toBe(200);
+    expect((await getOperatorPeriodsOverview(t.businessId, op.id, NOW))!.periods[0]!.pending).toBe(10000);
+
+    // Paid during the gap — after session 1 ended, before session 2 exists.
+    const holidayPay = await addPayment(op.id, "2026-09-05", 2000);
+    expect(holidayPay.transaction.workingPeriodId).toBe(period1.id);
+
+    const afterPay = (await getOperatorPeriodsOverview(t.businessId, op.id, NOW))!;
+    expect(afterPay.periods).toHaveLength(1);
+    expect(afterPay.periods[0]!.pending).toBe(8000);
+    expect(afterPay.summary.totalOutstanding).toBe(8000);
+
+    // Starting session 2 carries the remaining 8,000, not the original 10,000.
+    const res = await start(op.id, startBody({ carryForward: true }));
+    expect(res.status).toBe(201);
+    expect(await jsonOf<{ previousPending: number; carriedForward: number }>(res)).toMatchObject({
+      previousPending: 8000,
+      carriedForward: 8000,
+    });
+
+    const ov = (await getOperatorPeriodsOverview(t.businessId, op.id, NOW))!;
+    const [s1, s2] = ov.periods;
+    expect(s1!.pending).toBe(8000);
+    expect(s1!.balanceCarried).toBe(true);
+    expect(s1!.carriedToSession).toBe(2);
+    expect(s2!.previousBalance).toBe(8000);
+    expect(s2!.openingSourceSession).toBe(1);
+    // the holiday payment stays attributed to session 1, not pulled into session 2
+    expect(ov.summary.previousSessionsPending).toBe(0);
+    expect(ov.summary.totalOutstanding).toBeCloseTo(earned2() + 8000, 2);
+  });
+});
+
 describe("existing operators keep their numbers", () => {
   it("an operator with no stored period (and one with the stored initial period) match the legacy figures", async () => {
     const op = await newOperator("Legacy", "30000", new Date(2026, 5, 7));

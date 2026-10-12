@@ -24,6 +24,8 @@ import { EditTransactionDialog } from "./edit-transaction-dialog";
 import { DeleteTransactionButton } from "./delete-transaction-button";
 import { OperatorPinCard } from "./operator-pin-card";
 import { SalaryBreakdownDialog } from "./salary-breakdown-dialog";
+import { SessionsPanel } from "./sessions-panel";
+import { SessionSummaryCard } from "./session-summary-card";
 import Loading from "../../loading";
 
 const MONTH_LABEL = new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric" });
@@ -133,9 +135,10 @@ export default function OperatorDetailPage() {
       </div>
       <div className="flex flex-col gap-4 px-4 pb-6 md:px-8">
         <Tabs defaultValue={tab}>
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="transactions">Money</TabsTrigger>
+            <TabsTrigger value="sessions">Sessions</TabsTrigger>
             <TabsTrigger value="salary">Salary</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
@@ -151,6 +154,8 @@ export default function OperatorDetailPage() {
                 </p>
               </CardContent>
             </Card>
+
+            <SessionSummaryCard operatorId={operator.id} />
 
             <Card>
               <CardContent className="flex flex-col gap-2 text-sm">
@@ -220,6 +225,10 @@ export default function OperatorDetailPage() {
                 {loadingMore ? "Loading..." : "Load more"}
               </Button>
             )}
+          </TabsContent>
+
+          <TabsContent value="sessions" className="flex flex-col gap-4 pt-4">
+            <SessionsPanel operatorId={operator.id} />
           </TabsContent>
 
           <TabsContent value="salary" className="flex flex-col gap-4 pt-4">
