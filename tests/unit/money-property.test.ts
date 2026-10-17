@@ -49,8 +49,6 @@ const emptyDirect: DirectFields = {
   bucketRate: "",
   breakerHours: "",
   breakerRate: "",
-  dieselLiters: "",
-  dieselPricePerLiter: "",
 };
 
 describe("client preview agrees with the server to the paisa", () => {
@@ -71,7 +69,25 @@ describe("client preview agrees with the server to the paisa", () => {
             discount: text(s.discount),
             billType: s.billType,
             gstPercentage: s.gst,
-          } as Pick<BillFields, "transport" | "fuel" | "extra" | "bucket" | "breaker" | "discount" | "billType" | "gstPercentage">,
+            // No diesel in this scenario, so nothing comes off the total and
+            // the client preview stays comparable to normalBillTotals.
+            dieselLiters: "",
+            dieselRate: "",
+            deductDiesel: true,
+          } as Pick<
+            BillFields,
+            | "transport"
+            | "fuel"
+            | "extra"
+            | "bucket"
+            | "breaker"
+            | "discount"
+            | "billType"
+            | "gstPercentage"
+            | "dieselLiters"
+            | "dieselRate"
+            | "deductDiesel"
+          >,
         });
 
         const subtotal = sum(s.lines.map((l) => lineAmount(l.hours, l.rate)));

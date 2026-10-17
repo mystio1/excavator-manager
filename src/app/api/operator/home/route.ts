@@ -4,6 +4,7 @@ import {
   listOpenOperatorRequests,
   listRecentAdminWork,
   listRecentOperatorRequests,
+  operatorHistorySince,
 } from "@/lib/services/operatorWorkRequests";
 import { json, withApi } from "@/lib/with-api";
 
@@ -21,17 +22,18 @@ export const GET = withApi("operator.home", async () => {
     return json({ operatorLang, excavator, activeSession, latestEndMeter, openRequests: [], recentRequests: [] });
   }
 
+  const since = operatorHistorySince();
   const [openRequests, ownRequests, adminWork] = await Promise.all([
     listOpenOperatorRequests(operatorId, excavator.id, businessId),
-    listRecentOperatorRequests(operatorId, excavator.id, 5, businessId),
-    listRecentAdminWork(operatorId, excavator.id, 5, businessId),
+    listRecentOperatorRequests(operatorId, excavator.id, since, businessId),
+    listRecentAdminWork(operatorId, excavator.id, since, businessId),
   ]);
 
   // Work the admin entered belongs in the operator's history beside their own,
   // newest first — it is their work either way.
-  const recentRequests = [...ownRequests, ...adminWork]
-    .sort((a, b) => b.startDate.getTime() - a.startDate.getTime())
-    .slice(0, 5);
+  const recentRequests = [...ownRequests, ...adminWork].sort(
+    (a, b) => b.startDate.getTime() - a.startDate.getTime(),
+  );
 
   return json({ operatorLang, excavator, activeSession, latestEndMeter, openRequests, recentRequests });
 });

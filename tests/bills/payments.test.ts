@@ -259,6 +259,7 @@ describe("concurrent payments (the double-spend race)", () => {
         breakerRate: 0,
         dieselLiters: 0,
         dieselPricePerLiter: 0,
+        deductDiesel: true,
         items: [
           { id: item.id, excavatorId: t.excavatorId, siteName: "Pay Site", fromDate: "2026-10-01", toDate: "2026-10-01", hours: 500, ratePerHour: 1 },
         ],

@@ -10,7 +10,11 @@ import {
   submitDailyLog,
   updateDailyLog,
 } from "@/lib/services/workSessions";
-import { listRecentAdminWork, listRecentOperatorRequests } from "@/lib/services/operatorWorkRequests";
+import {
+  listRecentAdminWork,
+  listRecentOperatorRequests,
+  operatorHistorySince,
+} from "@/lib/services/operatorWorkRequests";
 import { cleanupTenant, createTenant, type TestTenant } from "../helpers/tenant";
 import { auditRows, failed, newActiveSession, newMachine, ok, snapshot } from "./helpers";
 
@@ -351,12 +355,51 @@ describe("what the operator portal sees", () => {
       const m = await newMachine(own);
       await newActiveSession(own, m.id);
 
-      const adminWork = await listRecentAdminWork(own.operatorId, m.id, 5, own.businessId);
+      const since = operatorHistorySince();
+      const adminWork = await listRecentAdminWork(own.operatorId, m.id, since, own.businessId);
       expect(adminWork).toHaveLength(1);
       expect(adminWork[0]).toMatchObject({ source: "ADMIN", startHourMeter: 100 });
 
       // The operator's own request list still cannot see it.
-      expect(await listRecentOperatorRequests(own.operatorId, m.id, 5, own.businessId)).toHaveLength(0);
+      expect(await listRecentOperatorRequests(own.operatorId, m.id, since, own.businessId)).toHaveLength(0);
+    } finally {
+      await cleanupTenant(own.businessId);
+    }
+  });
+
+  /** The list answers "did last week's work get recorded?", so it has to reach
+   * back further than the handful of rows it used to show. */
+  it("reaches a month back, and stops there", async () => {
+    const own = await createTenant("portal-history-window");
+    try {
+      const m = await newMachine(own);
+      const day = (daysAgo: number) => {
+        const d = new Date();
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate() - daysAgo);
+      };
+      // One job per day for the last 20 days, plus one well outside the window.
+      for (const daysAgo of [...Array.from({ length: 20 }, (_, i) => i), 45]) {
+        await db.workSession.create({
+          data: {
+            businessId: own.businessId,
+            excavatorId: m.id,
+            customerId: own.customerId,
+            siteId: own.siteId,
+            operatorId: own.operatorId,
+            startDate: day(daysAgo),
+            endDate: day(daysAgo),
+            startHourMeter: 100,
+            endHourMeter: 108,
+            totalHours: 8,
+            status: "COMPLETED",
+          },
+        });
+      }
+
+      const work = await listRecentAdminWork(own.operatorId, m.id, operatorHistorySince(), own.businessId);
+      expect(work).toHaveLength(20); // all 20 recent days, never only 5
+      expect(work[0]!.startDate.getTime()).toBeGreaterThan(work[19]!.startDate.getTime()); // newest first
+      expect(work.some((w) => w.startDate.getTime() === day(45).getTime())).toBe(false);
     } finally {
       await cleanupTenant(own.businessId);
     }

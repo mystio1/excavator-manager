@@ -274,11 +274,31 @@ export async function listOpenOperatorRequests(operatorId: string, excavatorId: 
   });
 }
 
-export async function listRecentOperatorRequests(operatorId: string, excavatorId: string, limit = 5, businessId?: string) {
+/** How far back the operator's own history reaches. A handful of rows was too
+ * short to answer "did last week's work get recorded?", which is the question
+ * the list exists for. */
+export const OPERATOR_HISTORY_DAYS = 31;
+
+/** Ceiling on the rows either half of that history can return, so an unusually
+ * busy month still sends a bounded payload to a phone. */
+const OPERATOR_HISTORY_CAP = 60;
+
+export function operatorHistorySince(now = new Date()) {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - OPERATOR_HISTORY_DAYS);
+}
+
+/** Ordered and filtered by the date the work was DONE, not when the row was
+ * written, so a job entered late still sits on the day it happened. */
+export async function listRecentOperatorRequests(
+  operatorId: string,
+  excavatorId: string,
+  since: Date,
+  businessId?: string,
+) {
   return db.operatorWorkRequest.findMany({
-    where: { operatorId, excavatorId, ...(businessId ? { businessId } : {}) },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: limit,
+    where: { operatorId, excavatorId, ...(businessId ? { businessId } : {}), startDate: { gte: since } },
+    orderBy: [{ startDate: "desc" }, { id: "desc" }],
+    take: OPERATOR_HISTORY_CAP,
   });
 }
 
@@ -287,16 +307,22 @@ export async function listRecentOperatorRequests(operatorId: string, excavatorId
  * query above cannot see them, and the operator would never learn the work was
  * recorded against their name. Shaped like a request so the portal's history
  * can list both together. */
-export async function listRecentAdminWork(operatorId: string, excavatorId: string, limit = 5, businessId?: string) {
+export async function listRecentAdminWork(
+  operatorId: string,
+  excavatorId: string,
+  since: Date,
+  businessId?: string,
+) {
   const sessions = await db.workSession.findMany({
     where: {
       operatorId,
       excavatorId,
       ...(businessId ? { businessId } : {}),
       operatorWorkRequest: { is: null },
+      startDate: { gte: since },
     },
     orderBy: [{ startDate: "desc" }, { id: "desc" }],
-    take: limit,
+    take: OPERATOR_HISTORY_CAP,
     select: { id: true, status: true, startDate: true, endDate: true, startHourMeter: true, endHourMeter: true },
   });
   return sessions.map((s) => ({ ...s, source: "ADMIN" as const }));
