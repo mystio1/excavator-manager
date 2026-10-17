@@ -226,7 +226,9 @@ describe("money routes: derived values cannot be set from the body", () => {
     expect(row.paidAmount.toString()).toBe("100"); // sum of payments, not 999999
     expect(row.status).toBe("PARTIAL");
     expect(row.businessId).toBe(A.businessId);
-    expect(row.letterhead).toEqual(before.letterhead); // frozen letterhead cannot be replaced
+    // an edit re-stamps the letterhead from Settings, so the body's copy is ignored
+    expect(JSON.stringify(row.letterhead)).not.toContain("Forged Ltd");
+    expect(row.letterhead).toEqual(before.letterhead); // Settings unchanged here, so it re-stamps identically
     expect(row.version).toBe(before.version + 1);
   });
 

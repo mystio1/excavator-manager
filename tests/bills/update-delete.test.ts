@@ -99,6 +99,30 @@ describe("updateBill", () => {
     expect(failed(await createBill(t.businessId, t.actor, billInput(t, [sessions[0].id]))).code).toBe("WORK_SESSION_ALREADY_BILLED");
   });
 
+  it("re-stamps the letterhead from current Settings, so an edit picks up a changed business name or logo", async () => {
+    const { bill } = ok(await createSummaryBill(t.businessId, t.actor, summaryInput(t)));
+    const before = (await fresh(bill.id)).letterhead as { businessName: string; businessTagline: string | null };
+
+    await db.business.update({
+      where: { id: t.businessId },
+      data: { name: "Renamed Earthmovers", billTagline: "Now with a tagline" },
+    });
+    // A bill nobody touches keeps what it was generated with.
+    expect(((await fresh(bill.id)).letterhead as { businessName: string }).businessName).toBe(before.businessName);
+
+    ok(await updateBill(t.businessId, t.actor, bill.id, updateInput(bill.billNumber, [{ hours: 2, rate: 1000 }])));
+
+    const after = (await fresh(bill.id)).letterhead as { businessName: string; businessTagline: string | null };
+    expect(after.businessName).toBe("Renamed Earthmovers");
+    expect(after.businessTagline).toBe("Now with a tagline");
+
+    const entry = await db.auditLog.findFirst({
+      where: { businessId: t.businessId, entityId: bill.id, action: "bill.update" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect((entry?.details as { letterheadRefreshed?: boolean })?.letterheadRefreshed).toBe(true);
+  });
+
   it("switching a bill to GST recomputes cgst/sgst to the paisa", async () => {
     const { bill, items } = await sessionBill();
     ok(

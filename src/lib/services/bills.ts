@@ -128,10 +128,9 @@ async function paidSum(tx: Tx, billId: string, exceptPaymentId?: string): Promis
 // Audit snapshots
 // ---------------------------------------------------------------------------
 
-/** Full bill row for the audit trail. The frozen letterhead (business name,
- * logos as data: URIs, bank block) is left out — it is large, never changes
- * after creation except for the bank block, and bankAccountId already records
- * that choice. */
+/** Full bill row for the audit trail. The letterhead (business name, logos as
+ * data: URIs, bank block) is left out — it is large, and an edit re-stamps it
+ * wholesale from Settings, which `letterheadRefreshed` on the entry records. */
 function billSnapshot(bill: Bill, items: BillItem[], payments?: Payment[]) {
   const snapshot: Record<string, unknown> = { ...bill, items };
   delete snapshot.letterhead;
@@ -780,14 +779,13 @@ export async function updateBill(
       return fail("BILL_NUMBER_TAKEN", BILL_NUMBER_TAKEN_MESSAGE);
     }
 
-    // Only the bank block of the frozen letterhead follows an edit — business
-    // name/logo/etc. stay exactly as they were when the bill was generated.
-    let letterhead: object | undefined;
-    if ((bankAccount?.id ?? null) !== bill.bankAccountId) {
-      const business = await tx.business.findUniqueOrThrow({ where: { id: businessId } });
-      const fresh = buildLetterhead(business, bankAccount);
-      letterhead = { ...(bill.letterhead as object), bankAccount: fresh.bankAccount };
-    }
+    // Editing a bill re-stamps it with the letterhead as Settings has it NOW,
+    // so a changed logo, address or GST number reaches the bills the owner
+    // reopens. Bills left alone keep whatever they were generated with — the
+    // freeze still protects history, an edit is a deliberate re-issue.
+    const business = await tx.business.findUniqueOrThrow({ where: { id: businessId } });
+    const letterhead = buildLetterhead(business, bankAccount) as object;
+    const letterheadChanged = JSON.stringify(letterhead) !== JSON.stringify(bill.letterhead);
 
     const common = {
       billNumber: input.billNumber,
@@ -800,7 +798,7 @@ export async function updateBill(
       notes: input.notes || null,
       showCustomerPhone: input.showCustomerPhone,
       igst: null,
-      ...(letterhead ? { letterhead } : {}),
+      letterhead,
     } satisfies Prisma.BillUncheckedUpdateInput;
 
     let money: Prisma.BillUncheckedUpdateInput;
@@ -918,7 +916,9 @@ export async function updateBill(
       before: billSnapshot(bill, items),
       after: billSnapshot(updated, afterItems),
       reason: input.reason,
-      details: { billNumber: updated.billNumber },
+      // The snapshots leave the letterhead out, so a re-stamp would otherwise
+      // be invisible in the trail.
+      details: { billNumber: updated.billNumber, letterheadRefreshed: letterheadChanged },
     });
 
     return { id: bill.id, version: updated.version } as const;

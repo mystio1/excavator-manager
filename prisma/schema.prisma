@@ -758,9 +758,10 @@ model Bill {
   dieselLiters        Decimal?  @db.Decimal(10, 2)
   dieselPricePerLiter Decimal?  @db.Decimal(14, 2)
   dieselAdvance       Decimal?  @db.Decimal(14, 2)
-  // Frozen copy of business name/address/GST/logos/signature/bank details
-  // and the template/accent used, so a later Settings change never rewrites
-  // a bill that's already been generated.
+  // Copy of business name/address/GST/logos/signature/bank details and the
+  // template/accent used, taken when the bill is generated so a later Settings
+  // change never rewrites bills on its own. Editing a bill deliberately
+  // re-stamps this from current Settings (see updateBill).
   letterhead          Json
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
