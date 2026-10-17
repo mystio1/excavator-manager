@@ -283,16 +283,17 @@ describe("validation", () => {
     expect((await db.operatorWorkingPeriod.findFirstOrThrow({ where: { operatorId: op.id } })).status).toBe("ACTIVE");
   });
 
-  it("leaves must sit in a gap: no overlap with a period or another leave", async () => {
+  it("a leave may sit inside a session, but never on top of another leave", async () => {
     const op = await scenarioBeforeSession2();
     await start(op.id, startBody({ carryForward: false }));
     const post = (b: Record<string, unknown>) =>
       postLeave(req("POST", `/api/operators/${op.id}/leaves`, { body: b }), ctx(ids(op.id)));
     expect((await post({ startDate: "2026-09-01", endDate: "2026-09-05" })).status).toBe(409); // inside the gap leave
-    expect((await post({ startDate: "2026-09-20", endDate: "2026-09-22" })).status).toBe(409); // inside session 2
-    expect((await post({ startDate: "2026-05-01", endDate: "2026-05-02" })).status).toBe(409); // inside session 1
     expect((await post({ startDate: "2026-12-05", endDate: "2026-12-01" })).status).toBe(422); // end < start
-    expect(await db.operatorLeave.count({ where: { operatorId: op.id } })).toBe(1);
+    // Absence recorded against a session in progress, and against a past one.
+    expect((await post({ startDate: "2026-09-20", endDate: "2026-09-22" })).status).toBe(201); // inside session 2
+    expect((await post({ startDate: "2026-05-01", endDate: "2026-05-02" })).status).toBe(201); // inside session 1
+    expect(await db.operatorLeave.count({ where: { operatorId: op.id } })).toBe(3);
   });
 
   it("stale expectedVersion on a period edit is refused", async () => {
@@ -428,6 +429,49 @@ describe("salary paid while the operator is on holiday", () => {
     // the holiday payment stays attributed to session 1, not pulled into session 2
     expect(ov.summary.previousSessionsPending).toBe(0);
     expect(ov.summary.totalOutstanding).toBeCloseTo(earned2() + 8000, 2);
+  });
+});
+
+describe("unpaid leave inside a working period", () => {
+  /** A session accrues across its whole span, so unpaid days recorded inside it
+   * must come back off — otherwise it pays for days nobody worked. */
+  it("takes the unpaid days off that session's salary", async () => {
+    const op = await newOperator("Inside Leave Op", "30000", JOIN);
+    await db.$transaction((tx) => ensureInitialPeriod(tx, op));
+    const before = (await getOperatorPeriodsOverview(t.businessId, op.id, NOW))!.periods[0]!;
+    expect(before.unpaidLeaveDeduction).toBe(0);
+
+    // 18 May -> 4 Jun, squarely inside the open session.
+    const made = await createLeave(t.businessId, t.actor, op.id, { startDate: "2026-05-18", endDate: "2026-06-04" });
+    expect("error" in made).toBe(false);
+
+    const after = (await getOperatorPeriodsOverview(t.businessId, op.id, NOW))!.periods[0]!;
+    // 18 days off a 30,000/month salary, accrued on the same engine the period uses.
+    const expected = toMoney(accrueBaseSalary(new Date(2026, 4, 18), new Date(2026, 5, 5), dec(30000)).totalExact);
+    expect(after.unpaidLeaveDeduction).toBe(expected);
+    // Both figures round the whole exact chain once at the end, so comparing
+    // them against two already-rounded numbers can differ by the final paisa.
+    const within1Paisa = (actual: number, target: number) =>
+      expect(Math.abs(actual - target)).toBeLessThanOrEqual(0.01);
+    within1Paisa(after.salaryEarned, before.salaryEarned - expected);
+    within1Paisa(after.pending, before.pending - expected);
+  });
+
+  it("leaves paid leave inside a session alone — the session is already paying those days", async () => {
+    const op = await newOperator("Paid Inside Op", "30000", JOIN);
+    await db.$transaction((tx) => ensureInitialPeriod(tx, op));
+    const before = (await getOperatorPeriodsOverview(t.businessId, op.id, NOW))!.periods[0]!;
+
+    const made = await createLeave(t.businessId, t.actor, op.id, {
+      startDate: "2026-05-18",
+      endDate: "2026-06-04",
+      type: "PAID",
+    });
+    expect("error" in made).toBe(false);
+
+    const after = (await getOperatorPeriodsOverview(t.businessId, op.id, NOW))!.periods[0]!;
+    expect(after.unpaidLeaveDeduction).toBe(0);
+    expect(after.salaryEarned).toBe(before.salaryEarned); // not paid twice
   });
 });
 
@@ -593,9 +637,9 @@ describe("leaves API", () => {
     );
     expect(del.status).toBe(200);
     expect(await db.operatorLeave.count({ where: { operatorId: op.id } })).toBe(0);
-    // a leave before any closed period is refused
+    // Back-dated leave is allowed — past months get corrected this way.
     const early = await createLeave(t.businessId, t.actor, op.id, { startDate: "2026-02-01", endDate: "2026-02-03" });
-    expect("error" in early).toBe(true);
+    expect("error" in early).toBe(false);
   });
 });
 

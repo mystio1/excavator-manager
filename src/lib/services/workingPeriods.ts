@@ -210,6 +210,8 @@ export type PeriodMetrics = {
   salaryEarned: number;
   /** The part of salaryEarned that is paid-leave salary. */
   paidLeaveSalary: number;
+  /** Taken off salaryEarned for unpaid leave recorded inside this period. */
+  unpaidLeaveDeduction: number;
   bonus: number;
   salaryDeducted: number;
   salaryPaid: number;
@@ -285,7 +287,37 @@ export function calculateOperatorPeriods(
     applyTransaction(totalsByPeriod.get(owner.id)!, tx);
   }
 
-  // PAID leave: the gap's days accrue at the preceding period's monthly salary (same engine).
+  // Half-open day spans, so "inside" is unambiguous at both ends.
+  type Span = { from: Date; to: Date };
+  const periodSpan = (p: PeriodRow): Span => ({ from: p.startDate, to: p.endDate ? addDays(p.endDate, 1) : now });
+  const leaveSpan = (l: LeaveRow): Span => ({ from: l.startDate, to: addDays(l.endDate, 1) });
+  const intersect = (a: Span, b: Span): Span | null => {
+    const from = dayIndex(a.from) > dayIndex(b.from) ? a.from : b.from;
+    const to = dayIndex(a.to) < dayIndex(b.to) ? a.to : b.to;
+    return dayIndex(from) < dayIndex(to) ? { from, to } : null;
+  };
+  /** The parts of `span` that fall in no working period at all. */
+  const outsidePeriods = (span: Span): Span[] => {
+    let parts: Span[] = [span];
+    for (const p of periods) {
+      const ps = periodSpan(p);
+      const next: Span[] = [];
+      for (const part of parts) {
+        if (dayIndex(part.from) < dayIndex(ps.from)) {
+          next.push({ from: part.from, to: dayIndex(part.to) < dayIndex(ps.from) ? part.to : ps.from });
+        }
+        if (dayIndex(part.to) > dayIndex(ps.to)) {
+          next.push({ from: dayIndex(part.from) > dayIndex(ps.to) ? part.from : ps.to, to: part.to });
+        }
+      }
+      parts = next.filter((x) => dayIndex(x.from) < dayIndex(x.to));
+    }
+    return parts;
+  };
+
+  // PAID leave in a GAP accrues at the preceding period's monthly salary (same
+  // engine). Days that fall inside a working period are skipped: the period is
+  // already paying for them, so counting them here would pay twice.
   const paidLeaveByPeriod = new Map<string, Decimal>();
   for (const leave of leaves) {
     if (leave.type !== "PAID") continue;
@@ -294,15 +326,34 @@ export function calculateOperatorPeriods(
       if (p.endDate && dayIndex(p.endDate) < dayIndex(leave.startDate)) prev = p;
     }
     if (!prev) continue;
-    const accrual = accrueBaseSalary(leave.startDate, addDays(leave.endDate, 1), dec(prev.monthlySalary));
-    paidLeaveByPeriod.set(prev.id, (paidLeaveByPeriod.get(prev.id) ?? ZERO).plus(accrual.totalExact));
+    for (const part of outsidePeriods(leaveSpan(leave))) {
+      const accrual = accrueBaseSalary(part.from, part.to, dec(prev.monthlySalary));
+      paidLeaveByPeriod.set(prev.id, (paidLeaveByPeriod.get(prev.id) ?? ZERO).plus(accrual.totalExact));
+    }
+  }
+
+  // UNPAID leave recorded INSIDE a working period takes those days back off
+  // that period: the period accrues across its whole span, so without this it
+  // would pay for days the operator did not work. Days in a gap need nothing —
+  // a gap accrues nothing to begin with.
+  const unpaidLeaveByPeriod = new Map<string, Decimal>();
+  for (const leave of leaves) {
+    if (leave.type === "PAID") continue;
+    for (const p of periods) {
+      const hit = intersect(leaveSpan(leave), periodSpan(p));
+      if (!hit) continue;
+      const accrual = accrueBaseSalary(hit.from, hit.to, dec(p.monthlySalary));
+      unpaidLeaveByPeriod.set(p.id, (unpaidLeaveByPeriod.get(p.id) ?? ZERO).plus(accrual.totalExact));
+    }
   }
 
   type Calc = { row: PeriodRow; earned: Decimal; pending: Decimal; accrual: ReturnType<typeof accrueBaseSalary>; asOf: Date };
   const calcs: Calc[] = periods.map((p) => {
     const asOf = p.endDate ? addDays(p.endDate, 1) : now;
     const accrual = accrueBaseSalary(p.startDate, asOf, dec(p.monthlySalary));
-    const earned = accrual.totalExact.plus(paidLeaveByPeriod.get(p.id) ?? ZERO);
+    const earned = accrual.totalExact
+      .plus(paidLeaveByPeriod.get(p.id) ?? ZERO)
+      .minus(unpaidLeaveByPeriod.get(p.id) ?? ZERO);
     const t = totalsByPeriod.get(p.id)!;
     const pending = earned.plus(t.bonus).minus(t.deductions).plus(dec(p.openingBalance)).minus(t.paid);
     return { row: p, earned, pending, accrual, asOf };
@@ -328,6 +379,7 @@ export function calculateOperatorPeriods(
       totalPayableDays: Math.max(0, dayIndex(asOf) - dayIndex(p.startDate)),
       salaryEarned: toMoney(earned),
       paidLeaveSalary: toMoney(paidLeaveByPeriod.get(p.id) ?? ZERO),
+      unpaidLeaveDeduction: toMoney(unpaidLeaveByPeriod.get(p.id) ?? ZERO),
       bonus: toMoney(t.bonus),
       salaryDeducted: toMoney(t.deductions),
       salaryPaid: toMoney(t.paid),

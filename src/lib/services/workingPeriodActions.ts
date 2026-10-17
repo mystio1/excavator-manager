@@ -96,7 +96,6 @@ async function planStart(
   const gapStart = addDays(prevEnd, 1);
   const gapEnd = addDays(newStart, -1);
   const gapDays = dayIndex(newStart) - dayIndex(prevEnd) - 1;
-  const prevStartIdx = dayIndex(previous.startDate);
 
   let reuseLeave: LeaveRow | null = null;
   for (const l of leaves) {
@@ -106,7 +105,10 @@ async function planStart(
       reuseLeave = l;
       continue;
     }
-    if (overlaps(l0, l1, prevStartIdx, FOREVER)) {
+    // Only a leave already covering part of the GAP is a problem — that is the
+    // span this call is about to record a leave for. Leaves inside the periods
+    // themselves are allowed and are handled by the accrual.
+    if (gapDays >= 1 && overlaps(l0, l1, dayIndex(gapStart), dayIndex(gapEnd))) {
       return fail(
         "CONFLICT",
         "A leave is already recorded between these dates. Remove or adjust it before starting the new Working Period.",
@@ -214,7 +216,7 @@ export async function startWorkingPeriod(
     const now = opts?.now ?? new Date();
     const ctx = await lockAndLoad(tx, businessId, operatorId);
     if (!ctx) return notFound();
-    const { operator, periods, leaves } = ctx;
+    const { operator, periods } = ctx;
     if (operator.isArchived) return fail("CONFLICT", "This operator is archived.");
 
     const active = periods.find((p) => p.status === "ACTIVE") ?? null;
@@ -386,9 +388,6 @@ export async function updateWorkingPeriod(
       if (period.status !== "ACTIVE") return fail("CONFLICT", "Only the active Working Period can be closed.");
       const end = input.endDate ? parseDay(input.endDate) : startOfDay(now);
       if (dayIndex(end) < startIdx) return fail("VALIDATION_FAILED", "The end date cannot be before the start date.");
-      if (leaves.some((l) => overlaps(dayIndex(l.startDate), dayIndex(l.endDate), startIdx, dayIndex(end)))) {
-        return fail("CONFLICT", "A leave overlaps this period. Remove it first.");
-      }
       data.endDate = end;
       data.status = "CLOSED";
       data.closedAt = now;
@@ -406,9 +405,6 @@ export async function updateWorkingPeriod(
         }
         if (carriedOut && dayIndex(end) !== dayIndex(period.endDate!)) {
           return fail("CONFLICT", "This period's balance has been carried forward, so its dates are locked.");
-        }
-        if (leaves.some((l) => overlaps(dayIndex(l.startDate), dayIndex(l.endDate), startIdx, dayIndex(end)))) {
-          return fail("CONFLICT", "A leave overlaps those dates. Adjust the leave first.");
         }
         data.endDate = end;
       }
@@ -473,22 +469,18 @@ export async function createLeave(
   return withTx(opts?.tx, async (tx) => {
     const ctx = await lockAndLoad(tx, businessId, operatorId);
     if (!ctx) return notFound();
-    const { periods, leaves } = ctx;
+    const { leaves } = ctx;
     const start = parseDay(input.startDate);
     const end = parseDay(input.endDate);
     const s = dayIndex(start);
     const e = dayIndex(end);
     if (e < s) return fail("VALIDATION_FAILED", "The end date cannot be before the start date.");
-    for (const p of periods) {
-      if (overlaps(s, e, dayIndex(p.startDate), p.endDate ? dayIndex(p.endDate) : FOREVER)) {
-        return fail("CONFLICT", "A leave cannot overlap a Working Period.");
-      }
-    }
+    // A leave MAY sit inside a Working Period: that is how absence is recorded
+    // against a session already in progress, and how past months get corrected.
+    // Unpaid days inside a period are taken off its accrual (see
+    // calculateOperatorPeriods); paid days just keep accruing as the period does.
     if (leaves.some((l) => overlaps(s, e, dayIndex(l.startDate), dayIndex(l.endDate)))) {
       return fail("CONFLICT", "Another leave is already recorded on these dates.");
-    }
-    if (!periods.some((p) => p.endDate && dayIndex(p.endDate) < s)) {
-      return fail("VALIDATION_FAILED", "A leave must come after a closed Working Period. Close the current period first.");
     }
 
     const leave = await tx.operatorLeave.create({

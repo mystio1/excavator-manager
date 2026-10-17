@@ -89,8 +89,8 @@ export function AddLeaveDialog({ operatorId }: { operatorId: string }) {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Leave must fall after a closed session. Unpaid leave accrues no salary; paid leave accrues at the previous
-            session&apos;s rate.
+            Leave can fall inside a session or in a gap between sessions. Unpaid days inside a session are taken off
+            that session&apos;s salary; paid leave in a gap accrues at the previous session&apos;s rate.
           </p>
 
           {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}

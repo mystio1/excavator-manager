@@ -53,7 +53,20 @@ function SessionCard({ p, operatorId, isLast }: { p: Period; operatorId: string;
         )}
 
         <Row label="Monthly Salary" value={formatCurrency(p.monthlySalary)} />
-        <Row label="Salary Earned" value={formatCurrency(p.salaryEarned)} />
+        {p.unpaidLeaveDeduction > 0 ? (
+          <>
+            {/* salaryEarned is already net of the leave, so show the gross it came from. */}
+            <Row label="Salary Accrued" value={formatCurrency(p.salaryEarned + p.unpaidLeaveDeduction)} />
+            <Row
+              label="Less unpaid leave"
+              value={`-${formatCurrency(p.unpaidLeaveDeduction)}`}
+              tone="text-destructive"
+            />
+            <Row label="Salary Earned" value={formatCurrency(p.salaryEarned)} strong />
+          </>
+        ) : (
+          <Row label="Salary Earned" value={formatCurrency(p.salaryEarned)} />
+        )}
         {p.bonus !== 0 && <Row label="Bonus" value={`+${formatCurrency(p.bonus)}`} tone="text-working" />}
         {p.salaryDeducted !== 0 && (
           <Row label="Deductions" value={`-${formatCurrency(p.salaryDeducted)}`} tone="text-destructive" />
