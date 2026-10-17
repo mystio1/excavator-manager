@@ -21,6 +21,11 @@ import {
 
 import { todayLocal } from "@/lib/utils/dates";
 type CustomerOption = { id: string; name: string; companyName: string | null };
+type SiteOption = { id: string; name: string; customerId: string | null };
+
+/** Same rule findOrCreateSite uses server-side, so the site the form resolves
+ * is the one the job will actually be filed under. */
+const sameSite = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 export function StartWorkDialog({
   excavatorId,
@@ -28,19 +33,29 @@ export function StartWorkDialog({
   currentOperatorName,
   defaultSiteName,
   customers: initialCustomers,
+  sites,
 }: {
   excavatorId: string;
   currentHourMeter: number;
   currentOperatorName: string | null;
   defaultSiteName: string | null;
   customers: CustomerOption[];
+  sites: SiteOption[];
 }) {
   const { mutate } = useSWRConfig();
   const today = todayLocal();
   const [open, setOpen] = useState(false);
 
   const [customers, setCustomers] = useState<CustomerOption[]>(initialCustomers);
-  const [customerId, setCustomerId] = useState("");
+  const [siteName, setSiteName] = useState(defaultSiteName ?? "");
+
+  // A site already belongs to a customer, so asking for the customer again is
+  // asking for something the app knows. Typing a different site re-answers it;
+  // a site with no customer yet (or a brand new one) still has to be asked.
+  const siteCustomerId = sites.find((s) => sameSite(s.name, siteName))?.customerId ?? "";
+  const [customerOverride, setCustomerOverride] = useState<string | null>(null);
+  const customerId = customerOverride ?? siteCustomerId;
+  const customerFromSite = customerOverride === null && siteCustomerId !== "";
 
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch(`/api/excavators/${excavatorId}/start-work`, { method: "POST", body: JSON.stringify(body) });
@@ -50,7 +65,7 @@ export function StartWorkDialog({
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const ok = await run({
-      customerId: fd.get("customerId"),
+      customerId,
       siteName: fd.get("siteName"),
       startDate: fd.get("startDate"),
       startHourMeter: Number(fd.get("startHourMeter")),
@@ -62,8 +77,16 @@ export function StartWorkDialog({
     }
   }
 
+  function onOpenChange(next: boolean) {
+    if (next) {
+      setSiteName(defaultSiteName ?? "");
+      setCustomerOverride(null);
+    }
+    setOpen(next);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger render={<Button size="lg" className="h-12 flex-1 text-base" />}>
         <Play className="size-5" />
         Start New Work
@@ -96,7 +119,7 @@ export function StartWorkDialog({
                     name="customerId"
                     required
                     value={customerId}
-                    onChange={(e) => setCustomerId(e.target.value)}
+                    onChange={(e) => setCustomerOverride(e.target.value)}
                   >
                     <option value="" disabled>
                       Select customer
@@ -109,6 +132,11 @@ export function StartWorkDialog({
                     ))}
                   </NativeSelect>
                 )}
+                {customerFromSite && (
+                  <p className="text-xs text-muted-foreground">
+                    This site&rsquo;s customer — change it only if this job is for someone else.
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-col gap-2">
@@ -116,14 +144,25 @@ export function StartWorkDialog({
                   Site
                 </Label>
                 <Input
-                  key={defaultSiteName ?? ""}
                   id="siteName"
                   name="siteName"
                   placeholder="e.g. Wagholi"
-                  defaultValue={defaultSiteName ?? ""}
+                  value={siteName}
+                  onChange={(e) => {
+                    setSiteName(e.target.value);
+                    // A new site answers the customer question afresh, so a
+                    // choice made for the old one must not silently carry over.
+                    setCustomerOverride(null);
+                  }}
+                  list="start-work-sites"
                   required
                   className="h-12 text-base"
                 />
+                <datalist id="start-work-sites">
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.name} />
+                  ))}
+                </datalist>
                 {defaultSiteName && (
                   <p className="text-xs text-muted-foreground">
                     Filled in from this machine&rsquo;s last known location — change it if that&rsquo;s not right
@@ -161,7 +200,7 @@ export function StartWorkDialog({
             <AddCustomerInline
               onAdded={(customer) => {
                 setCustomers((prev) => [...prev, customer]);
-                setCustomerId(customer.id);
+                setCustomerOverride(customer.id);
               }}
             />
 

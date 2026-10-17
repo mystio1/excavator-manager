@@ -4,10 +4,12 @@ import { recordAudit, type AuditActor } from "@/lib/audit";
 import { isStale, resourceModified, withTx, type Tx } from "@/lib/tx";
 import type { CreateSiteInput, UpdateSiteInput, UpdateSiteRatesInput } from "@/lib/validation/site";
 
+/** `customerId` rides along so a form that already knows the site can default
+ * the customer instead of asking for it again (see StartWorkDialog). */
 export async function listSiteOptions(businessId: string) {
   return db.site.findMany({
     where: { businessId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, customerId: true },
     orderBy: { name: "asc" },
   });
 }

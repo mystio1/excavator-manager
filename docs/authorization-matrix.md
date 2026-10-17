@@ -74,6 +74,7 @@ fails if this file is stale. Do not edit by hand.
 | `/api/health` | GET | public — Liveness probe, no data, no database. | - |  |  |  |  |
 | `/api/layout` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/operator/daily-log` | POST | operator | session.businessId |  |  |  |  |
+| `/api/operator/diesel` | POST | operator | session.businessId |  | yes |  |  |
 | `/api/operator/home` | GET | operator | session.businessId |  |  |  |  |
 | `/api/operator/language` | POST | operator | session.businessId |  |  |  |  |
 | `/api/operator/layout` | GET | operator | session.businessId |  |  |  |  |
@@ -82,6 +83,13 @@ fails if this file is stale. Do not edit by hand.
 | `/api/operator/work/start` | POST | operator | session.businessId |  |  |  |  |
 | `/api/operators/[id]/approve-join` | POST | business owner | session.businessId |  |  |  |  |
 | `/api/operators/[id]/decline-join` | POST | business owner | session.businessId |  |  |  |  |
+| `/api/operators/[id]/leaves/[leaveId]` | DELETE | business owner | session.businessId |  |  |  |  |
+| `/api/operators/[id]/leaves` | GET | business owner | session.businessId |  |  |  |  |
+| `/api/operators/[id]/leaves` | POST | business owner | session.businessId |  |  |  |  |
+| `/api/operators/[id]/periods/[periodId]` | GET | business owner | session.businessId |  |  |  |  |
+| `/api/operators/[id]/periods/[periodId]` | PATCH | business owner | session.businessId |  |  | yes |  |
+| `/api/operators/[id]/periods` | GET | business owner | session.businessId |  |  |  |  |
+| `/api/operators/[id]/periods` | POST | business owner | session.businessId |  | yes | yes |  |
 | `/api/operators/[id]/pin` | PATCH | business owner | session.businessId |  |  | yes |  |
 | `/api/operators/[id]` | PATCH | business owner | session.businessId |  |  | yes |  |
 | `/api/operators/[id]` | DELETE | business owner | session.businessId |  |  | yes |  |
@@ -110,6 +118,15 @@ fails if this file is stale. Do not edit by hand.
 | `/api/settings` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/settings/service-interval` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/site-analysis` | GET | business owner | session.businessId |  |  |  |  |
+| `/api/sites/[id]/analysis` | GET | business owner | session.businessId |  |  |  |  |
+| `/api/sites/[id]/daily` | GET | business owner | session.businessId |  |  |  |  |
+| `/api/sites/[id]/diesel` | GET | business owner | session.businessId |  |  |  |  |
+| `/api/sites/[id]/rates` | PATCH | business owner | session.businessId |  |  | yes |  |
+| `/api/sites/[id]` | GET | business owner | session.businessId |  |  | yes |  |
+| `/api/sites/[id]` | PATCH | business owner | session.businessId |  |  | yes |  |
+| `/api/sites/options` | GET | business owner | session.businessId |  |  |  |  |
+| `/api/sites` | GET | business owner | session.businessId |  |  |  |  |
+| `/api/sites` | POST | business owner | session.businessId |  |  |  |  |
 | `/api/support/businesses` | GET | support token | businessCode (support only) |  |  |  |  |
 | `/api/support/clear-data` | POST | support token | businessCode (support only) |  |  |  |  |
 | `/api/support/freeze` | POST | support token | businessCode (support only) |  |  |  |  |
@@ -122,4 +139,4 @@ fails if this file is stale. Do not edit by hand.
 | `/api/work-sessions/[id]` | PATCH | business owner | session.businessId |  |  | yes |  |
 | `/api/work-sessions/[id]` | DELETE | business owner | session.businessId |  |  | yes |  |
 
-**107** route/method pairs: **93** authenticated, **14** public (each justified above).
+**124** route/method pairs: **110** authenticated, **14** public (each justified above).

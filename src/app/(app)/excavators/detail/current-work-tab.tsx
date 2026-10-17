@@ -80,6 +80,7 @@ type OperatorWorkRequest = {
 };
 
 type CustomerOption = { id: string; name: string; companyName: string | null };
+type SiteOption = { id: string; name: string; customerId: string | null };
 
 function DailyLogRow({ excavatorId, log }: { excavatorId: string; log: DailyLog }) {
   const { mutate } = useSWRConfig();
@@ -174,9 +175,15 @@ export function CurrentWorkTab({
     activeWork ? null : "/api/customers/options",
     swrFetcher,
   );
+  // Carries each site's customer, so Start Work can default it rather than ask.
+  const { data: siteData } = useSWR<{ sites: SiteOption[] }>(
+    activeWork ? null : "/api/sites/options",
+    swrFetcher,
+  );
 
   if (!activeWork) {
     const customers = data?.customers ?? [];
+    const sites = siteData?.sites ?? [];
 
     return (
       <div className="flex flex-col gap-4">
@@ -193,6 +200,7 @@ export function CurrentWorkTab({
                 currentOperatorName={currentOperatorName}
                 defaultSiteName={defaultSiteName}
                 customers={customers}
+                sites={sites}
               />
             </CardContent>
           </Card>
