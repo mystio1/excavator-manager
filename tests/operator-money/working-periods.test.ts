@@ -456,6 +456,13 @@ describe("unpaid leave inside a working period", () => {
     expect(after.unpaidLeaveLines[0]!.from).toEqual(new Date(2026, 4, 18));
     expect(after.unpaidLeaveLines[0]!.to).toEqual(new Date(2026, 5, 4));
     expect(after.unpaidLeaveLines.reduce((s, l) => s + l.amount, 0)).toBe(after.unpaidLeaveDeduction);
+
+    // The Overview tab reads this: the deduction must reach it, and be shown
+    // rather than silently folded into Total Payable.
+    const lifetime = await getLifetimeSalarySummary(t.businessId, op.id);
+    expect(lifetime.unpaidLeave).toBe(after.unpaidLeaveDeduction);
+    expect(lifetime.unpaidLeaveLines).toHaveLength(1);
+    expect(Math.abs(lifetime.remaining - after.pending)).toBeLessThanOrEqual(0.01);
     // 18 days off a 30,000/month salary, accrued on the same engine the period uses.
     const expected = toMoney(accrueBaseSalary(new Date(2026, 4, 18), new Date(2026, 5, 5), dec(30000)).totalExact);
     expect(after.unpaidLeaveDeduction).toBe(expected);

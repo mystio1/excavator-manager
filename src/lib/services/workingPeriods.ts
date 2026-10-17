@@ -266,8 +266,17 @@ export type PeriodCalculation = {
   timeline: TimelineEvent[];
   /** Counted transactions grouped by period id. */
   txByPeriod: Map<string, PeriodTx[]>;
-  /** Un-rounded totals for callers that need the exact figures. */
-  exact: { earned: Decimal; bonus: Decimal; deductions: Decimal; paid: Decimal; outstanding: Decimal };
+  /** Un-rounded totals for callers that need the exact figures. `earned` is
+   * already net of `unpaidLeave`, which is carried separately so the figure
+   * can be shown rather than silently folded in. */
+  exact: {
+    earned: Decimal;
+    bonus: Decimal;
+    deductions: Decimal;
+    paid: Decimal;
+    outstanding: Decimal;
+    unpaidLeave: Decimal;
+  };
 };
 
 export function calculateOperatorPeriods(
@@ -492,7 +501,14 @@ export function calculateOperatorPeriods(
     leaves: leaves.map((l) => ({ ...l, days: daysBetweenInclusive(l.startDate, l.endDate) })),
     timeline,
     txByPeriod,
-    exact: { earned: exactEarned, bonus, deductions, paid, outstanding: totalOutstanding },
+    exact: {
+      earned: exactEarned,
+      bonus,
+      deductions,
+      paid,
+      outstanding: totalOutstanding,
+      unpaidLeave: [...unpaidLeaveByPeriod.values()].reduce((acc, v) => acc.plus(v), ZERO),
+    },
   };
 }
 

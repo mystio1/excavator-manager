@@ -17,6 +17,7 @@ import {
   dayIndex,
   isLegacyShape,
   loadPeriodContext,
+  type LeaveDeductionLine,
   type LeaveRow,
   type PeriodRow,
 } from "./workingPeriods";
@@ -220,6 +221,8 @@ export async function getLifetimeSalarySummary(businessId: string, operatorId: s
       bonus: toMoney(calc.exact.bonus),
       deductions: toMoney(calc.exact.deductions),
       deductionLines: toDeductionLines(allTx),
+      unpaidLeave: toMoney(calc.exact.unpaidLeave),
+      unpaidLeaveLines: calc.periods.flatMap((p) => p.unpaidLeaveLines),
       totalPayable: toMoney(calc.exact.outstanding.plus(calc.exact.paid)),
       totalPaid: toMoney(calc.exact.paid),
       remaining: calc.summary.totalOutstanding,
@@ -250,6 +253,10 @@ export async function getLifetimeSalarySummary(businessId: string, operatorId: s
     bonus: toMoney(totals.bonus),
     deductions: toMoney(totals.deductions),
     deductionLines: toDeductionLines(transactions),
+    // The legacy shape is one open period with no leave at all, so there is
+    // never anything to deduct here — the field exists to keep one response shape.
+    unpaidLeave: 0,
+    unpaidLeaveLines: [] as LeaveDeductionLine[],
     totalPayable: toMoney(totalPayable),
     totalPaid: toMoney(totals.paid),
     remaining: toMoney(totalPayable.minus(totals.paid)),

@@ -17,7 +17,7 @@ type LifetimeSalary = Plain<Awaited<ReturnType<typeof getLifetimeSalarySummary>>
  * from what's actually displayed. */
 export function SalaryBreakdownDialog({ lifetimeSalary }: { lifetimeSalary: LifetimeSalary }) {
   const [open, setOpen] = useState(false);
-  const { accrual, baseSalary, bonus, deductions, totalPaid, totalPayable, remaining } = lifetimeSalary;
+  const { accrual, baseSalary, bonus, deductions, totalPaid, totalPayable, remaining, unpaidLeave } = lifetimeSalary;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -62,6 +62,32 @@ export function SalaryBreakdownDialog({ lifetimeSalary }: { lifetimeSalary: Life
                 {formatCurrency(baseSalary)} ÷ {accrual.cycleDays} days = {formatCurrencyPrecise(accrual.dailyRate)}/day ×{" "}
                 {accrual.elapsedDays} = <strong>{formatCurrencyPrecise(accrual.partialAmount)}</strong>
               </p>
+            </div>
+          )}
+
+          {unpaidLeave > 0 && (
+            <div className="flex flex-col gap-1 rounded-lg border p-3">
+              <p className="flex justify-between">
+                <span>Unpaid leave</span>
+                <strong className="text-destructive">-{formatCurrencyPrecise(unpaidLeave)}</strong>
+              </p>
+              {/* Which days were docked, so the figure can be checked rather
+                  than taken on trust. Dates are clipped to the session. */}
+              <ul className="mt-1 flex flex-col gap-1.5 border-t pt-2">
+                {lifetimeSalary.unpaidLeaveLines.map((line) => (
+                  <li key={line.leaveId} className="flex justify-between gap-3">
+                    <span className="min-w-0">
+                      {formatDate(line.from)} – {formatDate(line.to)}
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {line.days} day{line.days === 1 ? "" : "s"}
+                        {line.reason ? ` · ${line.reason}` : ""}
+                      </span>
+                    </span>
+                    <span className="shrink-0 tabular-nums text-destructive">-{formatCurrency(line.amount)}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

@@ -166,6 +166,14 @@ export default function OperatorDetailPage() {
                   <span className="text-muted-foreground">Total Payable Salary</span>
                   <span className="font-semibold">{formatCurrency(lifetimeSalary.totalPayable)}</span>
                 </div>
+                {lifetimeSalary.unpaidLeave > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Unpaid Leave (already deducted)</span>
+                    <span className="font-semibold text-destructive">
+                      -{formatCurrency(lifetimeSalary.unpaidLeave)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Salary Given</span>
                   <span className="font-semibold">{formatCurrency(lifetimeSalary.totalPaid)}</span>
