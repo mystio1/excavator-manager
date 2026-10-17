@@ -61,7 +61,7 @@ const en: Dict = {
   "home.attachment": "Attachment",
   "home.diesel": "Diesel",
   "home.note": "Note",
-  "home.recentJobRequests": "Your Recent Job Requests",
+  "home.recentJobRequests": "Your Recent Work",
 
   "status.approved": "Approved",
   "status.pending": "Pending",
@@ -195,7 +195,7 @@ const hi: Dict = {
   "home.attachment": "अटैचमेंट",
   "home.diesel": "डीज़ल",
   "home.note": "नोट",
-  "home.recentJobRequests": "आपके हाल के काम के अनुरोध",
+  "home.recentJobRequests": "आपका हाल का काम",
 
   "status.approved": "मंज़ूर",
   "status.pending": "बाकी",
@@ -329,7 +329,7 @@ const mr: Dict = {
   "home.attachment": "अटॅचमेंट",
   "home.diesel": "डिझेल",
   "home.note": "टीप",
-  "home.recentJobRequests": "तुमच्या अलीकडील कामाच्या विनंत्या",
+  "home.recentJobRequests": "तुमचे अलीकडील काम",
 
   "status.approved": "मंजूर",
   "status.pending": "प्रलंबित",

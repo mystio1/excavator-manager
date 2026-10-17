@@ -282,6 +282,26 @@ export async function listRecentOperatorRequests(operatorId: string, excavatorId
   });
 }
 
+/** Jobs the ADMIN entered for this operator on this machine. They have no
+ * OperatorWorkRequest behind them — only an operator-started job does — so the
+ * query above cannot see them, and the operator would never learn the work was
+ * recorded against their name. Shaped like a request so the portal's history
+ * can list both together. */
+export async function listRecentAdminWork(operatorId: string, excavatorId: string, limit = 5, businessId?: string) {
+  const sessions = await db.workSession.findMany({
+    where: {
+      operatorId,
+      excavatorId,
+      ...(businessId ? { businessId } : {}),
+      operatorWorkRequest: { is: null },
+    },
+    orderBy: [{ startDate: "desc" }, { id: "desc" }],
+    take: limit,
+    select: { id: true, status: true, startDate: true, endDate: true, startHourMeter: true, endHourMeter: true },
+  });
+  return sessions.map((s) => ({ ...s, source: "ADMIN" as const }));
+}
+
 /** The approval queue. `operator` is returned WITHOUT its credentials
  * (pinHash / tokenVersion) — this list is sent to the browser as JSON. */
 export async function listPendingWorkRequests(businessId: string) {

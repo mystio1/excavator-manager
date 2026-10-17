@@ -29,7 +29,9 @@ type DailyLog = {
 };
 type WorkRequest = {
   id: string;
-  status: "ACTIVE" | "PENDING" | "APPROVED" | "REJECTED";
+  /** "ADMIN" when the owner entered the job rather than this operator. */
+  source?: string;
+  status: string;
   startDate: Date;
   startHourMeter: number;
   endDate: Date | null;
@@ -331,7 +333,12 @@ export default function OperatorHomePage() {
         <div className="flex flex-col gap-2">
           <p className="text-sm font-semibold text-muted-foreground">{t("home.recentJobRequests")}</p>
           {history.map((req) => {
-            const badge = REQUEST_STATUS_BADGE[req.status] ?? REQUEST_STATUS_BADGE.APPROVED;
+            // The operator never submitted an admin's job, so a status badge
+            // about their own request would be meaningless on it.
+            const badge =
+              req.source === "ADMIN"
+                ? { label: "ADMIN", className: "bg-purple text-purple-foreground" }
+                : (REQUEST_STATUS_BADGE[req.status] ?? REQUEST_STATUS_BADGE.APPROVED);
             return (
               <Card key={req.id}>
                 <CardContent className="flex items-center justify-between">

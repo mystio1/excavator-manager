@@ -144,7 +144,16 @@ describe("operator portal routes", () => {
     const res = await portalHome(new Request(`${BASE}/api/operator/home`), undefined);
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(Object.keys(json).sort()).toEqual(["activeSession", "excavator", "openRequests", "operatorLang", "recentRequests"]);
+    // latestEndMeter is what the next reading's start should default to; the
+    // page always expected it, the route just never sent it.
+    expect(Object.keys(json).sort()).toEqual([
+      "activeSession",
+      "excavator",
+      "latestEndMeter",
+      "openRequests",
+      "operatorLang",
+      "recentRequests",
+    ]);
     expect(json.excavator.id).toBe(t.excavatorId);
   });
 });

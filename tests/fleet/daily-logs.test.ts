@@ -10,6 +10,7 @@ import {
   submitDailyLog,
   updateDailyLog,
 } from "@/lib/services/workSessions";
+import { listRecentAdminWork, listRecentOperatorRequests } from "@/lib/services/operatorWorkRequests";
 import { cleanupTenant, createTenant, type TestTenant } from "../helpers/tenant";
 import { auditRows, failed, newActiveSession, newMachine, ok, snapshot } from "./helpers";
 
@@ -337,6 +338,25 @@ describe("what the operator portal sees", () => {
       expect(logs).toHaveLength(2);
       expect(logs.find((l) => l.startHourMeter === 100)).toMatchObject({ source: "ADMIN", status: "APPROVED" });
       expect(logs.find((l) => l.startHourMeter === 108)).toMatchObject({ source: "OPERATOR", status: "PENDING" });
+    } finally {
+      await cleanupTenant(own.businessId);
+    }
+  });
+
+  /** A job the admin entered has no OperatorWorkRequest behind it, so it is
+   * invisible to the request list the portal's history is built from. */
+  it("lists work the admin entered in the operator's history", async () => {
+    const own = await createTenant("portal-admin-work");
+    try {
+      const m = await newMachine(own);
+      await newActiveSession(own, m.id);
+
+      const adminWork = await listRecentAdminWork(own.operatorId, m.id, 5, own.businessId);
+      expect(adminWork).toHaveLength(1);
+      expect(adminWork[0]).toMatchObject({ source: "ADMIN", startHourMeter: 100 });
+
+      // The operator's own request list still cannot see it.
+      expect(await listRecentOperatorRequests(own.operatorId, m.id, 5, own.businessId)).toHaveLength(0);
     } finally {
       await cleanupTenant(own.businessId);
     }
