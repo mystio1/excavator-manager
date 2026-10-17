@@ -350,6 +350,19 @@
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+  /* Chrome prints its own header and footer — page title, date, and the bill's
+     URL — in the page margin, and only drops them when there is no margin to
+     put them in. The bill carries its own footer line instead, so what comes
+     out of the printer is the document and nothing else. */
+  @page {
+    margin: 0;
+  }
+  /* With the page margin gone the accent bar runs to the paper edge (which is
+     the intent), but the content must not — most printers cannot reach the
+     last few millimetres anyway. */
+  .bill-print-body {
+    padding: 10mm 12mm !important;
+  }
 }
 
 /* Respect the user's OS-level "reduce motion" setting: drop the infinite
