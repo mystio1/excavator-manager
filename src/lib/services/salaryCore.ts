@@ -15,6 +15,13 @@ export function monthKey(date: Date) {
   return `${date.getFullYear()}-${date.getMonth()}`;
 }
 
+/** Whether a transaction is one of the ones that make up `deductions`. Shared
+ * with the "why was this deducted?" breakdown so the listed lines can never
+ * add up to something other than the total shown beside them. */
+export function isDeduction(tx: { businessEffect: string; deductFromSalary: boolean }) {
+  return tx.businessEffect !== "SALARY_PAYMENT" && tx.businessEffect !== "BONUS_INCENTIVE" && tx.deductFromSalary;
+}
+
 /** SALARY_PAYMENT -> paid, BONUS_INCENTIVE -> bonus, anything else flagged
  * deductFromSalary -> deductions; deductFromSalary=false is ignored. */
 export function applyTransaction(
@@ -23,7 +30,7 @@ export function applyTransaction(
 ) {
   if (tx.businessEffect === "SALARY_PAYMENT") entry.paid = entry.paid.plus(tx.amount);
   else if (tx.businessEffect === "BONUS_INCENTIVE") entry.bonus = entry.bonus.plus(tx.amount);
-  else if (tx.deductFromSalary) entry.deductions = entry.deductions.plus(tx.amount);
+  else if (isDeduction(tx)) entry.deductions = entry.deductions.plus(tx.amount);
 }
 
 /** Same date, `n` months later — clamped to the last day of the target

@@ -62,6 +62,19 @@ function SessionCard({ p, operatorId, isLast }: { p: Period; operatorId: string;
               value={`-${formatCurrency(p.unpaidLeaveDeduction)}`}
               tone="text-destructive"
             />
+            {/* Which days were docked — the dates are clipped to this session,
+                so a leave running past its end only shows the part that cost. */}
+            <ul className="flex flex-col gap-1 pl-3 text-xs text-muted-foreground">
+              {p.unpaidLeaveLines.map((l) => (
+                <li key={l.leaveId} className="flex justify-between gap-3">
+                  <span className="min-w-0">
+                    {day(l.from)} – {day(l.to)} · {l.days} day{l.days === 1 ? "" : "s"}
+                    {l.reason ? ` · ${l.reason}` : ""}
+                  </span>
+                  <span className="shrink-0 tabular-nums">-{formatCurrency(l.amount)}</span>
+                </li>
+              ))}
+            </ul>
             <Row label="Salary Earned" value={formatCurrency(p.salaryEarned)} strong />
           </>
         ) : (

@@ -74,10 +74,28 @@ export function SalaryBreakdownDialog({ lifetimeSalary }: { lifetimeSalary: Life
                 </p>
               )}
               {deductions > 0 && (
-                <p className="flex justify-between">
-                  <span>Deductions</span>
-                  <strong className="text-destructive">-{formatCurrencyPrecise(deductions)}</strong>
-                </p>
+                <>
+                  <p className="flex justify-between">
+                    <span>Deductions</span>
+                    <strong className="text-destructive">-{formatCurrencyPrecise(deductions)}</strong>
+                  </p>
+                  {/* What each one was for — a bare total leaves the owner (and
+                      the operator asking about it) with no way to check it. */}
+                  <ul className="mt-1 flex flex-col gap-1.5 border-t pt-2">
+                    {lifetimeSalary.deductionLines.map((line) => (
+                      <li key={line.id} className="flex justify-between gap-3">
+                        <span className="min-w-0">
+                          <span className="font-medium">{line.category ?? "Deduction"}</span>
+                          <span className="text-muted-foreground"> · {formatDate(line.date)}</span>
+                          {line.notes && <span className="block text-xs text-muted-foreground">{line.notes}</span>}
+                        </span>
+                        <span className="shrink-0 tabular-nums text-destructive">
+                          -{formatCurrency(line.amount)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
             </div>
           )}

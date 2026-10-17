@@ -218,6 +218,11 @@ describe("lifetime summary and business-wide figures", () => {
     expect(summary.accrual.partialAmount).toBe(258.09);
     expect(summary.bonus).toBe(10.5);
     expect(summary.deductions).toBe(3.25);
+    // The "why was this deducted?" lines must account for the total exactly —
+    // the payment and the bonus are not deductions and must not appear.
+    expect(summary.deductionLines).toHaveLength(1);
+    expect(summary.deductionLines[0]).toMatchObject({ amount: 3.25, category: "Salary Advance" });
+    expect(summary.deductionLines.reduce((s, l) => s + l.amount, 0)).toBe(summary.deductions);
     // 2000.20 + 258.0903... + 10.50 - 3.25 = 2265.5403... -> 2265.54
     expect(summary.totalPayable).toBe(2265.54);
     expect(summary.totalPaid).toBe(500);

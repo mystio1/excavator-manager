@@ -5,6 +5,7 @@ import {
   accrueBaseSalary,
   applyTransaction,
   emptyTotals,
+  isDeduction,
   monthKey,
   presentAccrual,
   toMoney,
@@ -156,6 +157,46 @@ export async function computeSalaryForMonth(businessId: string, operatorId: stri
  * re-derived/approximated on the client, always the exact numbers this
  * function actually computed with.
  */
+/** One line behind the Deductions total, so the Detail dialog can say what each
+ * one was for rather than showing a bare figure. */
+export type DeductionLine = {
+  id: string;
+  date: Date;
+  amount: number;
+  /** The category the owner filed it under ("Damage", "Salary Advance", ...). */
+  category: string | null;
+  notes: string | null;
+};
+
+const DEDUCTION_EFFECT_LABEL: Record<string, string> = {
+  ADVANCE_RECOVERABLE: "Salary Advance",
+  BUSINESS_EXPENSE: "Deduction",
+  OTHER: "Adjustment",
+};
+
+function toDeductionLines(
+  transactions: {
+    id: string;
+    date: Date;
+    amount: Decimal;
+    notes: string | null;
+    businessEffect: string;
+    deductFromSalary: boolean;
+    category?: { name: string } | null;
+  }[],
+): DeductionLine[] {
+  return transactions
+    .filter(isDeduction)
+    .sort((a, b) => b.date.getTime() - a.date.getTime())
+    .map((tx) => ({
+      id: tx.id,
+      date: tx.date,
+      amount: toMoney(dec(tx.amount)),
+      category: tx.category?.name ?? DEDUCTION_EFFECT_LABEL[tx.businessEffect] ?? null,
+      notes: tx.notes,
+    }));
+}
+
 export async function getLifetimeSalarySummary(businessId: string, operatorId: string) {
   const operator = await db.operator.findFirstOrThrow({ where: { id: operatorId, businessId } });
 
@@ -165,7 +206,10 @@ export async function getLifetimeSalarySummary(businessId: string, operatorId: s
   // "remaining" is the operator's Total Outstanding across all sessions. Same response shape.
   const periodCtx = await loadPeriodContext(db, operator);
   if (!isLegacyShape(periodCtx.periods, periodCtx.leaves)) {
-    const allTx = await db.operatorTransaction.findMany({ where: { businessId, operatorId } });
+    const allTx = await db.operatorTransaction.findMany({
+      where: { businessId, operatorId },
+      include: { category: { select: { name: true } } },
+    });
     const calc = calculateOperatorPeriods(periodCtx.periods, periodCtx.leaves, allTx, now);
     const current = calc.periods.find((p) => p.status === "ACTIVE") ?? calc.periods[calc.periods.length - 1]!;
     return {
@@ -175,6 +219,7 @@ export async function getLifetimeSalarySummary(businessId: string, operatorId: s
       accrual: current.accrual,
       bonus: toMoney(calc.exact.bonus),
       deductions: toMoney(calc.exact.deductions),
+      deductionLines: toDeductionLines(allTx),
       totalPayable: toMoney(calc.exact.outstanding.plus(calc.exact.paid)),
       totalPaid: toMoney(calc.exact.paid),
       remaining: calc.summary.totalOutstanding,
@@ -187,6 +232,7 @@ export async function getLifetimeSalarySummary(businessId: string, operatorId: s
 
   const transactions = await db.operatorTransaction.findMany({
     where: { businessId, operatorId, date: { gte: salaryStartsFrom, lt: rangeEnd } },
+    include: { category: { select: { name: true } } },
   });
 
   const totals = emptyTotals();
@@ -203,6 +249,7 @@ export async function getLifetimeSalarySummary(businessId: string, operatorId: s
     accrual: presentAccrual(accrual),
     bonus: toMoney(totals.bonus),
     deductions: toMoney(totals.deductions),
+    deductionLines: toDeductionLines(transactions),
     totalPayable: toMoney(totalPayable),
     totalPaid: toMoney(totals.paid),
     remaining: toMoney(totalPayable.minus(totals.paid)),

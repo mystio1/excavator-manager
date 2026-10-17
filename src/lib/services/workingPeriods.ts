@@ -194,6 +194,17 @@ export type TimelineEvent =
   | { type: "LEAVE"; leaveId: string; startDate: Date; endDate: Date; leaveType: string; label: string; reason: string | null }
   | { type: "PRESENT"; label: string };
 
+/** One unpaid leave's share of a period's deduction, clipped to that period. */
+export type LeaveDeductionLine = {
+  leaveId: string;
+  from: Date;
+  /** Inclusive, as the owner entered it. */
+  to: Date;
+  days: number;
+  amount: number;
+  reason: string | null;
+};
+
 export type PeriodMetrics = {
   id: string;
   sessionNumber: number;
@@ -212,6 +223,9 @@ export type PeriodMetrics = {
   paidLeaveSalary: number;
   /** Taken off salaryEarned for unpaid leave recorded inside this period. */
   unpaidLeaveDeduction: number;
+  /** The leaves that deduction is made of, so it can be explained rather than
+   * just shown. Empty when nothing was deducted. */
+  unpaidLeaveLines: LeaveDeductionLine[];
   bonus: number;
   salaryDeducted: number;
   salaryPaid: number;
@@ -337,6 +351,7 @@ export function calculateOperatorPeriods(
   // would pay for days the operator did not work. Days in a gap need nothing —
   // a gap accrues nothing to begin with.
   const unpaidLeaveByPeriod = new Map<string, Decimal>();
+  const unpaidLinesByPeriod = new Map<string, LeaveDeductionLine[]>();
   for (const leave of leaves) {
     if (leave.type === "PAID") continue;
     for (const p of periods) {
@@ -344,6 +359,18 @@ export function calculateOperatorPeriods(
       if (!hit) continue;
       const accrual = accrueBaseSalary(hit.from, hit.to, dec(p.monthlySalary));
       unpaidLeaveByPeriod.set(p.id, (unpaidLeaveByPeriod.get(p.id) ?? ZERO).plus(accrual.totalExact));
+      const lines = unpaidLinesByPeriod.get(p.id) ?? [];
+      // Dates are the CLIPPED ones: a leave running past the session's end only
+      // costs the part inside it, and that is what the owner should be shown.
+      lines.push({
+        leaveId: leave.id,
+        from: hit.from,
+        to: addDays(hit.to, -1),
+        days: dayIndex(hit.to) - dayIndex(hit.from),
+        amount: toMoney(accrual.totalExact),
+        reason: leave.reason,
+      });
+      unpaidLinesByPeriod.set(p.id, lines);
     }
   }
 
@@ -380,6 +407,7 @@ export function calculateOperatorPeriods(
       salaryEarned: toMoney(earned),
       paidLeaveSalary: toMoney(paidLeaveByPeriod.get(p.id) ?? ZERO),
       unpaidLeaveDeduction: toMoney(unpaidLeaveByPeriod.get(p.id) ?? ZERO),
+      unpaidLeaveLines: unpaidLinesByPeriod.get(p.id) ?? [],
       bonus: toMoney(t.bonus),
       salaryDeducted: toMoney(t.deductions),
       salaryPaid: toMoney(t.paid),

@@ -442,10 +442,20 @@ describe("unpaid leave inside a working period", () => {
     expect(before.unpaidLeaveDeduction).toBe(0);
 
     // 18 May -> 4 Jun, squarely inside the open session.
-    const made = await createLeave(t.businessId, t.actor, op.id, { startDate: "2026-05-18", endDate: "2026-06-04" });
+    const made = await createLeave(t.businessId, t.actor, op.id, {
+      startDate: "2026-05-18",
+      endDate: "2026-06-04",
+      reason: "Village",
+    });
     expect("error" in made).toBe(false);
 
     const after = (await getOperatorPeriodsOverview(t.businessId, op.id, NOW))!.periods[0]!;
+    // The deduction must be explainable: which days, how many, and what for.
+    expect(after.unpaidLeaveLines).toHaveLength(1);
+    expect(after.unpaidLeaveLines[0]).toMatchObject({ days: 18, reason: "Village" });
+    expect(after.unpaidLeaveLines[0]!.from).toEqual(new Date(2026, 4, 18));
+    expect(after.unpaidLeaveLines[0]!.to).toEqual(new Date(2026, 5, 4));
+    expect(after.unpaidLeaveLines.reduce((s, l) => s + l.amount, 0)).toBe(after.unpaidLeaveDeduction);
     // 18 days off a 30,000/month salary, accrued on the same engine the period uses.
     const expected = toMoney(accrueBaseSalary(new Date(2026, 4, 18), new Date(2026, 5, 5), dec(30000)).totalExact);
     expect(after.unpaidLeaveDeduction).toBe(expected);
