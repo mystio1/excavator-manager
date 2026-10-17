@@ -1,6 +1,6 @@
 "use client";
 
-import useSWR from "swr";
+import useSWR, { SWRConfig } from "swr";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Link from "next/link";
@@ -13,9 +13,23 @@ import { ThemeToggleButton } from "@/components/theme-toggle-button";
 
 type LayoutData = { operatorName: string; frozen: boolean };
 
+/**
+ * The operator is looking at a screen the admin can change underneath them — a
+ * reading corrected or deleted, diesel adjusted, a job stopped — and they have
+ * no reason to think to reload. So every fetch in the portal re-checks on a
+ * short interval.
+ *
+ * SWR pauses this while the tab or app is in the background (refreshWhenHidden
+ * is off by default), so a phone in a pocket costs nothing, and revalidates the
+ * moment it comes back to the foreground.
+ */
+const LIVE_REFRESH = { refreshInterval: 10_000, revalidateOnFocus: true } as const;
+
 export default function OperatorLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { data, error } = useSWR<LayoutData>("/api/operator/layout", swrFetcher);
+  // The layout's own fetch sits outside the provider below, so it takes the
+  // same options directly — a frozen account must reach the operator too.
+  const { data, error } = useSWR<LayoutData>("/api/operator/layout", swrFetcher, LIVE_REFRESH);
   const { logout, pending } = useLogout("/operator-login");
 
   useEffect(() => {
@@ -68,7 +82,9 @@ export default function OperatorLayout({ children }: { children: React.ReactNode
           </Button>
         </div>
       </header>
-      <main className="flex-1 bg-background pb-8">{children}</main>
+      <main className="flex-1 bg-background pb-8">
+        <SWRConfig value={LIVE_REFRESH}>{children}</SWRConfig>
+      </main>
     </div>
   );
 }
