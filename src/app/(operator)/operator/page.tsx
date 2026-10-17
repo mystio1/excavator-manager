@@ -21,6 +21,8 @@ type DailyLog = {
   date: Date;
   hoursWorked: number;
   status: string;
+  /** "ADMIN" when the owner entered the reading, "OPERATOR" when this operator did. */
+  source?: string;
   kind?: "WORK" | "DIESEL_ONLY";
   dieselLiters?: number | null;
   createdAt?: Date;
@@ -142,7 +144,13 @@ export default function OperatorHomePage() {
             </Card>
           )}
           {activeSession.dailyLogs.map((log) => {
-            const badge = LOG_STATUS_BADGE[log.status] ?? LOG_STATUS_BADGE.APPROVED;
+            // A reading the owner entered was never the operator's to submit or
+            // wait on, so it is marked by who added it rather than by a status
+            // the operator cannot act on.
+            const badge =
+              log.source === "ADMIN"
+                ? { label: "ADMIN", className: "bg-purple text-purple-foreground" }
+                : (LOG_STATUS_BADGE[log.status] ?? LOG_STATUS_BADGE.APPROVED);
             return (
               <Card key={log.id}>
                 <CardContent className="flex items-center justify-between">
@@ -155,7 +163,8 @@ export default function OperatorHomePage() {
                     </p>
                     {log.createdAt && (
                       <p className="text-xs text-muted-foreground">
-                        {t("home.submitted")} {formatDateTime(log.createdAt)}
+                        {log.source === "ADMIN" ? t("home.addedByAdmin") : t("home.submitted")}{" "}
+                        {formatDateTime(log.createdAt)}
                       </p>
                     )}
                   </div>

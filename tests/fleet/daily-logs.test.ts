@@ -4,6 +4,7 @@ import {
   addDailyLog,
   approveDailyLog,
   deleteDailyLog,
+  getOperatorPortalState,
   listPendingLogs,
   rejectDailyLog,
   submitDailyLog,
@@ -298,6 +299,47 @@ describe("deleteDailyLog", () => {
     const result = failed(await deleteDailyLog(t.businessId, t.actor, b.logId, { expectedVersion: b.version + 3 }));
     expect(result.code).toBe("RESOURCE_MODIFIED");
     expect(await db.dailyWorkLog.count({ where: { id: b.logId } })).toBe(1);
+  });
+});
+
+describe("what the operator portal sees", () => {
+  /** The portal badges a reading by who entered it, so the state it reads must
+   * carry `source` — an admin's reading was never the operator's to submit. */
+  it("returns every reading on the job with who entered it", async () => {
+    // Its own tenant: newMachine pairs every machine it makes to the tenant's
+    // one operator, so sharing `t` would have the portal resolve whichever
+    // machine an earlier test happened to create first.
+    const own = await createTenant("portal-source");
+    try {
+      const m = await newMachine(own);
+      const s = await newActiveSession(own, m.id);
+
+      ok(
+        await addDailyLog(own.businessId, own.actor, {
+          workSessionId: s.id,
+          date: "2026-10-01",
+          startHourMeter: 100,
+          endHourMeter: 108,
+        }),
+      );
+      ok(
+        await submitDailyLog(own.operatorId, {
+          attachment: "Bucket",
+          workSessionId: s.id,
+          date: "2026-10-02",
+          startHourMeter: 108,
+          endHourMeter: 114,
+        }),
+      );
+
+      const state = await getOperatorPortalState(own.operatorId, own.businessId);
+      const logs = state.activeSession!.dailyLogs;
+      expect(logs).toHaveLength(2);
+      expect(logs.find((l) => l.startHourMeter === 100)).toMatchObject({ source: "ADMIN", status: "APPROVED" });
+      expect(logs.find((l) => l.startHourMeter === 108)).toMatchObject({ source: "OPERATOR", status: "PENDING" });
+    } finally {
+      await cleanupTenant(own.businessId);
+    }
   });
 });
 
