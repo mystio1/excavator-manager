@@ -9,8 +9,17 @@ import { registerPlugin } from "@capacitor/core";
  */
 export interface FileSaverPlugin {
   /** `data` is base64-encoded file content. Writes it to app storage, then
-   * launches Android's viewer/share chooser for it via a FileProvider URI. */
+   * launches Android's viewer chooser for it via a FileProvider URI. */
   saveAndOpenFile(options: { data: string; filename: string; mimeType: string }): Promise<{ path: string }>;
+  /** Same write, handed to the SHARE sheet (ACTION_SEND) instead of the viewer
+   * — messaging apps like WhatsApp only appear there. `text` rides along as the
+   * message body. */
+  shareFile(options: {
+    data: string;
+    filename: string;
+    mimeType: string;
+    text?: string;
+  }): Promise<{ path: string }>;
 }
 
 export const FileSaver = registerPlugin<FileSaverPlugin>("FileSaver");

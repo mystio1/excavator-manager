@@ -66,9 +66,25 @@ public class FileSaverPlugin extends Plugin {
 
     @PluginMethod
     public void saveAndOpenFile(PluginCall call) {
+        writeThenLaunch(call, false);
+    }
+
+    /**
+     * Same write, but handed to Android's SHARE sheet (ACTION_SEND) instead of
+     * its viewer (ACTION_VIEW). WhatsApp and the other messaging apps only
+     * register for ACTION_SEND, so they never appear in an "Open with" chooser
+     * — sharing a bill needs this path, not saveAndOpenFile.
+     */
+    @PluginMethod
+    public void shareFile(PluginCall call) {
+        writeThenLaunch(call, true);
+    }
+
+    private void writeThenLaunch(PluginCall call, boolean share) {
         String base64Data = call.getString("data");
         String filename = call.getString("filename");
         String mimeType = call.getString("mimeType");
+        String text = call.getString("text");
         if (base64Data == null || filename == null || mimeType == null) {
             call.reject("Missing required parameter", "invalid_argument");
             return;
@@ -110,11 +126,19 @@ public class FileSaverPlugin extends Plugin {
                     outFile
             );
 
-            Intent viewIntent = new Intent(Intent.ACTION_VIEW);
-            viewIntent.setDataAndType(contentUri, mimeType);
-            viewIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            Intent intent;
+            if (share) {
+                intent = new Intent(Intent.ACTION_SEND);
+                intent.setType(mimeType);
+                intent.putExtra(Intent.EXTRA_STREAM, contentUri);
+                if (text != null) intent.putExtra(Intent.EXTRA_TEXT, text);
+            } else {
+                intent = new Intent(Intent.ACTION_VIEW);
+                intent.setDataAndType(contentUri, mimeType);
+            }
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
 
-            Intent chooser = Intent.createChooser(viewIntent, "Open " + safeName);
+            Intent chooser = Intent.createChooser(intent, (share ? "Share " : "Open ") + safeName);
             chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getContext().startActivity(chooser);
 

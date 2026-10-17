@@ -18,6 +18,7 @@ import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/dates";
 import { PrintButton } from "./print-button";
 import { DownloadExcelButton } from "./download-excel-button";
+import { BILL_PDF_AREA_ID, ShareBillButton } from "./share-bill-button";
 import { PaymentSection } from "./payment-section";
 import Loading from "../../loading";
 
@@ -83,6 +84,13 @@ export default function BillDetailPage() {
               <Trash2 className="size-4" />
             </Button>
             <DownloadExcelButton billId={bill.id} />
+            <ShareBillButton
+              billNumber={bill.billNumber}
+              businessName={previewData.letterhead.businessName}
+              customerMobile={previewData.customerMobile ?? null}
+              total={bill.totalAmount}
+              pending={pending}
+            />
             <PrintButton />
           </div>
         }
@@ -109,7 +117,7 @@ export default function BillDetailPage() {
         </div>
 
         <Card className="overflow-hidden p-0">
-          <CardContent className="p-0">
+          <CardContent className="p-0" id={BILL_PDF_AREA_ID}>
             <BillPreview bill={previewData} />
           </CardContent>
         </Card>
