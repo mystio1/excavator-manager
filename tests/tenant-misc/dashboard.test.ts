@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import {
   getAlerts,
   getDashboardSummary,
+  getMonthlyHoursTrend,
   getMonthlyRevenueTrend,
   getOverduePayments,
   getPaymentCollectionStatus,
@@ -203,6 +204,74 @@ describe("getMonthlyRevenueTrend / getRecentActivity", () => {
     expect(activity.some((e) => e.kind === "bill" && e.detail === "₹33.33")).toBe(true);
     expect(activity.some((e) => e.kind === "payment" && e.message.startsWith("₹50.05 received from Alpha Builders"))).toBe(true);
     expect(activity.every((e) => !e.message.includes("B Customer"))).toBe(true);
+  });
+});
+
+describe("getMonthlyHoursTrend", () => {
+  const thisMonthLabel = () => new Date().toLocaleString("en-IN", { month: "short" });
+
+  /** Work recorded straight off the hour meter has no daily log, which used to
+   * make the chart read flat for owners who never enter one. */
+  it("counts jobs that have no daily log, so the chart matches the Hours This Month card", async () => {
+    const t = await createTenant("hours-trend");
+    try {
+      const start = new Date();
+      await db.workSession.create({
+        data: {
+          businessId: t.businessId,
+          excavatorId: t.excavatorId,
+          customerId: t.customerId,
+          siteId: t.siteId,
+          operatorId: t.operatorId,
+          startDate: start,
+          endDate: start,
+          startHourMeter: 100,
+          endHourMeter: 112.5,
+          totalHours: 12.5,
+          status: "COMPLETED",
+        },
+      });
+
+      const trend = await getMonthlyHoursTrend(t.businessId);
+      const thisMonth = trend.find((m) => m.month === thisMonthLabel())!;
+      expect(thisMonth.hours).toBe(12.5);
+      expect((await getDashboardSummary(t.businessId)).cards.hoursThisMonth).toBe(12.5);
+    } finally {
+      await cleanupTenant(t.businessId);
+    }
+  });
+
+  it("spreads a job across the months it ran instead of counting it whole in each", async () => {
+    const t = await createTenant("hours-trend-span");
+    try {
+      // 10 days at the turn of the month, 5 on each side, 10 hours total.
+      // Day 0 is the last day of the previous month, so -4..0 is 5 days there.
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), -4);
+      const end = new Date(now.getFullYear(), now.getMonth(), 5);
+      await db.workSession.create({
+        data: {
+          businessId: t.businessId,
+          excavatorId: t.excavatorId,
+          customerId: t.customerId,
+          siteId: t.siteId,
+          operatorId: t.operatorId,
+          startDate: start,
+          endDate: end,
+          startHourMeter: 0,
+          endHourMeter: 10,
+          totalHours: 10,
+          status: "COMPLETED",
+        },
+      });
+
+      const trend = await getMonthlyHoursTrend(t.businessId);
+      const total = trend.reduce((s, m) => s + m.hours, 0);
+      expect(total).toBeCloseTo(10, 1); // counted once across the series, not twice
+      expect(trend.find((m) => m.month === thisMonthLabel())!.hours).toBeCloseTo(5, 1);
+    } finally {
+      await cleanupTenant(t.businessId);
+    }
   });
 });
 

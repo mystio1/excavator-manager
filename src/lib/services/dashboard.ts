@@ -237,6 +237,9 @@ export async function getMachineHoursDetail(businessId: string) {
   });
 }
 
+/** Calendar day, with the time dropped — month buckets are day-based. */
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
 function getTrendMonths() {
   const now = new Date();
   return Array.from({ length: TREND_MONTHS }).map((_, i) => {
@@ -248,16 +251,52 @@ function getTrendMonths() {
 export async function getMonthlyHoursTrend(businessId: string) {
   const months = getTrendMonths();
   const rangeStart = new Date(months[0].year, months[0].month, 1);
-  const logs = await db.dailyWorkLog.findMany({
-    where: { workSession: { businessId }, date: { gte: rangeStart } },
-    select: { date: true, hoursWorked: true },
-  });
+  const last = months[months.length - 1]!;
+  const rangeEnd = new Date(last.year, last.month + 1, 1);
+
+  const [logs, sessionsWithoutLogs] = await Promise.all([
+    db.dailyWorkLog.findMany({
+      where: { workSession: { businessId }, date: { gte: rangeStart } },
+      select: { date: true, hoursWorked: true },
+    }),
+    // A job billed straight off the start/end hour meter never gets a daily
+    // log, so the query above cannot see it — counting only logs leaves this
+    // chart flat for an owner who records work that way, while the Hours This
+    // Month card (getHoursForSessionsOverlappingRange) counts both sources.
+    db.workSession.findMany({
+      where: {
+        businessId,
+        dailyLogs: { none: {} },
+        totalHours: { gt: 0 },
+        startDate: { lt: rangeEnd },
+      },
+      select: { startDate: true, endDate: true, totalHours: true },
+    }),
+  ]);
+
+  // Such a job has no per-day breakdown, so its hours are spread evenly over
+  // the days it ran: one spanning two months shows in both, and is still
+  // counted exactly once across the series rather than in full in each.
+  const directByMonth = new Map<string, number>();
+  for (const s of sessionsWithoutLogs) {
+    const from = startOfDay(s.startDate);
+    const to = startOfDay(s.endDate ?? s.startDate);
+    const days = Math.max(1, Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1);
+    const perDay = s.totalHours / days;
+    for (let i = 0; i < days; i++) {
+      const d = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
+      if (d < rangeStart || d >= rangeEnd) continue;
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      directByMonth.set(key, (directByMonth.get(key) ?? 0) + perDay);
+    }
+  }
 
   return months.map(({ year, month, label }) => {
-    const hours = logs
+    const logged = logs
       .filter((log) => log.date.getFullYear() === year && log.date.getMonth() === month)
       .reduce((sum, log) => sum + log.hoursWorked, 0);
-    return { month: label, hours: Math.round(hours * 100) / 100 };
+    const direct = directByMonth.get(`${year}-${month}`) ?? 0;
+    return { month: label, hours: Math.round((logged + direct) * 100) / 100 };
   });
 }
 
