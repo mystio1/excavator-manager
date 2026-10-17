@@ -35,14 +35,31 @@ export async function assignOperator(
 
     const now = new Date();
 
+    // Both directions of the pairing are closed here, not just this machine's.
+    // An operator moved from one machine to another used to stay the previous
+    // machine's currentOperatorId as well, and their portal resolves the
+    // machine FROM that pointer — so it could keep showing the old machine's
+    // job and readings indefinitely, disagreeing with what the admin sees.
     const ended = await tx.operatorAssignment.findMany({
-      where: { businessId, excavatorId: input.excavatorId, status: "ACTIVE" },
-      select: { id: true, operatorId: true },
+      where: {
+        businessId,
+        status: "ACTIVE",
+        OR: [{ excavatorId: input.excavatorId }, { operatorId: operator.id }],
+      },
+      select: { id: true, operatorId: true, excavatorId: true },
     });
     if (ended.length > 0) {
       await tx.operatorAssignment.updateMany({
         where: { id: { in: ended.map((a) => a.id) } },
         data: { status: "ENDED", endDate: now },
+      });
+    }
+
+    const vacated = [...new Set(ended.map((a) => a.excavatorId))].filter((id) => id !== input.excavatorId);
+    if (vacated.length > 0) {
+      await tx.excavator.updateMany({
+        where: { businessId, id: { in: vacated }, currentOperatorId: operator.id },
+        data: { currentOperatorId: null, version: { increment: 1 } },
       });
     }
 

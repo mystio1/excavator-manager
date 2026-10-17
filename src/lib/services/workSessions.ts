@@ -1042,10 +1042,23 @@ export async function deleteWorkSession(businessId: string, actor: AuditActor, i
  * Pending/Approved/Rejected. The pairing can be "active" with no job
  * running (e.g. between jobs) — that's expected, not an error state. */
 export async function getOperatorPortalState(operatorId: string, businessId: string) {
+  // An operator is paired with ONE machine, but nothing in the database enforced
+  // that until assignOperator started vacating the previous one, so older data
+  // can still have an operator left as two machines' currentOperatorId. An
+  // unordered findFirst on that pointer may then hand back the machine they
+  // moved off, and the portal shows its job and readings for good. The newest
+  // ACTIVE assignment is the pairing the admin actually made; the pointer is
+  // only the fallback for data that predates assignments.
+  const assignment = await db.operatorAssignment.findFirst({
+    where: { businessId, operatorId, status: "ACTIVE" },
+    orderBy: [{ startDate: "desc" }, { id: "desc" }],
+    select: { excavatorId: true },
+  });
+
   const excavator = await db.excavator.findFirst({
     // businessId from the verified operator session: tenant scoping even though
     // an operator id is globally unique.
-    where: { currentOperatorId: operatorId, businessId },
+    where: assignment ? { id: assignment.excavatorId, businessId } : { currentOperatorId: operatorId, businessId },
     include: { currentSite: { select: { name: true } } },
   });
   if (!excavator) return { excavator: null, activeSession: null };

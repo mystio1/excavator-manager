@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { assignOperator, endOperatorAssignment, getAssignmentHistoryForExcavator } from "@/lib/services/operatorAssignments";
+import { getOperatorPortalState } from "@/lib/services/workSessions";
 import { cleanupTenant, createTenant, type TestTenant } from "../helpers/tenant";
 
 /** Pairing an operator with a machine is audited, exclusive (one ACTIVE pairing per machine) and tenant scoped. */
@@ -57,6 +58,36 @@ describe("assignOperator / endOperatorAssignment", () => {
     const history = await getAssignmentHistoryForExcavator(t.businessId, t.excavatorId);
     expect(history.filter((h) => h.status === "ACTIVE")).toHaveLength(1);
     expect(history.filter((h) => h.status === "ENDED").every((h) => h.endDate !== null)).toBe(true);
+  });
+
+  /** The operator portal resolves its machine from this pairing, so an operator
+   * left pointing at two machines meant it could show the one they moved off —
+   * old readings that no refresh would fix and that the admin never sees. */
+  it("moving an operator to another machine releases the one they left", async () => {
+    const own = await createTenant("assign-move");
+    try {
+      const second = await db.excavator.create({
+        data: { businessId: own.businessId, name: "Second Machine", startingHourMeter: 0, currentHourMeter: 0 },
+      });
+
+      await assignOperator(own.businessId, own.actor, { excavatorId: own.excavatorId, operatorId: own.operatorId });
+      await assignOperator(own.businessId, own.actor, { excavatorId: second.id, operatorId: own.operatorId });
+
+      // Only the new machine points at them, and only one pairing is open.
+      expect((await db.excavator.findUniqueOrThrow({ where: { id: own.excavatorId } })).currentOperatorId).toBeNull();
+      expect((await db.excavator.findUniqueOrThrow({ where: { id: second.id } })).currentOperatorId).toBe(own.operatorId);
+      const active = await db.operatorAssignment.findMany({
+        where: { businessId: own.businessId, operatorId: own.operatorId, status: "ACTIVE" },
+      });
+      expect(active).toHaveLength(1);
+      expect(active[0]!.excavatorId).toBe(second.id);
+
+      // And the portal follows them rather than the machine they left.
+      const state = await getOperatorPortalState(own.operatorId, own.businessId);
+      expect(state.excavator?.id).toBe(second.id);
+    } finally {
+      await cleanupTenant(own.businessId);
+    }
   });
 
   it("two simultaneous assignments still leave exactly one ACTIVE pairing", async () => {
