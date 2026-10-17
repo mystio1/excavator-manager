@@ -78,7 +78,16 @@ function LogApproveReject({ logId, version, onDone }: { logId: string; version: 
 }
 
 export default function PendingApprovalsPage() {
-  const { data } = useSWR<ApprovalsData>("/api/approvals", swrFetcher, { dedupingInterval: 15_000 });
+  // This screen is the one an admin sits on waiting for work to come in, so it
+  // re-checks itself rather than making them reload to find out. The dedup
+  // window has to stay under the refresh interval, or it would swallow the very
+  // polls it is meant to be de-duplicating. SWR pauses this while the tab is in
+  // the background and revalidates the moment it comes back.
+  const { data } = useSWR<ApprovalsData>("/api/approvals", swrFetcher, {
+    refreshInterval: 10_000,
+    dedupingInterval: 5_000,
+    revalidateOnFocus: true,
+  });
   // Track ids that were just actioned so we can animate them out before SWR removes them.
   const [exitingIds, setExitingIds] = useState<Set<string>>(new Set());
 

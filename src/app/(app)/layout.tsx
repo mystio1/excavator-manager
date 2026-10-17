@@ -44,6 +44,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     // requests if multiple components mount against this same SWR key.
     dedupingInterval: 15_000,
     revalidateOnFocus: true,
+    // These alerts carry the pending-approval counts, so work an operator has
+    // just sent surfaces wherever the admin happens to be. A minute rather than
+    // the approvals screen's ten seconds: this runs on every admin page, and
+    // getAlerts is several queries, so it buys notice without the load.
+    refreshInterval: 60_000,
   });
   // Lazy-init from sessionStorage — safe even though it runs on first
   // render, because the "!data" branch below shows the same Loading state
