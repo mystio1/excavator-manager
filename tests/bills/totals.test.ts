@@ -190,6 +190,41 @@ describe("createSummaryBill", () => {
     expect(s(row.totalAmount)).toBe("13664");
   });
 
+  it("nets diesel the customer supplied off the total, after tax", async () => {
+    // 10 x 1000 = 10000 subtotal, 18% GST = 1800, less 40 L x 95 = 3800 diesel
+    const input = summaryInput(t, {
+      billType: "GST",
+      gstPercentage: 18,
+      billNumber: `GST-${uniq()}`,
+      dieselLiters: 40,
+      dieselPricePerLiter: 95,
+      items: [
+        { excavatorId: t.excavatorId, siteName: "Site A", fromDate: "2026-10-01", toDate: "2026-10-01", hours: 10, ratePerHour: 1000 },
+      ],
+    });
+    const row = await fresh(ok(await createSummaryBill(t.businessId, t.actor, input)).bill.id);
+    expect(s(row.subtotal)).toBe("10000");
+    expect(s(row.dieselLiters)).toBe("40");
+    expect(s(row.dieselAdvance)).toBe("3800");
+    expect(s(row.totalAmount)).toBe("8000"); // 10000 + 1800 - 3800
+  });
+
+  it("records the diesel but deducts nothing when the deduction is turned off", async () => {
+    const input = summaryInput(t, {
+      billNumber: `NG-${uniq()}`,
+      dieselLiters: 40,
+      dieselPricePerLiter: 95,
+      deductDiesel: false,
+      items: [
+        { excavatorId: t.excavatorId, siteName: "Site A", fromDate: "2026-10-01", toDate: "2026-10-01", hours: 10, ratePerHour: 1000 },
+      ],
+    });
+    const row = await fresh(ok(await createSummaryBill(t.businessId, t.actor, input)).bill.id);
+    expect(s(row.dieselLiters)).toBe("40");
+    expect(s(row.dieselAdvance)).toBe("0");
+    expect(s(row.totalAmount)).toBe("10000");
+  });
+
   it("does not touch logged work and rejects another tenant's machine or customer", async () => {
     const other = await createTenant("bill-summary-other");
     try {

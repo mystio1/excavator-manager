@@ -34,6 +34,9 @@ export type BillFormInitial = {
   bucketCharge: number;
   breakerCharge: number;
   discount: number;
+  dieselLiters: number;
+  dieselPricePerLiter: number;
+  deductDiesel: boolean;
   items: {
     id: string;
     attachment: string;
@@ -52,8 +55,6 @@ export type BillFormInitial = {
   bucketRate: number;
   breakerHours: number;
   breakerRate: number;
-  dieselLiters: number;
-  dieselPricePerLiter: number;
 };
 
 /** One line of the grid. Numbers are kept as the strings the user typed. */
@@ -92,6 +93,10 @@ export type BillFields = {
   bankAccountId: string;
   notes: string;
   showCustomerPhone: boolean;
+  /** Diesel the customer supplied — deducted from the total, not charged. */
+  dieselLiters: string;
+  dieselRate: string;
+  deductDiesel: boolean;
 };
 
 /** Fields that only direct bills have. */
@@ -103,8 +108,6 @@ export type DirectFields = {
   bucketRate: string;
   breakerHours: string;
   breakerRate: string;
-  dieselLiters: string;
-  dieselPricePerLiter: string;
 };
 
 /** Everything below is in rupees (hours for `hours`), already rounded to paise. */

@@ -43,8 +43,8 @@ export type BillPreviewData = {
   // Direct bill — a standalone invoice for bucket/breaker hours hired
   // directly, entered by hand instead of picked from logged work sessions.
   // When set, the items table renders a "Hiring Of <machine>" line plus
-  // Bucket/Breaker Hours rows instead of bill.items, and dieselAdvance is
-  // deducted from the total (diesel the customer supplied counts as an
+  // Bucket/Breaker Hours rows instead of bill.items. dieselAdvance is
+  // deducted from the total on ANY bill (diesel the customer supplied counts as an
   // advance payment, not a charge).
   isDirect?: boolean;
   excavatorName?: string | null;
@@ -280,7 +280,7 @@ export function BillPreview({ bill }: { bill: BillPreviewData }) {
                 </>
               )}
 
-              {isDirect && (bill.dieselAdvance ?? 0) > 0 && (
+              {(bill.dieselAdvance ?? 0) > 0 && (
                 <tr>
                   <td colSpan={4} className={cell + " text-right font-semibold text-[#A61B1B]"}>
                     Diesel Advance ({bill.dieselLiters} L &times; {formatCurrency(bill.dieselPricePerLiter ?? 0)})

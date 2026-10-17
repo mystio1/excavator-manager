@@ -23,6 +23,7 @@ type Session = {
   startDate: string;
   endDate: string;
   totalHours: number;
+  dieselLiters: number;
 };
 type BankAccount = { id: string; label: string; isDefaultForGst: boolean; isDefaultForNonGst: boolean };
 

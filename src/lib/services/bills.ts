@@ -251,13 +251,37 @@ export function readCharges(input: ChargeInput) {
   };
 }
 
+type DieselInput = { dieselLiters: number; dieselPricePerLiter: number; deductDiesel?: boolean };
+
+/** Diesel the customer supplied is an advance against the bill, not a charge:
+ * litres x price comes off the total. With the deduction turned off the litres
+ * and price are still recorded, but nothing is taken off — so a stored
+ * dieselAdvance above zero is exactly "this bill deducted diesel". */
+export function readDiesel(input: DieselInput) {
+  const dieselLiters = round2(input.dieselLiters);
+  const dieselPricePerLiter = round2(input.dieselPricePerLiter);
+  return {
+    dieselLiters,
+    dieselPricePerLiter,
+    dieselAdvance: input.deductDiesel === false ? ZERO : lineAmount(dieselLiters, dieselPricePerLiter),
+  };
+}
+
 function gstRate(billType: string, gstPercentage: number | undefined | null) {
   return billType === "GST" && gstPercentage != null ? round2(gstPercentage) : null;
 }
 
 /** subtotal + charges − discount, GST on that, and the grand total. Exact
  * decimal arithmetic, ROUND_HALF_UP to 2 dp (see src/lib/money.ts). */
-export function normalBillTotals(subtotal: Decimal, charges: ReturnType<typeof readCharges>, billType: string, gstPercentage: number | undefined | null) {
+export function normalBillTotals(
+  subtotal: Decimal,
+  charges: ReturnType<typeof readCharges>,
+  billType: string,
+  gstPercentage: number | undefined | null,
+  /** Diesel supplied by the customer, taken off AFTER tax — it is a payment
+   * against the bill, not a reduction of what is being taxed. */
+  dieselAdvance: Decimal = ZERO,
+) {
   const taxable = sum([
     subtotal,
     charges.transportCharges,
@@ -268,7 +292,7 @@ export function normalBillTotals(subtotal: Decimal, charges: ReturnType<typeof r
   ]).minus(charges.discount);
   const rate = gstRate(billType, gstPercentage);
   const gst = rate ? gstSplit(taxable, rate) : null;
-  const total = round2(taxable.plus(gst?.tax ?? ZERO));
+  const total = round2(taxable.plus(gst?.tax ?? ZERO).minus(dieselAdvance));
   return { taxable, cgst: gst?.cgst ?? null, sgst: gst?.sgst ?? null, total };
 }
 
@@ -443,7 +467,8 @@ export async function createBill(
     });
     const subtotal = sum(lines.map((l) => l.amount));
     const charges = readCharges(input);
-    const totals = normalBillTotals(subtotal, charges, input.billType, input.gstPercentage);
+    const diesel = readDiesel(input);
+    const totals = normalBillTotals(subtotal, charges, input.billType, input.gstPercentage, diesel.dieselAdvance);
     const totalFailure = checkTotal(totals.total);
     if (totalFailure) return totalFailure;
 
@@ -463,6 +488,7 @@ export async function createBill(
         billDate: new Date(input.billDate),
         subtotal,
         ...charges,
+        ...diesel,
         gstPercentage: gstRate(input.billType, input.gstPercentage),
         cgst: totals.cgst,
         sgst: totals.sgst,
@@ -550,7 +576,8 @@ export async function createSummaryBill(
     const items = buildSummaryLines(input.items);
     const subtotal = sum(items.map((i) => i.amount));
     const charges = readCharges(input);
-    const totals = normalBillTotals(subtotal, charges, input.billType, input.gstPercentage);
+    const diesel = readDiesel(input);
+    const totals = normalBillTotals(subtotal, charges, input.billType, input.gstPercentage, diesel.dieselAdvance);
     const totalFailure = checkTotal(totals.total);
     if (totalFailure) return totalFailure;
 
@@ -570,6 +597,7 @@ export async function createSummaryBill(
         billDate: new Date(input.billDate),
         subtotal,
         ...charges,
+        ...diesel,
         gstPercentage: gstRate(input.billType, input.gstPercentage),
         cgst: totals.cgst,
         sgst: totals.sgst,
@@ -595,23 +623,19 @@ function directBillAmounts(
     breakerHours: number;
     breakerRate: number;
     transportCharges: number;
-    dieselLiters: number;
-    dieselPricePerLiter: number;
     billType: string;
     gstPercentage?: number;
-  },
+  } & DieselInput,
 ) {
   const bucketHours = round2(input.bucketHours);
   const bucketRate = round2(input.bucketRate);
   const breakerHours = round2(input.breakerHours);
   const breakerRate = round2(input.breakerRate);
-  const dieselLiters = round2(input.dieselLiters);
-  const dieselPricePerLiter = round2(input.dieselPricePerLiter);
+  const { dieselLiters, dieselPricePerLiter, dieselAdvance } = readDiesel(input);
   const transportCharges = round2(input.transportCharges);
 
   const subtotal = round2(lineAmount(bucketHours, bucketRate).plus(lineAmount(breakerHours, breakerRate)));
   const taxable = round2(subtotal.plus(transportCharges));
-  const dieselAdvance = lineAmount(dieselLiters, dieselPricePerLiter);
   const rate = gstRate(input.billType, input.gstPercentage);
   const gst = rate ? gstSplit(taxable, rate) : null;
   const total = round2(taxable.plus(gst?.tax ?? ZERO).minus(dieselAdvance));
@@ -838,11 +862,13 @@ export async function updateBill(
       });
 
       const charges = readCharges(input);
+      const diesel = readDiesel(input);
       const subtotal = sum(lines.map((l) => l.amount));
-      const totals = normalBillTotals(subtotal, charges, input.billType, input.gstPercentage);
+      const totals = normalBillTotals(subtotal, charges, input.billType, input.gstPercentage, diesel.dieselAdvance);
       total = totals.total;
       money = {
         ...charges,
+        ...diesel,
         subtotal,
         cgst: totals.cgst,
         sgst: totals.sgst,

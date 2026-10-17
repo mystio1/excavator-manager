@@ -41,6 +41,9 @@ const baseFields: BillFields = {
   bankAccountId: "",
   notes: "",
   showCustomerPhone: true,
+  dieselLiters: "",
+  dieselRate: "",
+  deductDiesel: true,
 };
 
 const emptyDirect: DirectFields = {
@@ -51,8 +54,6 @@ const emptyDirect: DirectFields = {
   bucketRate: "",
   breakerHours: "",
   breakerRate: "",
-  dieselLiters: "",
-  dieselPricePerLiter: "",
 };
 
 const row = (over: Partial<Row> = {}): Row => ({
@@ -169,10 +170,17 @@ describe("computeTotals", () => {
         bucketRate: "900",
         breakerHours: "4",
         breakerRate: "1500",
-        dieselLiters: "50",
-        dieselPricePerLiter: "90",
       },
-      fields: { ...baseFields, billType: "GST", gstPercentage: 12, transport: "1000", discount: "9999", fuel: "9999" },
+      fields: {
+        ...baseFields,
+        billType: "GST",
+        gstPercentage: 12,
+        transport: "1000",
+        discount: "9999",
+        fuel: "9999",
+        dieselLiters: "50",
+        dieselRate: "90",
+      },
     });
     expect(t.subtotal).toBe(15000);
     expect(t.charges).toBe(1000); // only transport counts on a direct bill
@@ -186,7 +194,8 @@ describe("computeTotals", () => {
   it("can go negative when the diesel advance exceeds the bill (the server decides if that is allowed)", () => {
     const t = totalsFor({
       isDirect: true,
-      direct: { ...emptyDirect, bucketHours: "1", bucketRate: "100", dieselLiters: "10", dieselPricePerLiter: "100" },
+      direct: { ...emptyDirect, bucketHours: "1", bucketRate: "100" },
+      fields: { ...baseFields, dieselLiters: "10", dieselRate: "100" },
     });
     expect(t.total).toBe(-900);
   });
@@ -268,6 +277,9 @@ describe("buildPayload", () => {
       notes: "hello",
       showCustomerPhone: true,
       transportCharges: 500,
+      dieselLiters: 0,
+      dieselPricePerLiter: 0,
+      deductDiesel: true,
       items: [
         {
           id: "i1",
@@ -337,8 +349,8 @@ describe("buildPayload", () => {
     const body = buildPayload({
       mode: "edit",
       isDirect: true,
-      fields: { ...baseFields, billNumber: "NG-0003", transport: "700" },
-      direct: { ...emptyDirect, excavatorId: "m9", bucketHours: "6", bucketRate: "800", dieselLiters: "20", dieselPricePerLiter: "92.5" },
+      fields: { ...baseFields, billNumber: "NG-0003", transport: "700", dieselLiters: "20", dieselRate: "92.5" },
+      direct: { ...emptyDirect, excavatorId: "m9", bucketHours: "6", bucketRate: "800" },
       rows: [],
     });
     expect(body).toMatchObject({
@@ -353,6 +365,7 @@ describe("buildPayload", () => {
       breakerRate: 0,
       dieselLiters: 20,
       dieselPricePerLiter: 92.5,
+      deductDiesel: true,
     });
     expect(body).not.toHaveProperty("items");
     expect(body).not.toHaveProperty("discount");

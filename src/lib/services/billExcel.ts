@@ -312,7 +312,7 @@ export function buildBillWorkbook(bill: BillPreviewData): ExcelJS.Workbook {
     totalsRow(sheet, row++, `SGST (${half}%)`, `+ ${formatCurrency(bill.sgst ?? 0)}`, { color: BLUE });
   }
 
-  if (isDirect && (bill.dieselAdvance ?? 0) > 0) {
+  if ((bill.dieselAdvance ?? 0) > 0) {
     totalsRow(
       sheet,
       row++,

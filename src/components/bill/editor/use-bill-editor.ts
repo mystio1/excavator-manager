@@ -80,6 +80,9 @@ export function useBillEditor({
     bankAccountId: initial ? initial.bankAccountId : defaultBank("NON_GST"),
     notes: initial?.notes ?? "",
     showCustomerPhone: initial?.showCustomerPhone ?? true,
+    dieselLiters: String(initial?.dieselLiters || ""),
+    dieselRate: String(initial?.dieselPricePerLiter || ""),
+    deductDiesel: initial?.deductDiesel ?? true,
   }));
   const setField = <K extends keyof BillFields>(key: K, value: BillFields[K]) =>
     setFields((f) => ({ ...f, [key]: value }));
@@ -103,8 +106,6 @@ export function useBillEditor({
     bucketRate: String(initial?.bucketRate || ""),
     breakerHours: String(initial?.breakerHours || ""),
     breakerRate: String(initial?.breakerRate || ""),
-    dieselLiters: String(initial?.dieselLiters || ""),
-    dieselPricePerLiter: String(initial?.dieselPricePerLiter || ""),
   }));
   const setDirectField = <K extends keyof DirectFields>(key: K, value: DirectFields[K]) =>
     setDirect((d) => ({ ...d, [key]: value }));

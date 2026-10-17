@@ -1,8 +1,10 @@
 "use client";
 
+import { Card, CardContent } from "@/components/ui/card";
 import { BillHeader } from "./editor/bill-header";
 import { BillItemsSection } from "./editor/bill-items-section";
 import { BillSummary } from "./editor/bill-summary";
+import { DieselDeduction } from "./editor/diesel-fields";
 import { DirectBillFields } from "./editor/direct-bill-fields";
 import { ExtraCharges } from "./editor/extra-charges";
 import { SiteSuggestions } from "./editor/form-parts";
@@ -73,6 +75,21 @@ export function BillEditorForm({
           <ExtraCharges fields={fields} legacy={editor.legacyCharges} onChange={(key, v) => setField(key, v)} />
         </>
       )}
+
+      <Card>
+        <CardContent className="flex flex-col gap-4">
+          <h2 className="text-base font-semibold">Diesel Supplied by Customer</h2>
+          <DieselDeduction
+            liters={fields.dieselLiters}
+            rate={fields.dieselRate}
+            deduct={fields.deductDiesel}
+            advance={editor.totals.dieselAdvance}
+            onLitersChange={(v) => setField("dieselLiters", v)}
+            onRateChange={(v) => setField("dieselRate", v)}
+            onDeductChange={(v) => setField("deductDiesel", v)}
+          />
+        </CardContent>
+      </Card>
 
       <TaxSection
         mode={mode}

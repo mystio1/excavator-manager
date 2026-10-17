@@ -7,8 +7,8 @@ import { Field, MachineOptions, MoneyField } from "./form-parts";
 import type { BillFormOptions, DirectFields } from "./types";
 
 /** The fields of a direct bill (hired out by the hour without logged work):
- * machine, period, bucket/breaker hours and rates, transport and the diesel
- * the customer supplied. */
+ * machine, period, bucket/breaker hours and rates, and transport. Diesel is
+ * bill-level and lives in its own section (see DieselDeduction). */
 export function DirectBillFields({
   excavators,
   direct,
@@ -74,16 +74,6 @@ export function DirectBillFields({
             onChange={(v) => onChange("breakerRate", v)}
           />
           <MoneyField label="Transport Charges" value={transport} onChange={onTransportChange} className="col-span-2" />
-          <MoneyField
-            label="Diesel Litres (advance)"
-            value={direct.dieselLiters}
-            onChange={(v) => onChange("dieselLiters", v)}
-          />
-          <MoneyField
-            label="Diesel Price / Litre"
-            value={direct.dieselPricePerLiter}
-            onChange={(v) => onChange("dieselPricePerLiter", v)}
-          />
         </div>
       </CardContent>
     </Card>

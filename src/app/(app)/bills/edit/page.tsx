@@ -71,6 +71,9 @@ export default function EditBillPage() {
     breakerRate: bill.breakerRate ?? 0,
     dieselLiters: bill.dieselLiters ?? 0,
     dieselPricePerLiter: bill.dieselPricePerLiter ?? 0,
+    // A deduction is recorded as a non-zero advance; a bill with no diesel at
+    // all opens with the tick on, like a new bill.
+    deductDiesel: (bill.dieselLiters ?? 0) === 0 || (bill.dieselAdvance ?? 0) > 0,
   };
 
   return (

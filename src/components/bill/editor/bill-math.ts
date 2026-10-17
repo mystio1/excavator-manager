@@ -50,20 +50,32 @@ export function computeTotals(input: {
   direct: DirectFields;
   fields: Pick<
     BillFields,
-    "transport" | "fuel" | "extra" | "bucket" | "breaker" | "discount" | "billType" | "gstPercentage"
+    | "transport"
+    | "fuel"
+    | "extra"
+    | "bucket"
+    | "breaker"
+    | "discount"
+    | "billType"
+    | "gstPercentage"
+    | "dieselLiters"
+    | "dieselRate"
+    | "deductDiesel"
   >;
 }): BillTotals {
   const { isDirect, rows, direct, fields } = input;
   let subtotal: number;
   let charges: number;
   let discount = 0;
-  let dieselAdvance = 0;
+  // Diesel the customer supplied is an advance, so it comes off AFTER tax.
+  const dieselAdvance = fields.deductDiesel
+    ? lineAmountPaise(num(fields.dieselLiters), num(fields.dieselRate))
+    : 0;
   if (isDirect) {
     subtotal =
       lineAmountPaise(num(direct.bucketHours), num(direct.bucketRate)) +
       lineAmountPaise(num(direct.breakerHours), num(direct.breakerRate));
     charges = toPaise(num(fields.transport));
-    dieselAdvance = lineAmountPaise(num(direct.dieselLiters), num(direct.dieselPricePerLiter));
   } else {
     subtotal = rows.reduce((s, r) => s + lineAmountPaise(num(r.hours), num(r.rate)), 0);
     charges =
@@ -149,6 +161,9 @@ export function buildPayload(input: {
     notes: f.notes.trim() || undefined,
     showCustomerPhone: f.showCustomerPhone,
     transportCharges: num(f.transport),
+    dieselLiters: num(f.dieselLiters),
+    dieselPricePerLiter: num(f.dieselRate),
+    deductDiesel: f.deductDiesel,
   };
   if (isDirect) {
     return {
@@ -160,8 +175,6 @@ export function buildPayload(input: {
       bucketRate: num(direct.bucketRate),
       breakerHours: num(direct.breakerHours),
       breakerRate: num(direct.breakerRate),
-      dieselLiters: num(direct.dieselLiters),
-      dieselPricePerLiter: num(direct.dieselPricePerLiter),
     };
   }
   return {

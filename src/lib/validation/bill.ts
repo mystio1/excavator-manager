@@ -24,6 +24,15 @@ const dateField = (emptyMessage?: string) =>
     .min(1, emptyMessage)
     .refine((v) => !Number.isNaN(new Date(v).getTime()), "Enter a valid date");
 
+/** Diesel the customer supplied. It is an advance against the bill, not a
+ * charge, so litres x price comes OFF the total — unless the owner turns the
+ * deduction off, in which case the figures are still recorded but not applied. */
+const dieselFields = {
+  dieselLiters: hours().default(0),
+  dieselPricePerLiter: money().default(0),
+  deductDiesel: z.boolean().default(true),
+};
+
 export const generateBillSchema = z
   .object({
     customerId: z.string().min(1),
@@ -37,6 +46,7 @@ export const generateBillSchema = z
     bucketCharge: money().default(0),
     breakerCharge: money().default(0),
     discount: money().default(0),
+    ...dieselFields,
     billType: z.enum(["GST", "NON_GST"]),
     billNumber: z.string().trim().optional(),
     gstPercentage: z.coerce.number().min(0).max(28).optional(),
@@ -93,6 +103,7 @@ export const generateSummaryBillSchema = z
     billDate: dateField(),
     items: z.array(billItemInputSchema).min(1, "Add at least one row").max(MAX_BILL_ROWS, `A bill can have at most ${MAX_BILL_ROWS} rows`),
     ...chargeFields,
+    ...dieselFields,
     billType: z.enum(["GST", "NON_GST"]),
     billNumber: z.string().trim().optional(),
     gstPercentage: z.coerce.number().min(0).max(28).optional(),
@@ -125,6 +136,7 @@ export const updateBillSchema = z
     billNumber: z.string().trim().min(1, "Enter a bill number"),
     items: z.array(billItemInputSchema).max(MAX_BILL_ROWS, `A bill can have at most ${MAX_BILL_ROWS} rows`).optional(),
     ...chargeFields,
+    ...dieselFields,
     billType: z.enum(["GST", "NON_GST"]),
     gstPercentage: z.coerce.number().min(0).max(28).optional(),
     buyerGstin: z.string().trim().optional(),
@@ -139,8 +151,6 @@ export const updateBillSchema = z
     bucketRate: money().default(0),
     breakerHours: hours().default(0),
     breakerRate: money().default(0),
-    dieselLiters: hours().default(0),
-    dieselPricePerLiter: money().default(0),
     expectedVersion: z.number().int().min(0).optional(),
     reason: z.string().trim().max(500).optional(),
   })

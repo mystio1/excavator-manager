@@ -49,6 +49,7 @@ export const GET = withApi("bills.new-form", async (req) => {
       startDate: s.startDate,
       endDate: s.endDate ?? s.startDate,
       totalHours: s.totalHours,
+      dieselLiters: s.dieselLiters ?? 0,
     })),
     bankAccounts,
     businessGstNumber: business.gstNumber,

@@ -24,6 +24,7 @@ export const generateDirectBillSchema = z
     transportCharges: money().default(0),
     dieselLiters: hours().default(0),
     dieselPricePerLiter: money().default(0),
+    deductDiesel: z.boolean().default(true),
     billType: z.enum(["GST", "NON_GST"]),
     billNumber: z.string().trim().optional(),
     gstPercentage: z.coerce.number().min(0).max(28).optional(),

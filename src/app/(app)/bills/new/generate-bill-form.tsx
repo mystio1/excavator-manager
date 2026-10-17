@@ -16,6 +16,7 @@ import { useIdempotencyKey } from "@/components/bill/use-idempotency-key";
 import { TAX_RATES } from "@/components/bill/editor/bill-math";
 import { CheckboxField, ChoiceChip, Field } from "@/components/bill/editor/form-parts";
 import { SubmitBar } from "@/components/bill/editor/submit-bar";
+import { DieselDeduction } from "@/components/bill/editor/diesel-fields";
 
 import { todayLocal } from "@/lib/utils/dates";
 type Session = {
@@ -26,6 +27,7 @@ type Session = {
   startDate: string;
   endDate: string;
   totalHours: number;
+  dieselLiters: number;
 };
 
 type BankAccount = {
@@ -73,6 +75,8 @@ export function GenerateBillForm({
   const [extraCharges, setExtraCharges] = useState(0);
   const [attachment, setAttachment] = useState("");
   const [discount, setDiscount] = useState(0);
+  const [dieselRate, setDieselRate] = useState("");
+  const [deductDiesel, setDeductDiesel] = useState(true);
   const [billType, setBillType] = useState<"GST" | "NON_GST">("NON_GST");
   const [gstPercentage, setGstPercentage] = useState(18);
   const [manualNonGstNumber, setManualNonGstNumber] = useState(false);
@@ -84,6 +88,8 @@ export function GenerateBillForm({
   const selectedSessions = useMemo(() => sessions.filter((s) => selected[s.id]), [sessions, selected]);
   // Hours are summed in hundredths so 8.1 + 8.2 reads 16.3, not 16.299999999999997.
   const totalHours = fromPaise(selectedSessions.reduce((sum, s) => sum + toPaise(s.totalHours), 0));
+  // Diesel already recorded against the selected work — the owner only prices it.
+  const dieselLiters = fromPaise(selectedSessions.reduce((sum, s) => sum + toPaise(s.dieselLiters), 0));
 
   // Preview of what the server will store: each line is hours × rate rounded to
   // paise and the lines are summed (exact integer paise, see money-preview.ts).
@@ -92,11 +98,14 @@ export function GenerateBillForm({
     const taxable =
       subtotal + toPaise(transportCharges) + toPaise(fuelCharges) + toPaise(extraCharges) - toPaise(discount);
     const tax = billType === "GST" ? gstTaxPaise(taxable, gstPercentage) : 0;
+    // Diesel the customer supplied is an advance, so it comes off after tax.
+    const dieselAdvance = deductDiesel ? lineAmountPaise(dieselLiters, Number(dieselRate) || 0) : 0;
     return {
       subtotal: fromPaise(subtotal),
       taxable: fromPaise(taxable),
       tax: fromPaise(tax),
-      total: fromPaise(taxable + tax),
+      dieselAdvance: fromPaise(dieselAdvance),
+      total: fromPaise(taxable + tax - dieselAdvance),
     };
   }, [
     selectedSessions,
@@ -107,6 +116,9 @@ export function GenerateBillForm({
     discount,
     billType,
     gstPercentage,
+    dieselLiters,
+    dieselRate,
+    deductDiesel,
   ]);
 
   const today = todayLocal();
@@ -125,6 +137,9 @@ export function GenerateBillForm({
       extraCharges: Number(fd.get("extraCharges")) || 0,
       attachment: attachment || undefined,
       discount: Number(fd.get("discount")) || 0,
+      dieselLiters,
+      dieselPricePerLiter: Number(dieselRate) || 0,
+      deductDiesel,
       billType,
       billNumber: fd.get("billNumber") || undefined,
       gstPercentage: billType === "GST" ? gstPercentage : undefined,
@@ -295,6 +310,21 @@ export function GenerateBillForm({
 
       <Card>
         <CardContent className="flex flex-col gap-4">
+          <h2 className="text-base font-semibold">Diesel Supplied by Customer</h2>
+          <DieselDeduction
+            liters={String(dieselLiters)}
+            rate={dieselRate}
+            deduct={deductDiesel}
+            advance={totals.dieselAdvance}
+            onRateChange={setDieselRate}
+            onDeductChange={setDeductDiesel}
+            litersNote="Totalled from the diesel recorded on the selected work records."
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-4">
           <h2 className="text-base font-semibold">Bill Type</h2>
           <div role="group" aria-label="Bill type" className="grid grid-cols-2 gap-2 rounded-xl bg-muted p-1">
             <button
@@ -418,6 +448,12 @@ export function GenerateBillForm({
               <div className="flex justify-between gap-3 text-muted-foreground">
                 <dt>GST ({gstPercentage}%)</dt>
                 <dd className="shrink-0 tabular-nums">{formatCurrency(totals.tax)}</dd>
+              </div>
+            )}
+            {totals.dieselAdvance > 0 && (
+              <div className="flex justify-between gap-3 text-muted-foreground">
+                <dt>Diesel ({dieselLiters} L)</dt>
+                <dd className="shrink-0 tabular-nums">-{formatCurrency(totals.dieselAdvance)}</dd>
               </div>
             )}
             <div className="mt-2 flex justify-between gap-3 border-t pt-2 text-lg font-bold">
