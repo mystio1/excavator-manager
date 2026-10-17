@@ -243,6 +243,7 @@ export function CurrentWorkTab({
               workSessionId={activeWork.id}
               version={activeWork.version}
               currentHourMeter={currentHourMeter}
+              startDate={activeWork.startDate}
             />
           </div>
         </CardContent>

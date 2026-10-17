@@ -17,21 +17,25 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-import { todayLocal } from "@/lib/utils/dates";
 export function StopWorkDialog({
   excavatorId,
   workSessionId,
   version,
   currentHourMeter,
+  startDate,
 }: {
   excavatorId: string;
   workSessionId: string;
   /** The job's version as loaded: stopping a job someone else just changed is a conflict. */
   version?: number;
   currentHourMeter: number;
+  /** The day the job started — most work is stopped on the day it began, and
+   * a job entered days later must not be dated today by accident. */
+  startDate: Date | string;
 }) {
   const { mutate } = useSWRConfig();
-  const today = todayLocal();
+  // Work dates are stored as the UTC midnight of the chosen day.
+  const startDateValue = new Date(startDate).toISOString().slice(0, 10);
   const [open, setOpen] = useState(false);
   const [confirmSkipRemaining, setConfirmSkipRemaining] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -89,7 +93,19 @@ export function StopWorkDialog({
             <Label htmlFor="endDate" className="text-base">
               End Date
             </Label>
-            <Input id="endDate" name="endDate" type="date" defaultValue={today} required className="h-12 text-base" />
+            <Input
+              key={startDateValue}
+              id="endDate"
+              name="endDate"
+              type="date"
+              defaultValue={startDateValue}
+              min={startDateValue}
+              required
+              className="h-12 text-base"
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave as is if the work ended on the day it started.
+            </p>
           </div>
 
           <div className="flex flex-col gap-2">
