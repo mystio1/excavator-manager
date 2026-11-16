@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useSWRConfig } from "swr";
 import { Play, Plus } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
@@ -10,6 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/native-select";
 import { AttachmentPicker } from "@/components/attachment-picker";
+import { OptionsStatus } from "@/components/options-status";
+import { TOOL_REQUIRED_MESSAGE } from "@/lib/attachments";
+import type { CustomerOption, SiteOption } from "@/lib/use-options";
 import {
   Dialog,
   DialogContent,
@@ -20,9 +23,6 @@ import {
 } from "@/components/ui/dialog";
 
 import { todayLocal } from "@/lib/utils/dates";
-type CustomerOption = { id: string; name: string; companyName: string | null };
-type SiteOption = { id: string; name: string; customerId: string | null };
-
 /** Same rule findOrCreateSite uses server-side, so the site the form resolves
  * is the one the job will actually be filed under. */
 const sameSite = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -34,6 +34,7 @@ export function StartWorkDialog({
   defaultSiteName,
   customers: initialCustomers,
   sites,
+  customersStatus,
 }: {
   excavatorId: string;
   currentHourMeter: number;
@@ -41,12 +42,41 @@ export function StartWorkDialog({
   defaultSiteName: string | null;
   customers: CustomerOption[];
   sites: SiteOption[];
+  /**
+   * Why the customer list is the length it is.
+   *
+   * An array alone cannot say whether `[]` means "still fetching", "the fetch
+   * failed" or "this business has no customers", so the form used to render
+   * the same "Add a customer below to get started" for all three — to an owner
+   * whose customers were all present — and disable Start Work with no way out
+   * but reloading the app. That is the "it says no customer added" report, and
+   * why entering a job took several hard refreshes.
+   *
+   * Optional: a caller that does not pass it (a test, or a page that has the
+   * list up front) gets the old behaviour, where an empty list is simply empty.
+   */
+  customersStatus?: { isLoading: boolean; error: Error | undefined; retry: () => void };
 }) {
   const { mutate } = useSWRConfig();
   const today = todayLocal();
   const [open, setOpen] = useState(false);
+  const [toolError, setToolError] = useState<string | null>(null);
 
-  const [customers, setCustomers] = useState<CustomerOption[]>(initialCustomers);
+  /**
+   * Derived, not copied.
+   *
+   * `useState(initialCustomers)` captured the prop on the first render only,
+   * and this list arrives from SWR a moment after the page does. Open the
+   * dialog before that fetch lands and it was stuck on an empty list for good.
+   *
+   * `added` holds only what was created inline here, so the newly added
+   * customer is selectable before the refetch includes it.
+   */
+  const [added, setAdded] = useState<CustomerOption[]>([]);
+  const customers = useMemo(() => {
+    const known = new Set(initialCustomers.map((c) => c.id));
+    return [...initialCustomers, ...added.filter((c) => !known.has(c.id))];
+  }, [initialCustomers, added]);
   const [siteName, setSiteName] = useState(defaultSiteName ?? "");
 
   // A site already belongs to a customer, so asking for the customer again is
@@ -64,12 +94,18 @@ export function StartWorkDialog({
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    // The tool is compulsory: it decides whether the job's hours are priced as
+    // Bucket or Brekar, and a job started without one cannot be valued.
+    if (!fd.get("attachment")) {
+      setToolError(TOOL_REQUIRED_MESSAGE);
+      return;
+    }
     const ok = await run({
       customerId,
       siteName: fd.get("siteName"),
       startDate: fd.get("startDate"),
       startHourMeter: Number(fd.get("startHourMeter")),
-      attachment: fd.get("attachment") || undefined,
+      attachment: fd.get("attachment"),
     });
     if (ok) {
       await mutate(`/api/excavators/${excavatorId}`);
@@ -81,6 +117,10 @@ export function StartWorkDialog({
     if (next) {
       setSiteName(defaultSiteName ?? "");
       setCustomerOverride(null);
+      setToolError(null);
+      // Opening the form is the moment the list matters: ask again for one that
+      // failed, instead of waiting for the owner to reload the whole app.
+      if (customersStatus?.error) customersStatus.retry();
     }
     setOpen(next);
   }
@@ -112,7 +152,13 @@ export function StartWorkDialog({
                   Customer
                 </Label>
                 {customers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Add a customer below to get started.</p>
+                  <OptionsStatus
+                    isLoading={customersStatus?.isLoading ?? false}
+                    error={customersStatus?.error}
+                    retry={customersStatus?.retry ?? (() => undefined)}
+                    noun="customers"
+                    emptyMessage="Add a customer below to get started."
+                  />
                 ) : (
                   <NativeSelect
                     id="customerId"
@@ -194,12 +240,18 @@ export function StartWorkDialog({
                 />
               </div>
 
-              <AttachmentPicker name="attachment" label="Tool Used (Optional)" />
+              <AttachmentPicker
+                name="attachment"
+                label="Tool Used"
+                required
+                error={toolError}
+                onValueChange={() => setToolError(null)}
+              />
             </form>
 
             <AddCustomerInline
               onAdded={(customer) => {
-                setCustomers((prev) => [...prev, customer]);
+                setAdded((prev) => [...prev, customer]);
                 setCustomerOverride(customer.id);
               }}
             />
@@ -212,7 +264,10 @@ export function StartWorkDialog({
                 form="start-work-form"
                 size="lg"
                 className="h-12 w-full text-base"
-                disabled={pending || customers.length === 0}
+                // Only a genuinely empty list blocks the save; one that is
+                // still loading does not — that was the old "Start Work is
+                // dead and I don't know why".
+                disabled={pending || (customers.length === 0 && !customersStatus?.isLoading)}
               >
                 {pending ? "Starting..." : "Start Work"}
               </Button>

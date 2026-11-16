@@ -5,6 +5,7 @@ import useSWR from "swr";
 import {
   Banknote,
   Clock,
+  Hourglass,
   IndianRupee,
   LineChart,
   Trophy,
@@ -86,7 +87,7 @@ export default function DashboardPage() {
       <AlertBanner alerts={alerts} />
 
       {/* Critical KPIs */}
-      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
         <Link href="/customers" className="block">
           <SummaryCard icon={Users} label="Total Customers" value={cards.totalCustomers} accent="default" />
         </Link>
@@ -105,6 +106,10 @@ export default function DashboardPage() {
           exactValue={formatCurrency(cards.amountReceived)}
           accent="info"
         />
+        {/* Total Amount counts invoiced bills PLUS approved work that has not
+            been billed yet (valued at the site rates), which is exactly what
+            Site Analysis counts — so the Pending shown there is part of this
+            total instead of missing from it. */}
         <SummaryCard
           icon={Wallet}
           label="Total Amount"
@@ -112,6 +117,15 @@ export default function DashboardPage() {
           exactValue={formatCurrency(cards.totalRevenueAllTime)}
           accent="premium"
         />
+        <Link href="/site-analysis" className="block">
+          <SummaryCard
+            icon={Hourglass}
+            label="Pending Amount"
+            value={formatCurrencyCompact(cards.pendingAmount)}
+            exactValue={formatCurrency(cards.pendingAmount)}
+            accent="danger"
+          />
+        </Link>
         <SummaryCard
           icon={Clock}
           label="Hours This Month"
