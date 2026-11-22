@@ -13,7 +13,7 @@ type MachineHours = {
   breakdown: AttachmentHours[];
 };
 
-export function HoursDetailButton({ machines }: { machines: MachineHours[] }) {
+export function HoursDetailButton({ machines, periodLabel }: { machines: MachineHours[]; periodLabel?: string }) {
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -37,7 +37,7 @@ export function HoursDetailButton({ machines }: { machines: MachineHours[] }) {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Hours This Month — By Machine</DialogTitle>
+          <DialogTitle>{periodLabel ? `Hours, ${periodLabel}` : "Hours This Month"} — By Machine</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-2">
           {machines.length === 0 && <p className="text-sm text-muted-foreground">No machines yet.</p>}

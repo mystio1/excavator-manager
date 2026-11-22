@@ -10,18 +10,21 @@ export function ProfitOverview({
   netProfit,
   profitMarginPct,
   breakdown,
+  periodLabel = "this month",
 }: {
   revenue: number;
   expenses: number;
   netProfit: number;
   profitMarginPct: number;
   breakdown: Breakdown[];
+  /** The window the figures cover, e.g. "this month" or "1 Nov – 15 Nov". */
+  periodLabel?: string;
 }) {
   const marginTone = profitMarginPct >= 40 ? "text-working" : profitMarginPct >= 15 ? "text-idle-foreground" : "text-destructive";
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-muted-foreground">Revenue − Expenses = Net Profit, for this month.</p>
+      <p className="text-sm text-muted-foreground">Revenue − Expenses = Net Profit, for {periodLabel}.</p>
 
       {/* Explicit rows (not 3 independently-flowing cells) so the values
           always share one baseline — "Money Earned"/"Actual Profit" wrap to
@@ -45,7 +48,7 @@ export function ProfitOverview({
         <p className="col-start-2 row-start-2 self-end text-base font-extrabold tracking-tight whitespace-nowrap @min-[19rem]:text-lg @min-[24rem]:text-xl @min-[32rem]:text-2xl text-destructive tabular-nums">
           {formatCurrencyCompact(expenses)}
         </p>
-        <p className="col-start-3 row-start-2 self-end text-base font-extrabold tracking-tight whitespace-nowrap @min-[19rem]:text-lg @min-[24rem]:text-xl @min-[32rem]:text-2xl text-working tabular-nums">
+        <p className={`col-start-3 row-start-2 self-end text-base font-extrabold tracking-tight whitespace-nowrap @min-[19rem]:text-lg @min-[24rem]:text-xl @min-[32rem]:text-2xl tabular-nums ${netProfit < 0 ? "text-destructive" : "text-working"}`}>
           {formatCurrencyCompact(netProfit)}
         </p>
       </div></div>
@@ -76,7 +79,7 @@ export function ProfitOverview({
           })}
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">No tracked expenses this month.</p>
+        <p className="text-sm text-muted-foreground">No tracked expenses for {periodLabel}.</p>
       )}
     </div>
   );

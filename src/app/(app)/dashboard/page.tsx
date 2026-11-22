@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import {
   Banknote,
@@ -36,6 +37,8 @@ import { RecentActivityCard } from "@/components/dashboard/recent-activity-card"
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { usePageTitle } from "@/components/page-title";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { DateRangeFilter, formatDayRange, thisMonth, type DayRange } from "@/components/dashboard/date-range-filter";
+import { todayLocal } from "@/lib/utils/dates";
 import Loading from "../loading";
 
 type Summary = Plain<Awaited<ReturnType<typeof getDashboardSummary>>>;
@@ -63,7 +66,29 @@ export default function DashboardPage() {
   // No dedupingInterval override — the server computes this fresh on every
   // call (no server-side cache), so there's no reason to hold onto a client
   // copy longer than SWR's own short default dedup window.
-  const { data } = useSWR<DashboardData>("/api/dashboard", swrFetcher);
+  // The date filter lives in the URL (?from=&to=), so a refresh or a shared link keeps it.
+  // No dates = this month, the dashboard's long-standing default.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const today = todayLocal();
+  const fromParam = searchParams.get("from");
+  const toParam = searchParams.get("to");
+  const range: DayRange = fromParam && toParam ? { from: fromParam, to: toParam } : thisMonth(today);
+  const isThisMonth = range.from === thisMonth(today).from && range.to === thisMonth(today).to;
+  const periodLabel = isThisMonth ? "this month" : formatDayRange(range, today);
+  const setRange = (r: DayRange) => {
+    const q = new URLSearchParams(searchParams.toString());
+    q.set("from", r.from);
+    q.set("to", r.to);
+    router.replace(`${pathname}?${q.toString()}`, { scroll: false });
+  };
+
+  // keepPreviousData: changing the dates swaps the figures in place instead of
+  // blanking the whole screen to a spinner.
+  const { data } = useSWR<DashboardData>(`/api/dashboard?from=${range.from}&to=${range.to}`, swrFetcher, {
+    keepPreviousData: true,
+  });
   usePageTitle("Dashboard");
 
   if (!data) return <Loading />;
@@ -74,7 +99,8 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6 px-4 py-5 md:px-8 md:py-8">
-      {/* Greeting */}
+      {/* Greeting + date filter */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div className="animate-fade-in-up">
         <h1 className="bg-gradient-to-r from-primary-text to-[#c2710a] bg-clip-text text-3xl dark:from-primary dark:to-golden font-extrabold tracking-tight text-transparent sm:text-4xl">
           {greeting()}, {firstName} <span aria-hidden="true">👋</span>
@@ -82,6 +108,11 @@ export default function DashboardPage() {
         <p className="mt-1 text-sm text-muted-foreground sm:text-base">
           Here&rsquo;s what&rsquo;s happening with your excavator business today.
         </p>
+      </div>
+        <div className="flex flex-col gap-1 sm:items-end">
+          <DateRangeFilter value={range} today={today} onChange={setRange} />
+          <p className="text-xs text-muted-foreground">Total &amp; Pending are all-time</p>
+        </div>
       </div>
 
       <AlertBanner alerts={alerts} />
@@ -93,7 +124,7 @@ export default function DashboardPage() {
         </Link>
         <SummaryCard
           icon={IndianRupee}
-          label="Monthly Revenue"
+          label={isThisMonth ? "Monthly Revenue" : "Revenue"}
           value={formatCurrencyCompact(cards.revenueThisMonth)}
           exactValue={formatCurrency(cards.revenueThisMonth)}
           trendPct={cards.revenueTrendPct}
@@ -102,8 +133,8 @@ export default function DashboardPage() {
         <SummaryCard
           icon={Banknote}
           label="Amount Received"
-          value={formatCurrencyCompact(cards.amountReceived)}
-          exactValue={formatCurrency(cards.amountReceived)}
+          value={formatCurrencyCompact(cards.amountReceivedInRange ?? cards.amountReceived)}
+          exactValue={formatCurrency(cards.amountReceivedInRange ?? cards.amountReceived)}
           accent="info"
         />
         {/* Total Amount counts invoiced bills PLUS approved work that has not
@@ -128,10 +159,10 @@ export default function DashboardPage() {
         </Link>
         <SummaryCard
           icon={Clock}
-          label="Hours This Month"
+          label={isThisMonth ? "Hours This Month" : "Hours Worked"}
           value={cards.hoursThisMonth}
           trendPct={cards.hoursTrendPct}
-          action={<HoursDetailButton machines={machineHours} />}
+          action={<HoursDetailButton machines={machineHours} periodLabel={isThisMonth ? undefined : periodLabel} />}
           accent="info"
         />
       </div>
@@ -145,7 +176,7 @@ export default function DashboardPage() {
             </SectionTitle>
           </CardHeader>
           <CardContent>
-            <ProfitOverview {...profit} />
+            <ProfitOverview {...profit} periodLabel={periodLabel} />
           </CardContent>
         </Card>
         <Card className="animate-fade-in-up">

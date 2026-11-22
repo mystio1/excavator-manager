@@ -10,6 +10,39 @@ const TREND_MONTHS = 6;
 
 /** Registration number is optional — omit the parenthetical entirely
  * rather than printing "(null)" in an alert message. */
+/**
+ * The dashboard's reporting window (the date filter at the top of the screen). Inclusive at both
+ * ends: `from` is the first day's 00:00, `to` the last day's 23:59:59.999 — in UTC, which is how
+ * every work / bill / payment date is stored (the UTC midnight of the chosen day).
+ * Omitted = the current calendar month, which is what every figure meant before the filter.
+ */
+export type DashboardRange = { from: Date; to: Date };
+
+const DAY = 86_400_000;
+
+/** yyyy-MM-dd strings -> an inclusive UTC range. */
+export function dashboardRangeFromDays(from: string, to: string): DashboardRange {
+  return { from: new Date(`${from}T00:00:00.000Z`), to: new Date(`${to}T23:59:59.999Z`) };
+}
+
+function resolveRange(range?: DashboardRange): DashboardRange {
+  if (range) return range;
+  const { start, end } = currentMonthRange();
+  return { from: start, to: end };
+}
+
+/** The window of the same length immediately before `r` ("vs previous period"). */
+function previousRange(r: DashboardRange): DashboardRange {
+  const length = r.to.getTime() - r.from.getTime();
+  const to = new Date(r.from.getTime() - 1);
+  return { from: new Date(to.getTime() - length), to };
+}
+
+/** Whole days in the range (a 1-30 Nov window is 30). */
+export function rangeDays(r: DashboardRange) {
+  return Math.max(1, Math.round((r.to.getTime() - r.from.getTime() + 1) / DAY));
+}
+
 function machineLabel(name: string, machineNumber: string | null) {
   return machineNumber ? `${name} (${machineNumber})` : name;
 }
@@ -196,8 +229,8 @@ export async function getAlerts(businessId: string) {
 /** Backs the "Hours This Month" card's View Detail dialog — per-machine
  * breakdown of hours worked and which attachment(s) were reported in use,
  * for whichever WorkSessions overlap the current month. */
-export async function getMachineHoursDetail(businessId: string) {
-  const { start, end } = currentMonthRange();
+export async function getMachineHoursDetail(businessId: string, range?: DashboardRange) {
+  const { from: start, to: end } = resolveRange(range);
   const excavators = await db.excavator.findMany({
     where: { businessId, isArchived: false },
     select: {
@@ -351,10 +384,18 @@ function percentChange(current: number, previous: number): number | null {
   return Math.round(((current - previous) / previous) * 1000) / 10;
 }
 
-export async function getDashboardSummary(businessId: string) {
-  const { start, end } = currentMonthRange();
-  const lastMonthEnd = new Date(start.getTime() - 1);
-  const lastMonthStart = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), 1);
+export async function getDashboardSummary(businessId: string, range?: DashboardRange) {
+  // "This month" / "last month" when no range is given (older apps); otherwise the chosen
+  // window and the window of the same length right before it, for the trend badges.
+  const { from: start, to: end } = resolveRange(range);
+  let lastMonthStart: Date;
+  let lastMonthEnd: Date;
+  if (range) {
+    ({ from: lastMonthStart, to: lastMonthEnd } = previousRange(range));
+  } else {
+    lastMonthEnd = new Date(start.getTime() - 1);
+    lastMonthStart = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), 1);
+  }
 
   const [
     business,
@@ -373,6 +414,7 @@ export async function getDashboardSummary(businessId: string) {
     operatorSalaryDue,
     componentAlerts,
     siteTotals,
+    receivedInRangeAgg,
   ] = await Promise.all([
     db.business.findUniqueOrThrow({
       where: { id: businessId },
@@ -427,11 +469,17 @@ export async function getDashboardSummary(businessId: string) {
     getComponentMaintenanceAlerts(businessId),
     // Site Analysis totals come from the Site Analysis service itself (no separate formulas here).
     getSiteTotals(businessId),
+    // Money collected inside the window (the all-time figure above stays the one Pending uses).
+    db.payment.aggregate({
+      where: { businessId, date: { gte: start, lte: end } },
+      _sum: { amount: true },
+    }),
   ]);
 
   const revenueThisMonth = round2(revenueAgg._sum.totalAmount).toNumber();
   const revenueLastMonth = round2(revenueLastMonthAgg._sum.totalAmount).toNumber();
   const amountReceived = round2(receivedAgg._sum.amount).toNumber();
+  const amountReceivedInRange = round2(receivedInRangeAgg._sum.amount).toNumber();
   const pendingPayments = round2(dec(pendingBillsAgg._sum.totalAmount).minus(dec(pendingBillsAgg._sum.paidAmount))).toNumber();
 
   /**
@@ -479,6 +527,10 @@ export async function getDashboardSummary(businessId: string) {
     revenueThisMonth,
     revenueTrendPct,
     amountReceived,
+    /** Payments dated inside the selected window. `revenueThisMonth` / `hoursThisMonth` (and
+     * their trends) are likewise for the selected window when one is given — the names are kept
+     * so older installs keep working. */
+    amountReceivedInRange,
     pendingPayments,
     pendingBillsCount: pendingBillsAgg._count,
     totalCustomers,
@@ -688,10 +740,11 @@ export type PaymentCollectionCustomer = { id: string; name: string; billed: numb
  * something, plus the totals for a stacked collected/pending progress bar
  * and the actual customer breakdown per bucket (shown on the dashboard only
  * once a bucket is tapped — see PaymentCollectionStatus). */
-export async function getPaymentCollectionStatus(businessId: string) {
+export async function getPaymentCollectionStatus(businessId: string, range?: DashboardRange) {
   // Per-customer billed/paid totals summed by the database (exact NUMERIC),
   // then one lookup for the names — no bill row ever loaded into memory.
-  const perCustomer = await billTotalsByCustomer(businessId);
+  // With a range: only bills dated inside it.
+  const perCustomer = range ? await billTotalsByCustomerInRange(businessId, range) : await billTotalsByCustomer(businessId);
   const customers = perCustomer.length
     ? await db.customer.findMany({
         where: { businessId, id: { in: perCustomer.map((c) => c.customerId) } },
@@ -745,6 +798,15 @@ export async function getPaymentCollectionStatus(businessId: string) {
   };
 }
 
+/** billTotalsByCustomer, limited to bills dated inside the range. */
+function billTotalsByCustomerInRange(businessId: string, range: DashboardRange) {
+  return db.bill.groupBy({
+    by: ["customerId"],
+    where: { businessId, billDate: { gte: range.from, lte: range.to } },
+    _sum: { totalAmount: true, paidAmount: true },
+  });
+}
+
 const OVERDUE_GRACE_DAYS = 15;
 const DAY_MS = 86400000;
 
@@ -785,8 +847,8 @@ export async function getOverduePayments(businessId: string, limit = 5) {
 
 /** "Top Customers": ranked by all-time revenue, with how much of that is
  * still outstanding. */
-export async function getTopCustomersByRevenue(businessId: string, limit = 5) {
-  const perCustomer = await billTotalsByCustomer(businessId);
+export async function getTopCustomersByRevenue(businessId: string, limit = 5, range?: DashboardRange) {
+  const perCustomer = range ? await billTotalsByCustomerInRange(businessId, range) : await billTotalsByCustomer(businessId);
 
   const top = perCustomer
     .map((c) => ({
@@ -820,22 +882,21 @@ export async function getTopCustomersByRevenue(businessId: string, limit = 5) {
  * them on payroll, not just what's still unpaid). Fuel/repairs aren't
  * tracked anywhere in the app yet, so they're deliberately left out rather
  * than guessed. */
-export async function getProfitOverview(businessId: string) {
-  const { start, end } = currentMonthRange();
+export async function getProfitOverview(businessId: string, range?: DashboardRange) {
+  const { from: start, to: end } = resolveRange(range);
 
-  const [revenueAgg, serviceAgg, salaryBreakdown] = await Promise.all([
+  const [revenueAgg, serviceAgg, salaryCostRaw] = await Promise.all([
     db.bill.aggregate({ where: { businessId, billDate: { gte: start, lte: end } }, _sum: { totalAmount: true } }),
     db.serviceRecord.aggregate({
       where: { businessId, serviceDate: { gte: start, lte: end } },
       _sum: { cost: true },
     }),
-    getSalaryBreakdownForMonth(businessId, start.getFullYear(), start.getMonth()),
+    range ? salaryCostForRange(businessId, range) : salaryCostForMonth(businessId, start.getFullYear(), start.getMonth()),
   ]);
 
   const revenue = round2(revenueAgg._sum.totalAmount);
   const serviceCost = round2(serviceAgg._sum.cost);
-  // dec() accepts the salary service's amounts whether it hands back numbers or Decimals.
-  const salaryCost = round2(sum(salaryBreakdown.map((op) => dec(op.baseSalary).plus(dec(op.bonus)))));
+  const salaryCost = round2(salaryCostRaw);
 
   const expenses = round2(serviceCost.plus(salaryCost));
   const netProfit = round2(revenue.minus(expenses));
@@ -852,4 +913,47 @@ export async function getProfitOverview(businessId: string) {
       { label: "Service & Maintenance", amount: serviceCost.toNumber() },
     ].filter((b) => b.amount > 0),
   };
+}
+
+/** A month's operator salary cost: base + bonus for every operator (the accrued cost of payroll). */
+async function salaryCostForMonth(businessId: string, year: number, month: number) {
+  const breakdown = await getSalaryBreakdownForMonth(businessId, year, month);
+  // dec() accepts the salary service's amounts whether it hands back numbers or Decimals.
+  return sum(breakdown.map((op) => dec(op.baseSalary).plus(dec(op.bonus))));
+}
+
+/**
+ * Salary cost of a date range: each calendar month it touches contributes its monthly cost in
+ * proportion to the days of that month inside the range (a whole month counts in full, 1-15 Nov
+ * counts 15/30 of November). Days after today are left out — no salary has been earned for them.
+ */
+export async function salaryCostForRange(businessId: string, range: DashboardRange, now = new Date()) {
+  const end = Math.min(range.to.getTime(), Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+  if (end < range.from.getTime()) return dec(0);
+  const parts: Promise<ReturnType<typeof dec>>[] = [];
+  let y = range.from.getUTCFullYear();
+  let m = range.from.getUTCMonth();
+  // At most 60 months: the API refuses longer ranges, this is a backstop.
+  for (let i = 0; i < 60; i++) {
+    const monthStart = Date.UTC(y, m, 1);
+    if (monthStart > end) break;
+    const monthEnd = Date.UTC(y, m + 1, 1) - 1;
+    const daysInMonth = Math.round((monthEnd + 1 - monthStart) / DAY);
+    const overlap = Math.round((Math.min(end, monthEnd) + 1 - Math.max(range.from.getTime(), monthStart)) / DAY);
+    const year = y;
+    const month = m;
+    if (overlap > 0) {
+      parts.push(
+        salaryCostForMonth(businessId, year, month).then((cost) =>
+          overlap >= daysInMonth ? cost : cost.times(overlap).div(daysInMonth),
+        ),
+      );
+    }
+    m += 1;
+    if (m === 12) {
+      m = 0;
+      y += 1;
+    }
+  }
+  return sum(await Promise.all(parts));
 }
