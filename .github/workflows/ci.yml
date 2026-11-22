@@ -40,7 +40,16 @@ jobs:
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/excavator_ci
       SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/excavator_shadow
       AUTH_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
-      APP_URL: https://ci.example.test
+      # Must match what tests/setup.ts defaults to and what every route
+      # test sends as its Origin. The suite builds its requests against
+      # https://app.example.test, and checkCsrf only trusts APP_URL (plus
+      # ALLOWED_ORIGINS and the Capacitor origin) — a Request built in a
+      # test carries no Host header for the same-host fallback to use. So
+      # any other value here makes every state-changing route test fail
+      # CSRF with 403. This was set to https://ci.example.test, which no
+      # test refers to; it went unnoticed because CI failed at Typecheck
+      # before it ever reached the Tests step.
+      APP_URL: https://app.example.test
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
