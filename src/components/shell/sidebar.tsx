@@ -32,7 +32,7 @@ export function Sidebar({ businessName }: { businessName: string }) {
   return (
     <aside
       className={cn(
-        "sticky top-0 hidden h-screen shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar transition-[width] duration-250 ease-out md:flex",
+        "sticky top-0 hidden h-screen shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar transition-[width] duration-250 ease-out lg:flex",
         collapsed ? "w-[76px]" : "w-64",
       )}
     >

@@ -55,21 +55,23 @@ export function SummaryCard({
   }[accent ?? "default"];
 
   return (
-    <Card className={cn("card-hover animate-fade-in-up gap-2.5 border-t-4 py-4", topBorderClass, washClass)}>
-      <CardContent className="flex items-start gap-3 px-4">
-        <div className={cn("flex size-11 shrink-0 items-center justify-center rounded-2xl", accentClass)}>
-          <Icon className="size-5" />
+    // Sized by its own width (container queries), not the screen's: two or three of these
+    // share a phone row with the icon above the text, and sit icon-beside-text when wide.
+    <Card className={cn("@container card-hover animate-fade-in-up gap-2.5 border-t-4 py-3.5 @min-[13rem]:py-4", topBorderClass, washClass)}>
+      <CardContent className="flex flex-col items-start gap-2 px-3 @min-[13rem]:flex-row @min-[13rem]:gap-3 @min-[13rem]:px-4">
+        <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-xl @min-[13rem]:size-11 @min-[13rem]:rounded-2xl", accentClass)}>
+          <Icon className="size-4 @min-[13rem]:size-5" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <span className="flex min-w-0 items-center gap-1">
-              <p className="min-w-0 truncate text-xs font-semibold text-muted-foreground">{label}</p>
+              <p className="min-w-0 line-clamp-2 text-xs leading-tight font-semibold text-muted-foreground @min-[13rem]:truncate">{label}</p>
               {exactValue && <ExactValueBadge exactValue={exactValue} />}
             </span>
             {action}
           </div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <p className="text-2xl leading-tight font-extrabold tracking-tight tabular-nums sm:text-[28px]">{value}</p>
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <p className="text-xl leading-tight font-extrabold tracking-tight tabular-nums @min-[13rem]:text-2xl @min-[18rem]:text-[28px]">{value}</p>
             {trendPct != null && (
               <span
                 className={cn(

@@ -150,7 +150,7 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
             )}
             <div className="mt-1 flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Operator: {session.operator.name}</span>
-              <span className="font-semibold">{formatHours(session.totalHours)}</span>
+              <span className="shrink-0 font-semibold whitespace-nowrap">{formatHours(session.totalHours)}</span>
             </div>
             <div className="grid grid-cols-2 gap-y-1 text-sm">
               <span className="text-muted-foreground">Start Reading</span>

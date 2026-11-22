@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
-/** Tailwind's `md` breakpoint: at and above it the grid is a table, below it
- * every row is a card. */
-const DESKTOP_QUERY = "(min-width: 768px)";
+/** Tailwind's `lg` breakpoint: where the app switches from the phone layout
+ * (bottom navigation) to the desktop one (sidebar). Below it the save button
+ * lives in a bar fixed above the bottom navigation. */
+const DESKTOP_QUERY = "(min-width: 1024px)";
 
-/** True at `md` and wider. The editor only renders after its data has loaded on
+/** True at `lg` and wider. The editor only renders after its data has loaded on
  * the client, so the server snapshot (desktop) is never what a user sees. */
 export function useIsDesktop(): boolean {
   const subscribe = useCallback((onChange: () => void) => {

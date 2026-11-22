@@ -158,7 +158,7 @@ export default function SiteDetailPage() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <SummaryCard icon={Truck} label="Machines" value={summary.machines} />
           <SummaryCard icon={Clock} label="Total Working Hours" value={formatHours(summary.hours)} accent="info" />
           <SummaryCard icon={Shovel} label="Bucket Hours" value={formatHours(summary.bucketHours)} accent="info" />
@@ -247,7 +247,7 @@ export default function SiteDetailPage() {
         <Card>
           <CardContent className="flex flex-col gap-3">
             <p className="text-base font-bold">Diesel Analysis</p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <SummaryCard icon={Droplets} label="Total Diesel" value={`${diesel.total} L`} accent="warning" />
               <SummaryCard icon={CalendarDays} label="Average Diesel / Day" value={`${diesel.avgPerDay} L`} accent="warning" />
               {/* The simple figure, always shown: diesel taken over hours

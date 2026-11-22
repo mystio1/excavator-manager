@@ -135,7 +135,7 @@ export default function OperatorDetailPage() {
       </div>
       <div className="flex flex-col gap-4 px-4 pb-6 md:px-8">
         <Tabs defaultValue={tab}>
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="flex w-full justify-start overflow-x-auto sm:grid sm:grid-cols-5 [&>*]:shrink-0 [&>*]:px-3">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="transactions">Money</TabsTrigger>
             <TabsTrigger value="sessions">Sessions</TabsTrigger>

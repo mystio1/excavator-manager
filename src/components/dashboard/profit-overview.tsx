@@ -29,7 +29,7 @@ export function ProfitOverview({
           on 1, and 3 separately-flowing cells let that push only two of the
           three values down, misaligning them. A shared grid row forces all
           three labels (and separately, all three values) to the same height. */}
-      <div className="grid grid-cols-3 grid-rows-2 gap-x-3 gap-y-0.5 rounded-2xl bg-muted/40 p-3.5">
+      <div className="@container"><div className="grid grid-cols-3 grid-rows-2 gap-x-3 gap-y-0.5 rounded-2xl bg-muted/40 p-3.5">
         <p className="col-start-1 row-start-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           Money Earned
         </p>
@@ -39,16 +39,16 @@ export function ProfitOverview({
         <p className="col-start-3 row-start-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           Actual Profit
         </p>
-        <p className="col-start-1 row-start-2 self-end text-xl font-extrabold tracking-tight text-primary-text tabular-nums sm:text-2xl">
+        <p className="col-start-1 row-start-2 self-end text-base font-extrabold tracking-tight whitespace-nowrap @min-[19rem]:text-lg @min-[24rem]:text-xl @min-[32rem]:text-2xl text-primary-text tabular-nums">
           {formatCurrencyCompact(revenue)}
         </p>
-        <p className="col-start-2 row-start-2 self-end text-xl font-extrabold tracking-tight text-destructive tabular-nums sm:text-2xl">
+        <p className="col-start-2 row-start-2 self-end text-base font-extrabold tracking-tight whitespace-nowrap @min-[19rem]:text-lg @min-[24rem]:text-xl @min-[32rem]:text-2xl text-destructive tabular-nums">
           {formatCurrencyCompact(expenses)}
         </p>
-        <p className="col-start-3 row-start-2 self-end text-xl font-extrabold tracking-tight text-working tabular-nums sm:text-2xl">
+        <p className="col-start-3 row-start-2 self-end text-base font-extrabold tracking-tight whitespace-nowrap @min-[19rem]:text-lg @min-[24rem]:text-xl @min-[32rem]:text-2xl text-working tabular-nums">
           {formatCurrencyCompact(netProfit)}
         </p>
-      </div>
+      </div></div>
 
       <div className="flex items-center justify-between rounded-xl bg-muted/50 px-3.5 py-2.5">
         <span className="text-sm font-semibold text-muted-foreground">Profit Margin</span>

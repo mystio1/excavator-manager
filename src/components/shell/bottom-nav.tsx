@@ -20,7 +20,7 @@ export function BottomNav() {
   const moreActive = secondaryItems.some((i) => isNavItemActive(pathname, i.href));
 
   return (
-    <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-40 flex border-t bg-card pb-[max(env(safe-area-inset-bottom),0px)] md:hidden">
+    <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-40 flex border-t bg-card pb-[max(env(safe-area-inset-bottom),0px)] lg:hidden">
       {primaryItems.map((item) => {
         const active = isNavItemActive(pathname, item.href);
         const Icon = item.icon;

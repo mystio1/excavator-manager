@@ -53,7 +53,7 @@ function WorkCard({ work: h, invalidateKey }: { work: Work; invalidateKey: strin
         <p className="text-sm">{formatDateRange(h.startDate, h.endDate)}</p>
         <div className="mt-1 flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Operator: {h.operatorName}</span>
-          <span className="font-semibold">{formatHours(h.totalHours)}</span>
+          <span className="shrink-0 font-semibold whitespace-nowrap">{formatHours(h.totalHours)}</span>
         </div>
         <Button
           type="button"
@@ -200,7 +200,7 @@ export default function CustomerDetailPage() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <SummaryCard icon={Truck} label="Machines Used" value={totalMachinesUsed} />
           <SummaryCard icon={CalendarDays} label="Working Days" value={totalWorkingDays} />
           <SummaryCard icon={Clock} label="Total Hours" value={formatHours(totalHours)} />
