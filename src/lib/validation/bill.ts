@@ -215,3 +215,14 @@ export function parseExpectedVersion(req: Request): number | undefined {
   if (!Number.isInteger(n) || n < 0) throw new ApiHttpError("BAD_REQUEST", "expectedVersion must be a non-negative integer");
   return n;
 }
+
+/** GET /api/bills/direct/hours — the recorded hours a direct bill for this
+ * customer, machine and period would cover. */
+export const directBillHoursQuerySchema = z
+  .object({
+    customerId: z.string().trim().min(1).max(128),
+    excavatorId: z.string().trim().min(1).max(128),
+    from: isoDay,
+    to: isoDay,
+  })
+  .refine((q) => q.from <= q.to, "'From' must be on or before 'To'");

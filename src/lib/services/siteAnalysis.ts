@@ -483,6 +483,56 @@ export async function getCustomerUnbilledWork(businessId: string, customerId: st
   }));
 }
 
+// ---------------------------------------------------------------------------------------------
+// DIRECT BILL HOURS: what Site Analysis has recorded for one machine, for one customer, between two
+// days — the same approved work entries everything above counts — split by work type, and into
+// work not billed yet (what a new bill should charge) and work already on a bill (shown so the
+// owner can see why it is not suggested again).
+// ---------------------------------------------------------------------------------------------
+
+export type RecordedHours = {
+  bucket: number;
+  breaker: number;
+  other: number;
+  /** Already on a bill in the window (any type), so not suggested again. */
+  billed: number;
+  /** Distinct days with unbilled hours. */
+  days: number;
+  sites: string[];
+};
+
+/** `from` / `to` are yyyy-MM-dd, inclusive. */
+export async function getRecordedHoursForBilling(
+  businessId: string,
+  f: { customerId: string; excavatorId: string; from: string; to: string },
+): Promise<RecordedHours> {
+  const { from, to } = parseRange(f.from, f.to);
+  const rows = await db.$queryRaw<AggRow[]>(Prisma.sql`
+    ${entriesCte({ businessId, excavatorId: f.excavatorId })}
+    SELECT
+      COALESCE(sum(hours) FILTER (WHERE NOT billed AND wtype = 'BUCKET'), 0)::float8 AS bucket,
+      COALESCE(sum(hours) FILTER (WHERE NOT billed AND wtype = 'BREAKER'), 0)::float8 AS breaker,
+      COALESCE(sum(hours) FILTER (WHERE NOT billed AND wtype = 'OTHER'), 0)::float8 AS other,
+      COALESCE(sum(hours) FILTER (WHERE billed), 0)::float8 AS billed,
+      (count(DISTINCT date::date) FILTER (WHERE hours > 0 AND NOT billed))::int AS days,
+      COALESCE(array_agg(DISTINCT "siteId") FILTER (WHERE hours > 0 AND NOT billed), '{}') AS "siteIds"
+    FROM val
+    WHERE "customerId" = ${f.customerId} AND date >= ${from}::timestamp AND date <= ${to}::timestamp`);
+  const r = rows[0] ?? {};
+  const siteIds = (r.siteIds as string[] | null) ?? [];
+  const sites = siteIds.length
+    ? await db.site.findMany({ where: { businessId, id: { in: siteIds } }, select: { name: true }, orderBy: { name: "asc" } })
+    : [];
+  return {
+    bucket: num(r.bucket),
+    breaker: num(r.breaker),
+    other: num(r.other),
+    billed: num(r.billed),
+    days: Number(r.days ?? 0),
+    sites: sites.map((x) => x.name),
+  };
+}
+
 export type MachineRow = Totals & {
   excavatorId: string;
   name: string;

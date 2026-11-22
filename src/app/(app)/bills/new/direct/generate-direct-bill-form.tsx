@@ -2,8 +2,11 @@
 
 import { useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import useSWR from "swr";
 import { FileText, Receipt } from "lucide-react";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, swrFetcher } from "@/lib/api-client";
+import { formatHours } from "@/lib/utils/hours";
+import type { RecordedHours } from "@/lib/services/siteAnalysis";
 import { useApiForm } from "@/lib/use-api-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -64,10 +67,32 @@ export function GenerateDirectBillForm({
     router.push(`/bills/detail?id=${bill.id}`);
   });
 
-  const [bucketHours, setBucketHours] = useState(0);
+  // Machine and period drive the recorded-hours lookup, so they are controlled.
+  const [initialDay] = useState(todayLocal);
+  const [excavatorId, setExcavatorId] = useState("");
+  const [fromDate, setFromDate] = useState(initialDay);
+  const [toDate, setToDate] = useState(initialDay);
+  const periodOk = !!excavatorId && !!fromDate && !!toDate && fromDate <= toDate;
+  const { data: recorded, isLoading: recordedLoading } = useSWR<RecordedHours>(
+    periodOk
+      ? `/api/bills/direct/hours?${new URLSearchParams({ customerId, excavatorId, from: fromDate, to: toDate })}`
+      : null,
+    swrFetcher,
+  );
+  // Hours follow what Site Analysis recorded until the owner types their own (null = follow).
+  const [bucketManual, setBucketManual] = useState<number | null>(null);
+  const [breakerManual, setBreakerManual] = useState<number | null>(null);
+  const bucketHours = bucketManual ?? recorded?.bucket ?? 0;
+  const breakerHours = breakerManual ?? recorded?.breaker ?? 0;
+  const setBucketHours = (v: number) => setBucketManual(v);
+  const setBreakerHours = (v: number) => setBreakerManual(v);
+  /** A new machine or period starts again from its recorded hours. */
+  const followRecorded = () => {
+    setBucketManual(null);
+    setBreakerManual(null);
+  };
   const site = sitesForCustomer(sites, customerId)[0];
   const [bucketRate, setBucketRate] = useState(Number(site?.bucketRate) || 0);
-  const [breakerHours, setBreakerHours] = useState(0);
   const [breakerRate, setBreakerRate] = useState(Number(site?.breakerRate) || 0);
   const formRef = useRef<HTMLFormElement>(null);
   const [preview, setPreview] = useState<null | Record<string, string>>(null);
@@ -141,7 +166,17 @@ export function GenerateDirectBillForm({
           ) : (
             <Field label="Machine">
               {(id) => (
-                <NativeSelect id={id} name="excavatorId" required defaultValue="" className="h-11 min-w-0">
+                <NativeSelect
+                  id={id}
+                  name="excavatorId"
+                  required
+                  value={excavatorId}
+                  onChange={(e) => {
+                    setExcavatorId(e.target.value);
+                    followRecorded();
+                  }}
+                  className="h-11 min-w-0"
+                >
                   <option value="" disabled>
                     Choose a machine
                   </option>
@@ -160,10 +195,38 @@ export function GenerateDirectBillForm({
               {(id) => <Input id={id} name="billDate" type="date" defaultValue={today} required className="h-11 px-2" />}
             </Field>
             <Field label="From Date">
-              {(id) => <Input id={id} name="fromDate" type="date" defaultValue={today} required className="h-11 px-2" />}
+              {(id) => (
+                <Input
+                  id={id}
+                  name="fromDate"
+                  type="date"
+                  value={fromDate}
+                  max={toDate || undefined}
+                  onChange={(e) => {
+                    setFromDate(e.target.value);
+                    followRecorded();
+                  }}
+                  required
+                  className="h-11 px-2"
+                />
+              )}
             </Field>
             <Field label="To Date">
-              {(id) => <Input id={id} name="toDate" type="date" defaultValue={today} required className="h-11 px-2" />}
+              {(id) => (
+                <Input
+                  id={id}
+                  name="toDate"
+                  type="date"
+                  value={toDate}
+                  min={fromDate || undefined}
+                  onChange={(e) => {
+                    setToDate(e.target.value);
+                    followRecorded();
+                  }}
+                  required
+                  className="h-11 px-2"
+                />
+              )}
             </Field>
           </div>
         </CardContent>
@@ -172,6 +235,13 @@ export function GenerateDirectBillForm({
       <Card>
         <CardContent className="flex flex-col gap-4">
           <h2 className="text-base font-semibold">Bucket &amp; Breaker Hours</h2>
+          <RecordedHoursNote
+            periodOk={periodOk}
+            loading={recordedLoading}
+            recorded={recorded}
+            edited={bucketManual !== null || breakerManual !== null}
+            onUseRecorded={followRecorded}
+          />
           <div className="grid grid-cols-2 gap-4">
             <Field label="Bucket Hours">
               {(id) => (
@@ -498,5 +568,50 @@ export function GenerateDirectBillForm({
         })()}
       />
     </form>
+  );
+}
+
+/** Where the hours came from: Site Analysis' record of this machine, customer and period. */
+function RecordedHoursNote({
+  periodOk,
+  loading,
+  recorded,
+  edited,
+  onUseRecorded,
+}: {
+  periodOk: boolean;
+  loading: boolean;
+  recorded: RecordedHours | undefined;
+  edited: boolean;
+  onUseRecorded: () => void;
+}) {
+  if (!periodOk) {
+    return <p className="-mt-2 text-xs text-muted-foreground">Pick the machine and dates to fill in the hours recorded in Site Analysis.</p>;
+  }
+  if (loading || !recorded) return <p className="-mt-2 text-xs text-muted-foreground">Checking recorded hours…</p>;
+  const has = recorded.bucket > 0 || recorded.breaker > 0;
+  return (
+    <div className="-mt-2 flex flex-col gap-1 rounded-lg border border-info/30 bg-info/5 px-3 py-2 text-xs">
+      {has ? (
+        <p>
+          <span className="font-semibold">From Site Analysis</span>
+          {recorded.sites.length > 0 && <> ({recorded.sites.join(", ")})</>}: Bucket {formatHours(recorded.bucket)} · Breaker{" "}
+          {formatHours(recorded.breaker)} over {recorded.days} day{recorded.days === 1 ? "" : "s"}, not billed yet.
+        </p>
+      ) : (
+        <p>No unbilled Bucket or Breaker work recorded for this machine and customer in these dates — enter the hours.</p>
+      )}
+      {recorded.other > 0 && (
+        <p className="text-muted-foreground">{formatHours(recorded.other)} of other work (e.g. Chaining) is not included.</p>
+      )}
+      {recorded.billed > 0 && (
+        <p className="text-muted-foreground">{formatHours(recorded.billed)} in these dates is already on a bill, so it is left out.</p>
+      )}
+      {edited && has && (
+        <button type="button" onClick={onUseRecorded} className="self-start font-semibold text-primary-text underline">
+          Use recorded hours
+        </button>
+      )}
+    </div>
   );
 }
