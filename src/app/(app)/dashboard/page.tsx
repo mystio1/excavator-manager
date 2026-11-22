@@ -87,7 +87,7 @@ export default function DashboardPage() {
       <AlertBanner alerts={alerts} />
 
       {/* Critical KPIs */}
-      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
         <Link href="/customers" className="block">
           <SummaryCard icon={Users} label="Total Customers" value={cards.totalCustomers} accent="default" />
         </Link>
