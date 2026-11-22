@@ -10,8 +10,8 @@
     "lint": "eslint",
     "postinstall": "prisma generate",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "node scripts/vitest.mjs run",
+    "test:watch": "node scripts/vitest.mjs",
     "test:migrations": "node scripts/test-migrations.mjs",
     "prisma:validate": "prisma validate",
     "check": "npm run lint && npm run typecheck && npm run prisma:validate && npm test",
@@ -68,6 +68,6 @@
     "shadcn": "^4.23.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^3.2.7"
+    "vitest": "^5.1.1"
   }
 }
