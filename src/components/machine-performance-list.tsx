@@ -23,6 +23,9 @@ const PERIODS: { value: EarningsPeriod; label: string }[] = [
   { value: "year", label: "Yearly" },
 ];
 
+/** One size for every amount on the card, so the figures line up and compare at a glance. */
+const AMOUNT = "text-base font-bold tabular-nums whitespace-nowrap sm:text-lg";
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** Bucket dates are yyyy-MM-dd (UTC midnight days), so they are labelled from the string. */
@@ -138,11 +141,14 @@ export function MachinePerformanceList() {
         )}
 
         {selected && (
-          <div className="flex items-baseline justify-between gap-3 border-b pb-3">
-            <p className="text-sm text-muted-foreground">
-              All machines · {bucketLabel(selected, period)} · {formatHours(fleetHours)}
-            </p>
-            <p className="text-lg font-bold">{formatCurrency(fleetRevenue)}</p>
+          <div className="flex items-end justify-between gap-3 border-b pb-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">All machines</p>
+              <p className="text-sm text-muted-foreground">
+                {bucketLabel(selected, period)} · {formatHours(fleetHours)}
+              </p>
+            </div>
+            <p className={AMOUNT}>{formatCurrency(fleetRevenue)}</p>
           </div>
         )}
 
@@ -157,23 +163,30 @@ export function MachinePerformanceList() {
                   type="button"
                   aria-expanded={isOpen}
                   onClick={() => setExpanded(isOpen ? null : m.id)}
-                  className="flex w-full items-center justify-between gap-3 py-3 text-left"
+                  className="flex w-full flex-col gap-1 py-3 text-left"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate font-bold">{m.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {m.machineNumber ?? "—"} · {formatHours(point?.hours ?? 0)}
-                    </p>
-                    {point && point.unpricedHours > 0 && (
-                      <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
-                        {formatHours(point.unpricedHours)} not priced — site rate missing
-                      </p>
-                    )}
+                  {/* Top line: name, with the status as a small tag in the top-right corner */}
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="min-w-0 truncate font-bold">{m.name}</p>
+                    <StatusBadge status={m.status} className="h-5 shrink-0 gap-1 px-1.5 text-[11px]" />
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <p className="text-lg font-bold">{formatCurrency(point?.revenue ?? 0)}</p>
-                    <StatusBadge status={m.status} />
-                    <ChevronDown className={cn("size-4 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
+                  {/* Second line: number · hours on the left, amount on the right */}
+                  <div className="flex items-end justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-muted-foreground">
+                        {m.machineNumber ? `${m.machineNumber} · ` : ""}
+                        {formatHours(point?.hours ?? 0)}
+                      </p>
+                      {point && point.unpricedHours > 0 && (
+                        <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                          {formatHours(point.unpricedHours)} not priced — site rate missing
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <p className={AMOUNT}>{formatCurrency(point?.revenue ?? 0)}</p>
+                      <ChevronDown className={cn("size-4 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
+                    </div>
                   </div>
                 </button>
 
