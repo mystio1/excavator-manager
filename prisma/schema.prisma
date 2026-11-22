@@ -54,6 +54,9 @@ model Business {
   logoRightUrl    String?
   signatureUrl    String?
   billTagline     String? // e.g. "Excavation & Earthwork Services"
+  // What a litre of diesel costs this business. Costs recorded diesel litres in Business Profit
+  // Overview when a machine has no actual diesel purchase recorded for the period. Null = not set.
+  dieselPricePerLitre Decimal? @db.Decimal(10, 2)
   billAccentColor String  @default("#0B2B5E")
 
   createdAt DateTime @default(now())

@@ -242,3 +242,8 @@ export const bankAccountSchema = z.object({
   isDefaultForGst: z.coerce.boolean().optional(),
   isDefaultForNonGst: z.coerce.boolean().optional(),
 });
+
+/** What a litre of diesel costs; null clears it. */
+export const dieselPriceSchema = z.object({
+  dieselPricePerLitre: z.number().min(0, "Must be 0 or more").max(10_000, "That price looks wrong").nullable(),
+});

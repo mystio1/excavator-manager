@@ -30,8 +30,10 @@ export function formatCurrencyPrecise(amount: number) {
  * value somewhere (e.g. a hover/click tooltip) since this is lossy. */
 export function formatCurrencyCompact(amount: number) {
   const abs = Math.abs(amount);
-  if (abs >= 1_00_00_000) return `₹${trimDecimal(amount / 1_00_00_000)}Cr`;
-  if (abs >= 1_00_000) return `₹${trimDecimal(amount / 1_00_000)}L`;
+  // A loss reads "-₹2.1L", not "₹-2.1L" (formatCurrency already puts the sign first).
+  const sign = amount < 0 ? "-" : "";
+  if (abs >= 1_00_00_000) return `${sign}₹${trimDecimal(abs / 1_00_00_000)}Cr`;
+  if (abs >= 1_00_000) return `${sign}₹${trimDecimal(abs / 1_00_000)}L`;
   return formatCurrency(amount);
 }
 

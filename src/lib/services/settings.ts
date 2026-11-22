@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { fail } from "@/lib/api-error";
 import { recordAudit, type AuditActor } from "@/lib/audit";
 import { withTx, type Tx } from "@/lib/tx";
+import { round2 } from "@/lib/money";
 import { generateBusinessCode, normalizeBusinessCode } from "@/lib/utils/businessCode";
 import type { z } from "zod";
 import type { bankAccountSchema, billLetterheadSchema, businessProfileSchema } from "@/lib/validation/settings";
@@ -149,6 +150,34 @@ export async function updateOperatorLanguage(
       businessId,
       actor,
       action: "business.operator_language.update",
+      entityType: "Business",
+      entityId: businessId,
+      before,
+      after,
+    });
+    return after;
+  });
+}
+
+/** Diesel price per litre (Business Profit Overview costs recorded litres with it). */
+export async function updateDieselPrice(
+  businessId: string,
+  actor: AuditActor,
+  dieselPricePerLitre: number | null,
+  opts?: { tx?: Tx },
+) {
+  return withTx(opts?.tx, async (tx) => {
+    await lockBusiness(tx, businessId);
+    const before = await tx.business.findUniqueOrThrow({ where: { id: businessId }, select: { dieselPricePerLitre: true } });
+    const after = await tx.business.update({
+      where: { id: businessId },
+      data: { dieselPricePerLitre: dieselPricePerLitre == null ? null : round2(dieselPricePerLitre) },
+      select: { dieselPricePerLitre: true },
+    });
+    await recordAudit(tx, {
+      businessId,
+      actor,
+      action: "business.diesel_price.update",
       entityType: "Business",
       entityId: businessId,
       before,

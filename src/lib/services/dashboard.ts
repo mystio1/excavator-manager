@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { dec, round2, sum, toNumber } from "@/lib/money";
 import { billTotalsByCustomer } from "@/lib/services/financials";
-import { getSiteTotals } from "@/lib/services/siteAnalysis";
+import { getDieselLitresByMachine, getSiteTotals, getWorkTotals } from "@/lib/services/siteAnalysis";
 import { computeServiceStatus } from "@/lib/services/serviceStatus";
 import { getSalaryBreakdownForMonth, getTotalSalaryDue } from "@/lib/services/salary";
 import { currentMonthRange } from "@/lib/utils/dates";
@@ -876,42 +876,142 @@ export async function getTopCustomersByRevenue(businessId: string, limit = 5, ra
   }));
 }
 
-/** "Business Profit Overview" for the current calendar month. Expenses are
- * only ever real, already-tracked figures — service costs (ServiceRecord)
- * and operator salary (base + bonus, the accrued monthly cost of having
- * them on payroll, not just what's still unpaid). Fuel/repairs aren't
- * tracked anywhere in the app yet, so they're deliberately left out rather
- * than guessed. */
+/**
+ * "Business Profit Overview" for the range (default: this calendar month).
+ *
+ * REVENUE = what every machine earned, valued exactly as Site Analysis values it:
+ *   - work done in the period: billed work at its share of the bill, unbilled work at the site's
+ *     rate in force on the work date (work at a site with no rate counts 0 and is reported);
+ *   - bill lines not tied to logged work (Summary-bill rows, Direct bills), by bill date;
+ *   - bill-level charges (transport, fuel, extra, bucket/breaker charge, minus discount), by bill date.
+ *   GST is left out: it is collected for the government, not earned.
+ * EXPENSES = operator salary (monthly cost prorated by days, never for days after today)
+ *          + maintenance (service records' cost + Repair / Service / Parts / Tyres expenses)
+ *          + diesel, per machine: the diesel purchases recorded for it in the period when there are
+ *            any, otherwise the litres recorded on its work x the diesel price from Settings
+ *          + other recorded expenses (Transport / Other).
+ * ACTUAL PROFIT = REVENUE - EXPENSES.
+ * Diesel a customer supplied is not deducted from revenue here (revenue is the work's value) and
+ * its litres are costed like any other — the two cancel to the same profit as netting it off the bill.
+ */
 export async function getProfitOverview(businessId: string, range?: DashboardRange) {
   const { from: start, to: end } = resolveRange(range);
+  const inRange = { gte: start, lte: end };
 
-  const [revenueAgg, serviceAgg, salaryCostRaw] = await Promise.all([
-    db.bill.aggregate({ where: { businessId, billDate: { gte: start, lte: end } }, _sum: { totalAmount: true } }),
-    db.serviceRecord.aggregate({
-      where: { businessId, serviceDate: { gte: start, lte: end } },
-      _sum: { cost: true },
-    }),
-    range ? salaryCostForRange(businessId, range) : salaryCostForMonth(businessId, start.getFullYear(), start.getMonth()),
-  ]);
+  const [work, unlinkedItems, directBills, billCharges, serviceAgg, expenses, litresByMachine, business, excavators, salaryCostRaw] =
+    await Promise.all([
+      getWorkTotals(businessId, start, end),
+      db.billItem.aggregate({
+        where: { workSessionId: null, bill: { businessId, isDirect: false, billDate: inRange } },
+        _sum: { amount: true },
+      }),
+      db.bill.aggregate({ where: { businessId, isDirect: true, billDate: inRange }, _sum: { subtotal: true } }),
+      db.bill.aggregate({
+        where: { businessId, billDate: inRange },
+        _sum: {
+          transportCharges: true,
+          fuelCharges: true,
+          extraCharges: true,
+          bucketCharge: true,
+          breakerCharge: true,
+          discount: true,
+        },
+      }),
+      db.serviceRecord.aggregate({ where: { businessId, serviceDate: inRange }, _sum: { cost: true } }),
+      db.excavatorExpense.groupBy({
+        by: ["excavatorId", "type"],
+        where: { businessId, date: inRange },
+        _sum: { amount: true },
+      }),
+      getDieselLitresByMachine(businessId, start, end),
+      db.business.findUniqueOrThrow({ where: { id: businessId }, select: { dieselPricePerLitre: true } }),
+      db.excavator.findMany({ where: { businessId }, select: { id: true, name: true, machineNumber: true } }),
+      range ? salaryCostForRange(businessId, range) : salaryCostForMonth(businessId, start.getFullYear(), start.getMonth()),
+    ]);
 
-  const revenue = round2(revenueAgg._sum.totalAmount);
-  const serviceCost = round2(serviceAgg._sum.cost);
+  // ---- revenue ----
+  const workRevenue = round2(work.revenue);
+  const otherBillLines = round2(sum([unlinkedItems._sum.amount, directBills._sum.subtotal]));
+  const c = billCharges._sum;
+  const charges = round2(
+    sum([c.transportCharges, c.fuelCharges, c.extraCharges, c.bucketCharge, c.breakerCharge]).minus(dec(c.discount)),
+  );
+  const revenue = round2(sum([workRevenue, otherBillLines, charges]));
+
+  // ---- expenses ----
   const salaryCost = round2(salaryCostRaw);
+  const typeSum = (types: string[]) =>
+    sum(expenses.filter((e) => types.includes(e.type)).map((e) => e._sum.amount));
+  const serviceCost = round2(serviceAgg._sum.cost);
+  const repairCost = round2(typeSum(["REPAIR", "SERVICE", "PARTS", "TYRES"]));
+  const maintenanceCost = round2(serviceCost.plus(repairCost));
+  const otherCost = round2(typeSum(["TRANSPORT", "OTHER"]));
 
-  const expenses = round2(serviceCost.plus(salaryCost));
-  const netProfit = round2(revenue.minus(expenses));
+  const price = business.dieselPricePerLitre == null ? null : dec(business.dieselPricePerLitre);
+  const purchasedBy = new Map<string, ReturnType<typeof dec>>();
+  for (const e of expenses) {
+    if (e.type !== "DIESEL") continue;
+    purchasedBy.set(e.excavatorId, (purchasedBy.get(e.excavatorId) ?? dec(0)).plus(dec(e._sum.amount)));
+  }
+  const dieselMachines = excavators
+    .map((m) => {
+      const litres = litresByMachine.get(m.id) ?? 0;
+      const purchased = purchasedBy.get(m.id);
+      const method: "purchases" | "litres" | "no-price" | "none" = purchased
+        ? "purchases"
+        : litres > 0
+          ? price
+            ? "litres"
+            : "no-price"
+          : "none";
+      const cost =
+        method === "purchases" ? round2(purchased!) : method === "litres" ? round2(dec(litres).times(price!)) : dec(0);
+      return { id: m.id, name: m.name, machineNumber: m.machineNumber, litres, method, cost: cost.toNumber() };
+    })
+    .filter((m) => m.method !== "none");
+  const dieselCost = round2(sum(dieselMachines.map((m) => m.cost)));
+  const uncostedLitres = Math.round(dieselMachines.filter((m) => m.method === "no-price").reduce((a, m) => a + m.litres, 0) * 100) / 100;
+
+  const expensesTotal = round2(sum([salaryCost, maintenanceCost, dieselCost, otherCost]));
+  const netProfit = round2(revenue.minus(expensesTotal));
   // A percentage, not money: computed from the exact 2-dp figures, rounded to 1 dp.
   const profitMarginPct = revenue.gt(0) ? Math.round((netProfit.toNumber() / revenue.toNumber()) * 1000) / 10 : 0;
 
   return {
     revenue: revenue.toNumber(),
-    expenses: expenses.toNumber(),
+    expenses: expensesTotal.toNumber(),
     netProfit: netProfit.toNumber(),
     profitMarginPct,
     breakdown: [
       { label: "Operator Salary", amount: salaryCost.toNumber() },
-      { label: "Service & Maintenance", amount: serviceCost.toNumber() },
+      { label: "Diesel", amount: dieselCost.toNumber() },
+      { label: "Maintenance", amount: maintenanceCost.toNumber() },
+      { label: "Other Expenses", amount: otherCost.toNumber() },
     ].filter((b) => b.amount > 0),
+    /** Every input of the calculation, for the Detail view. */
+    details: {
+      from: start.toISOString().slice(0, 10),
+      to: end.toISOString().slice(0, 10),
+      revenue: {
+        work: workRevenue.toNumber(),
+        workBilled: round2(work.billedRevenue).toNumber(),
+        workUnbilled: round2(work.unbilledRevenue).toNumber(),
+        workHours: work.hours,
+        unpricedHours: work.unpricedHours,
+        otherBillLines: otherBillLines.toNumber(),
+        charges: charges.toNumber(),
+      },
+      expenses: {
+        salary: salaryCost.toNumber(),
+        service: serviceCost.toNumber(),
+        repairs: repairCost.toNumber(),
+        diesel: dieselCost.toNumber(),
+        dieselPricePerLitre: price?.toNumber() ?? null,
+        uncostedLitres,
+        dieselMachines,
+        other: otherCost.toNumber(),
+      },
+    },
   };
 }
 

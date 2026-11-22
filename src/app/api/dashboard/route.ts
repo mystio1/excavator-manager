@@ -41,6 +41,9 @@ export const GET = withApi("dashboard.get", async (req) => {
     ]);
 
   return json({
+    /** The window these figures are for (null = the current month), so a client can tell a
+     * response for the range it asked for from one still on screen for the previous range. */
+    range: query.from && query.to ? { from: query.from, to: query.to } : null,
     cards: summary.cards,
     alerts: summary.alerts,
     ownerName: summary.ownerName,

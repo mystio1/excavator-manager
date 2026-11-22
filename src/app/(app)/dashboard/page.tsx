@@ -31,6 +31,7 @@ import { AlertBanner } from "@/components/dashboard/alert-banner";
 import { MonthlyBarChart } from "@/components/dashboard/monthly-bar-chart";
 import { HoursDetailButton } from "@/components/dashboard/hours-detail-button";
 import { ProfitOverview } from "@/components/dashboard/profit-overview";
+import { ProfitDetailButton } from "@/components/dashboard/profit-detail-button";
 import { PaymentCollectionStatus } from "@/components/dashboard/payment-collection-status";
 import { TopCustomers } from "@/components/dashboard/top-customers";
 import { RecentActivityCard } from "@/components/dashboard/recent-activity-card";
@@ -43,6 +44,7 @@ import Loading from "../loading";
 
 type Summary = Plain<Awaited<ReturnType<typeof getDashboardSummary>>>;
 type DashboardData = {
+  range?: { from: string; to: string } | null;
   cards: Summary["cards"];
   alerts: Summary["alerts"];
   ownerName: Summary["ownerName"];
@@ -95,6 +97,10 @@ export default function DashboardPage() {
 
   const { cards, alerts, ownerName, hoursTrend, revenueTrend, activity, machineHours, paymentCollection, profit, topCustomers } =
     data;
+  // While new dates load, the figures on screen are still the previous range's (keepPreviousData).
+  // Say so and dim them, rather than showing old numbers under the new dates' label.
+  const stale = data.range?.from !== range.from || data.range?.to !== range.to;
+  const dim = stale ? "pointer-events-none opacity-45 transition-opacity" : "transition-opacity";
   const firstName = ownerName.split(" ")[0];
 
   return (
@@ -111,14 +117,21 @@ export default function DashboardPage() {
       </div>
         <div className="flex flex-col gap-1 sm:items-end">
           <DateRangeFilter value={range} today={today} onChange={setRange} />
-          <p className="text-xs text-muted-foreground">Total &amp; Pending are all-time</p>
+          {stale ? (
+            <p role="status" className="flex items-center gap-1.5 text-xs font-semibold text-primary-text">
+              <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />
+              Updating figures…
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Total &amp; Pending are all-time</p>
+          )}
         </div>
       </div>
 
       <AlertBanner alerts={alerts} />
 
       {/* Critical KPIs */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-3.5">
+      <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-3.5 ${dim}`} aria-busy={stale}>
         <Link href="/customers" className="block">
           <SummaryCard icon={Users} label="Total Customers" value={cards.totalCustomers} accent="default" />
         </Link>
@@ -168,12 +181,13 @@ export default function DashboardPage() {
       </div>
 
       {/* Profit Overview + Payment Collection */}
-      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+      <div className={`grid grid-cols-1 gap-3.5 lg:grid-cols-2 ${dim}`} aria-busy={stale}>
         <Card className="animate-fade-in-up">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-start justify-between gap-2">
             <SectionTitle icon={LineChart} tone="premium">
               Business Profit Overview
             </SectionTitle>
+            <ProfitDetailButton profit={profit} periodLabel={periodLabel} />
           </CardHeader>
           <CardContent>
             <ProfitOverview {...profit} periodLabel={periodLabel} />
@@ -217,7 +231,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         <RecentActivityCard events={activity} />
-        <Card className="animate-fade-in-up">
+        <Card className={`animate-fade-in-up ${dim}`} aria-busy={stale}>
           <CardHeader>
             <SectionTitle icon={Trophy} tone="success">
               Top Customers

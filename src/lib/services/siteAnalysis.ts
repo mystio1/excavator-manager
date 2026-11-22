@@ -290,8 +290,8 @@ async function aggregateBySite(scope: Scope): Promise<Map<string, Totals>> {
 // MACHINE EARNINGS (Machine Performance on the excavators page): the same work entries and the same
 // valuation as everything above — billed work at its invoice share, unbilled work at the site rate
 // in force on the work date — grouped per machine into day / week / month / year periods. Direct
-// bills (no work session) are added to the period of their bill date, as they never reach the
-// entry engine. Work whose site has no rate for its type is counted at 0 and reported, so the
+// bills and Summary-bill rows (no work session) are added to the period of their bill date, as
+// they never reach the entry engine. Work whose site has no rate for its type is counted at 0 and reported, so the
 // screen can ask for the rate instead of silently showing too little.
 // ---------------------------------------------------------------------------------------------
 
@@ -343,7 +343,7 @@ export async function getMachineEarnings(businessId: string, period: EarningsPer
   // date_trunc's unit is a whitelisted literal, never user text.
   const unit = Prisma.raw(`'${period}'`);
 
-  const [machines, workRows, directBills, missingRows] = await Promise.all([
+  const [machines, workRows, directBills, missingRows, unlinkedItems] = await Promise.all([
     db.excavator.findMany({
       where: { businessId, isArchived: false },
       select: { id: true, name: true, machineNumber: true, status: true },
@@ -368,6 +368,12 @@ export async function getMachineEarnings(businessId: string, period: EarningsPer
              COALESCE(sum(hours), 0)::float8 AS hours
       FROM val WHERE "rateMissing" AND date >= ${from}::timestamp AND date < ${until}::timestamp
       GROUP BY "siteId"`),
+    // Summary-bill rows are not tied to logged work, so the entry engine never sees them:
+    // count them for their machine on the bill date.
+    db.billItem.findMany({
+      where: { workSessionId: null, bill: { businessId, isDirect: false, billDate: { gte: from, lt: until } } },
+      select: { excavatorId: true, amount: true, hours: true, bill: { select: { billDate: true } } },
+    }),
   ]);
 
   const points = new Map<string, { revenue: ReturnType<typeof dec>; hours: number; unpricedHours: number }>();
@@ -385,6 +391,11 @@ export async function getMachineEarnings(businessId: string, period: EarningsPer
     p.revenue = p.revenue.plus(dec(r.revenue as string));
     p.hours += Number(r.hours ?? 0);
     p.unpricedHours += Number(r.unpricedHours ?? 0);
+  }
+  for (const item of unlinkedItems) {
+    const p = pointFor(item.excavatorId, bucketOf(item.bill.billDate));
+    p.revenue = p.revenue.plus(dec(item.amount.toString()));
+    p.hours += Number(item.hours ?? 0);
   }
   for (const b of directBills) {
     if (!b.excavatorId) continue;
@@ -531,6 +542,31 @@ export async function getRecordedHoursForBilling(
     days: Number(r.days ?? 0),
     sites: sites.map((x) => x.name),
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// FOR BUSINESS PROFIT (dashboard): the whole business's work totals and the diesel litres each
+// machine took, over a window — the same entries and valuation as every figure above.
+// ---------------------------------------------------------------------------------------------
+
+/** Every site, every machine: hours, revenue (billed + unbilled at site rates), diesel. */
+export async function getWorkTotals(businessId: string, from: Date, to: Date) {
+  const rows = await db.$queryRaw<AggRow[]>(Prisma.sql`
+    ${entriesCte({ businessId })}
+    SELECT ${AGG_SELECT},
+           COALESCE(sum(hours) FILTER (WHERE "rateMissing"), 0)::float8 AS "unpricedHours"
+    FROM val WHERE date >= ${from}::timestamp AND date <= ${to}::timestamp`);
+  return { ...toTotals(rows[0]), unpricedHours: num(rows[0]?.unpricedHours) };
+}
+
+/** Diesel litres filled per machine in the window (approved entries only). */
+export async function getDieselLitresByMachine(businessId: string, from: Date, to: Date) {
+  const rows = await db.$queryRaw<{ excavatorId: string; litres: number }[]>(Prisma.sql`
+    ${entriesCte({ businessId })}
+    SELECT "excavatorId", COALESCE(sum(diesel), 0)::float8 AS litres
+    FROM val WHERE date >= ${from}::timestamp AND date <= ${to}::timestamp
+    GROUP BY "excavatorId"`);
+  return new Map(rows.map((r) => [r.excavatorId, num(r.litres)]));
 }
 
 export type MachineRow = Totals & {

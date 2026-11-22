@@ -284,15 +284,17 @@ describe("getProfitOverview", () => {
       data: { businessId: a.businessId, excavatorId: a.excavatorId, serviceDate: new Date(), hourMeterAtService: 11, cost: "0.20" },
     });
 
+    // Revenue is what the machines earned (work, bill lines, bill charges — see
+    // tests/tenant-misc/profit.test.ts); these fixture bills carry no lines or
+    // charges, so only the exact expense arithmetic is checked here.
     const profit = await getProfitOverview(a.businessId);
-    expect(profit.revenue).toBe(110.6);
     expect(profit.expenses).toBe(0.3); // 0.10 + 0.20, not 0.30000000000000004
-    expect(profit.netProfit).toBe(110.3);
-    expect(profit.breakdown).toEqual([{ label: "Service & Maintenance", amount: 0.3 }]);
+    expect(profit.netProfit).toBe(Math.round((profit.revenue - 0.3) * 100) / 100);
+    expect(profit.breakdown).toEqual([{ label: "Maintenance", amount: 0.3 }]);
+    expect(profit.details.expenses.service).toBe(0.3);
 
-    // Tenant B has no service records and its own revenue.
+    // Tenant B has no service records; A's never leak into it.
     const other = await getProfitOverview(b.businessId);
-    expect(other.revenue).toBe(99999.99);
     expect(other.expenses).toBe(0);
   });
 });

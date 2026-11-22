@@ -46,6 +46,7 @@ import { GET as periodsGET, POST as periodsPOST } from "@/app/api/operators/[id]
 import { GET as periodDetailGET, PATCH as periodDetailPATCH } from "@/app/api/operators/[id]/periods/[periodId]/route";
 import { GET as leavesGET, POST as leavesPOST } from "@/app/api/operators/[id]/leaves/route";
 import { DELETE as leaveDeleteDELETE } from "@/app/api/operators/[id]/leaves/[leaveId]/route";
+import { DELETE as expenseDELETE } from "@/app/api/expenses/[id]/route";
 import { GET as siteDetailGET, PATCH as siteDetailPATCH } from "@/app/api/sites/[id]/route";
 import { PATCH as siteRatesPATCH } from "@/app/api/sites/[id]/rates/route";
 import { GET as siteAnalysisDetailGET } from "@/app/api/sites/[id]/analysis/route";
@@ -112,6 +113,9 @@ beforeAll(async () => {
   ).id;
   ids.bankId = (
     await db.bankAccount.create({ data: { businessId: A.businessId, label: "A bank", accountHolderName: "A", accountNumber: "1", ifsc: "X", bankName: "Y" } })
+  ).id;
+  ids.expenseId = (
+    await db.excavatorExpense.create({ data: { businessId: A.businessId, excavatorId: A.excavatorId, date: new Date("2026-10-01"), type: "DIESEL", amount: "4500.00" } })
   ).id;
   ids.serviceItemId = (await db.serviceItem.create({ data: { businessId: A.businessId, name: `ACOMP-${marker}`, category: "Other" } })).id;
   ids.workRequestId = (
@@ -204,6 +208,8 @@ const WRITES_AND_READS = (): Case[] => [
     bankPATCH(req("PATCH", "/x", { body: { label: "Hijack", accountHolderName: "H", accountNumber: "9", ifsc: "H", bankName: "H" } }), ctx({ id: ids.bankId })),
   ),
   c("DELETE bank account", () => bankDELETE(req("DELETE", "/x"), ctx({ id: ids.bankId }))),
+  // ---- expenses
+  c("DELETE expense", () => expenseDELETE(req("DELETE", "/x"), ctx({ id: ids.expenseId }))),
   // ---- approvals
   c("POST approve work request", () =>
     wrApprovePOST(req("POST", "/x", { body: { newCustomerName: "Evil", siteName: "S", startHourMeter: 0, endHourMeter: 5, attachment: "Bucket" } }), ctx({ id: ids.workRequestId })),
@@ -249,6 +255,7 @@ async function snapshotA() {
     payments: await db.payment.count({ where: { businessId: A.businessId } }),
     customers: await db.customer.count({ where: { businessId: A.businessId } }),
     sessions: await db.workSession.count({ where: { businessId: A.businessId } }),
+    expenses: await db.excavatorExpense.count({ where: { businessId: A.businessId } }),
     audit: await db.auditLog.count({ where: { businessId: A.businessId } }),
   };
   return JSON.stringify({ bill, payment, customer, operator, excavator, session, log, tx, bank, wr, join, counts });

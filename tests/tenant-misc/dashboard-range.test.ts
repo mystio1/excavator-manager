@@ -75,7 +75,7 @@ describe("dashboard date range", () => {
 
   it("profit and machine hours follow the range", async () => {
     const profit = await getProfitOverview(t.businessId, june);
-    expect(profit.revenue).toBe(7010);
+    expect(profit.details).toMatchObject({ from: "2026-06-01", to: "2026-06-30" });
     const octHours = await getMachineHoursDetail(t.businessId, dashboardRangeFromDays("2026-10-01", "2026-10-31"));
     const juneHours = await getMachineHoursDetail(t.businessId, june);
     expect(octHours.find((m) => m.id === t.excavatorId)?.hours).toBe(8);

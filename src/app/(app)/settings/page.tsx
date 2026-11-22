@@ -12,6 +12,7 @@ import { BillLetterheadForm } from "./bill-letterhead-form";
 import { BankAccountsSection } from "./bank-accounts-section";
 import { BusinessCodeCard } from "./business-code-card";
 import { OperatorLanguageForm } from "./operator-language-form";
+import { DieselPriceForm } from "./diesel-price-form";
 import { AppLockSection } from "./app-lock-section";
 import { ChangePasswordCard } from "./change-password-card";
 import { SignOutEverywhereCard } from "./sign-out-everywhere-card";
@@ -40,6 +41,7 @@ export default function SettingsPage() {
         <SignOutEverywhereCard />
         <OperatorLanguageForm operatorLanguage={business.operatorLanguage} />
         <BusinessProfileForm business={business} />
+        <DieselPriceForm dieselPricePerLitre={business.dieselPricePerLitre ?? null} />
         <BillLetterheadForm business={business} />
         <BankAccountsSection accounts={bankAccounts} />
         <AppVersionFooter />

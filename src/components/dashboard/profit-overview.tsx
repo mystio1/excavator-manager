@@ -34,7 +34,7 @@ export function ProfitOverview({
           three labels (and separately, all three values) to the same height. */}
       <div className="@container"><div className="grid grid-cols-3 grid-rows-2 gap-x-3 gap-y-0.5 rounded-2xl bg-muted/40 p-3.5">
         <p className="col-start-1 row-start-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Money Earned
+          Revenue
         </p>
         <p className="col-start-2 row-start-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           Expenses

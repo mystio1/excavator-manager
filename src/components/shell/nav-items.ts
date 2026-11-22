@@ -1,4 +1,4 @@
-import { ClipboardCheck, Droplet, HardHat, LayoutDashboard, MapPin, Receipt, Truck, Users } from "lucide-react";
+import { ClipboardCheck, Droplet, HardHat, LayoutDashboard, MapPin, Receipt, Truck, Users, Wallet } from "lucide-react";
 
 export const NAV_ITEMS = [
   { href: "/dashboard", label: "Home", icon: LayoutDashboard },
@@ -9,6 +9,7 @@ export const NAV_ITEMS = [
   { href: "/operators/approvals", label: "Approvals", icon: ClipboardCheck },
   { href: "/site-analysis", label: "Site Analysis", icon: MapPin },
   { href: "/diesel-checker", label: "Diesel Checker", icon: Droplet },
+  { href: "/expenses", label: "Expenses", icon: Wallet },
 ] as const;
 
 /** "/operators/approvals" starts with both "/operators" and itself — prefer
