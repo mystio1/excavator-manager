@@ -12,7 +12,7 @@ export type SiteOption = {
 
 /** The customer's own sites, ongoing ones first. */
 export function sitesForCustomer<T extends SiteOption>(sites: T[], customerId: string): T[] {
-  const rank = (s: T) => (s.status === "ACTIVE" || !s.status ? 0 : s.status === "ON_HOLD" ? 1 : 2);
+  const rank = (s: T) => (s.status === "ACTIVE" || !s.status ? 0 : s.status === "PARTIAL" ? 1 : s.status === "ON_HOLD" ? 2 : 3);
   return sites
     .filter((s) => s.customerId === customerId)
     .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));

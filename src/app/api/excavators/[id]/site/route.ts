@@ -12,8 +12,8 @@ export const PATCH = withApi("excavators.setSite", async (req, { params }: { par
   if (auth.error) return auth.error;
   const { id } = await params;
 
-  const { siteName } = await parseBody(req, bodySchema);
-  const result = await setExcavatorSite(auth.session.businessId, auth.actor, id, siteName);
+  const { siteName, previousSiteStatus } = await parseBody(req, bodySchema);
+  const result = await setExcavatorSite(auth.session.businessId, auth.actor, id, siteName, { previousSiteStatus });
   if ("error" in result) return failureResponse(result);
 
   return json({ ok: true });

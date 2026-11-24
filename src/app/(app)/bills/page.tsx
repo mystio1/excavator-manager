@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BillTemplatePicker } from "@/components/bill/bill-template-picker";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
@@ -152,6 +153,7 @@ export default function BillsPage() {
         }
       />
       <div className="flex flex-col gap-3 px-4 pb-6 md:px-8">
+        <BillTemplatePicker />
         <div className="grid grid-cols-3 gap-2 rounded-lg bg-muted p-1 text-sm">
           {FILTERS.map((f) => {
             const count = f.id === "all" ? counts.all : f.id === "app" ? counts.app : counts.self;

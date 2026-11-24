@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SITE_STATUSES } from "@/lib/validation/site";
 import { expectedVersionField } from "@/lib/validation/workSession";
 
 // "" is how an empty <input type="date"> arrives; anything else must parse.
@@ -30,6 +31,8 @@ export type EditExcavatorInput = z.infer<typeof editExcavatorSchema>;
 export const setExcavatorSiteSchema = z.object({
   excavatorId: z.string().min(1),
   siteName: z.string().trim().min(1, "Enter a site"),
+  /** Status to give the site the machine is leaving (asked when the site changes). Omitted = unchanged. */
+  previousSiteStatus: z.enum(SITE_STATUSES).optional(),
 });
 
 export type SetExcavatorSiteInput = z.infer<typeof setExcavatorSiteSchema>;

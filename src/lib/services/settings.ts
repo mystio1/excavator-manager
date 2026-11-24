@@ -159,6 +159,30 @@ export async function updateOperatorLanguage(
   });
 }
 
+/** Bill layout used to show / print / share bills (chosen in the Bills tab). */
+export async function updateBillTemplate(
+  businessId: string,
+  actor: AuditActor,
+  billTemplate: "STANDARD" | "DAILY_SUMMARY",
+  opts?: { tx?: Tx },
+) {
+  return withTx(opts?.tx, async (tx) => {
+    await lockBusiness(tx, businessId);
+    const before = await tx.business.findUniqueOrThrow({ where: { id: businessId }, select: { billTemplate: true } });
+    const after = await tx.business.update({ where: { id: businessId }, data: { billTemplate }, select: { billTemplate: true } });
+    await recordAudit(tx, {
+      businessId,
+      actor,
+      action: "business.bill_template.update",
+      entityType: "Business",
+      entityId: businessId,
+      before,
+      after,
+    });
+    return after;
+  });
+}
+
 /** Diesel price per litre (Business Profit Overview costs recorded litres with it). */
 export async function updateDieselPrice(
   businessId: string,

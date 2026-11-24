@@ -26,5 +26,9 @@ export const GET = withApi("bills.preview-context", async (req) => {
       : null,
   ]);
 
-  return json({ letterhead: buildLetterhead(business, bankAccount), customer });
+  return json({
+    letterhead: buildLetterhead(business, bankAccount),
+    customer,
+    billTemplate: business.billTemplate === "DAILY_SUMMARY" ? "DAILY_SUMMARY" : "STANDARD",
+  });
 });

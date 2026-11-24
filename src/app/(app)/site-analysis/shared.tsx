@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SITE_STATUS_LABEL as BASE_STATUS_LABEL } from "@/lib/validation/site";
 import { ChevronRight } from "lucide-react";
 import { addDays, format, startOfMonth, startOfWeek, subMonths, endOfMonth } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -171,15 +172,17 @@ export function KeyValue({ label, value, strong, className }: { label: string; v
 }
 
 export const SITE_TYPE_LABEL: Record<string, string> = { CUSTOMER_SITE: "Customer Site", SELF_SITE: "Self Site" };
-export const SITE_STATUS_LABEL: Record<string, string> = { ACTIVE: "Active", COMPLETED: "Completed", ON_HOLD: "On Hold" };
+export const SITE_STATUS_LABEL: Record<string, string> = BASE_STATUS_LABEL;
 
 export function SiteStatusBadge({ status }: { status: string }) {
   const tone =
     status === "ACTIVE"
       ? "bg-working/15 text-working"
-      : status === "ON_HOLD"
-        ? "bg-idle/30 text-idle-foreground"
-        : "bg-muted text-muted-foreground";
+      : status === "PARTIAL"
+        ? "bg-info/15 text-info"
+        : status === "ON_HOLD"
+          ? "bg-idle/30 text-idle-foreground"
+          : "bg-muted text-muted-foreground";
   return <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold", tone)}>{SITE_STATUS_LABEL[status] ?? status}</span>;
 }
 

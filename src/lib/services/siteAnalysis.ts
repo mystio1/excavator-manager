@@ -636,6 +636,54 @@ export async function getMachinesWorkingBySite(businessId: string, siteIds?: str
 }
 
 // ---------------------------------------------------------------------------------------------
+// Fleet by site ("Our machines by site" on Site Analysis)
+// ---------------------------------------------------------------------------------------------
+
+export type FleetMachine = { id: string; name: string; machineNumber: string | null; status: string };
+export type FleetSite = { siteId: string; siteName: string; siteStatus: string; machines: FleetMachine[]; working: number };
+
+/**
+ * Where every machine is: at the site of its running job when it has one (that is where it is
+ * working right now), otherwise at the site it is set to (Excavator.currentSiteId). Machines with
+ * neither are listed as not at any site. Archived machines are left out.
+ */
+export async function getFleetBySite(businessId: string) {
+  const excavators = await db.excavator.findMany({
+    where: { businessId, isArchived: false },
+    select: {
+      id: true,
+      name: true,
+      machineNumber: true,
+      status: true,
+      currentSite: { select: { id: true, name: true, status: true } },
+      workSessions: {
+        where: { businessId, status: "ACTIVE" },
+        orderBy: { startDate: "desc" },
+        take: 1,
+        select: { site: { select: { id: true, name: true, status: true } } },
+      },
+    },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+  const bySite = new Map<string, FleetSite>();
+  const unassigned: FleetMachine[] = [];
+  for (const e of excavators) {
+    const machine: FleetMachine = { id: e.id, name: e.name, machineNumber: e.machineNumber, status: e.status };
+    const site = e.workSessions[0]?.site ?? e.currentSite;
+    if (!site) {
+      unassigned.push(machine);
+      continue;
+    }
+    const entry = bySite.get(site.id) ?? { siteId: site.id, siteName: site.name, siteStatus: site.status, machines: [], working: 0 };
+    entry.machines.push(machine);
+    if (e.status === "WORKING") entry.working += 1;
+    bySite.set(site.id, entry);
+  }
+  const sites = [...bySite.values()].sort((a, b) => b.machines.length - a.machines.length || a.siteName.localeCompare(b.siteName));
+  return { sites, unassigned, total: excavators.length };
+}
+
+// ---------------------------------------------------------------------------------------------
 // Site list
 // ---------------------------------------------------------------------------------------------
 

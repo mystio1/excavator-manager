@@ -243,6 +243,9 @@ export const bankAccountSchema = z.object({
   isDefaultForNonGst: z.coerce.boolean().optional(),
 });
 
+/** Bill layout chosen in the Bills tab. */
+export const billTemplateSchema = z.object({ billTemplate: z.enum(["STANDARD", "DAILY_SUMMARY"]) });
+
 /** What a litre of diesel costs; null clears it. */
 export const dieselPriceSchema = z.object({
   dieselPricePerLitre: z.number().min(0, "Must be 0 or more").max(10_000, "That price looks wrong").nullable(),

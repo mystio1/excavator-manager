@@ -7,10 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { BillLetterhead } from "@/lib/services/bills";
 import { BillPreview, type BillPreviewData } from "./bill-preview";
+import { rowsFromLines, type BillTemplate } from "./summary-rows";
 
 type PreviewContext = {
   letterhead: BillLetterhead;
   customer: { name: string; address: string | null; mobile: string | null; gstNumber: string | null } | null;
+  billTemplate?: BillTemplate;
 };
 
 /** The bill exactly as it will print, built from the form BEFORE it is saved.
@@ -61,6 +63,8 @@ export function BillPreviewDialog({
                   customerName: data.customer?.name ?? "",
                   customerAddress: data.customer?.address,
                   customerMobile: data.customer?.mobile,
+                  template: data.billTemplate ?? "STANDARD",
+                  summaryRows: data.billTemplate === "DAILY_SUMMARY" ? rowsFromLines(bill) : null,
                 }}
               />
             </div>

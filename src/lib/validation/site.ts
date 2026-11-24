@@ -1,7 +1,16 @@
 import { z } from "zod";
 
 export const SITE_TYPES = ["CUSTOMER_SITE", "SELF_SITE"] as const;
-export const SITE_STATUSES = ["ACTIVE", "COMPLETED", "ON_HOLD"] as const;
+/** Stored values. ON_HOLD is shown as "Deactive" (the stored value is kept so existing sites keep
+ * their status); PARTIAL = part of the job done, machines may come back. */
+export const SITE_STATUSES = ["ACTIVE", "PARTIAL", "COMPLETED", "ON_HOLD"] as const;
+export type SiteStatus = (typeof SITE_STATUSES)[number];
+export const SITE_STATUS_LABEL: Record<SiteStatus, string> = {
+  ACTIVE: "Ongoing",
+  PARTIAL: "Partially Completed",
+  COMPLETED: "Completed",
+  ON_HOLD: "Deactive",
+};
 
 const isoDate = z
   .string()

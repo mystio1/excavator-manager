@@ -57,6 +57,8 @@ model Business {
   // What a litre of diesel costs this business. Costs recorded diesel litres in Business Profit
   // Overview when a machine has no actual diesel purchase recorded for the period. Null = not set.
   dieselPricePerLitre Decimal? @db.Decimal(10, 2)
+  // Bill layout for view / print / PDF: "STANDARD" | "DAILY_SUMMARY". Chosen from the Bills tab.
+  billTemplate        String   @default("STANDARD")
   billAccentColor String  @default("#0B2B5E")
 
   createdAt DateTime @default(now())

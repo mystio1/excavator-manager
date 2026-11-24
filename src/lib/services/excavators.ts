@@ -7,6 +7,7 @@ import { listOpenWorkRequestsForExcavator } from "@/lib/services/operatorWorkReq
 import { findOrCreateSite } from "@/lib/services/sites";
 import { lockOwnedExcavator, roundHours } from "@/lib/services/workSessions";
 import type { AddExcavatorInput, EditExcavatorInput } from "@/lib/validation/excavator";
+import type { SiteStatus } from "@/lib/validation/site";
 
 async function getMaintenanceSettings(businessId: string) {
   return db.business.findUniqueOrThrow({
@@ -257,7 +258,7 @@ export async function setExcavatorSite(
   actor: AuditActor,
   excavatorId: string,
   siteName: string,
-  opts?: { tx?: Tx },
+  opts?: { tx?: Tx; previousSiteStatus?: SiteStatus },
 ) {
   return withTx(opts?.tx, async (tx) => {
     if (!(await lockOwnedExcavator(tx, businessId, excavatorId))) return fail("NOT_FOUND", "Machine not found");
@@ -266,6 +267,29 @@ export async function setExcavatorSite(
 
     const site = await findOrCreateSite(businessId, siteName, tx);
     if (before.currentSiteId === site.id) return { site } as const;
+
+    // The site being left: the owner says where it stands (ongoing / partially completed /
+    // completed / deactive) in the same step, so Site Analysis status stays true without a
+    // second visit there.
+    if (opts?.previousSiteStatus && before.currentSiteId) {
+      const old = await tx.site.findFirst({ where: { id: before.currentSiteId, businessId } });
+      if (old && old.status !== opts.previousSiteStatus) {
+        const updated = await tx.site.update({
+          where: { id: old.id },
+          data: { status: opts.previousSiteStatus, version: { increment: 1 } },
+        });
+        await recordAudit(tx, {
+          businessId,
+          actor,
+          action: "site.update",
+          entityType: "Site",
+          entityId: old.id,
+          before: { status: old.status },
+          after: { status: updated.status },
+          details: { change: "status", reason: "machine moved to another site", excavatorId },
+        });
+      }
+    }
 
     const after = await tx.excavator.update({
       where: { id: excavatorId, businessId },

@@ -3,6 +3,8 @@ import { formatDate } from "@/lib/utils/dates";
 import { amountInWords } from "@/lib/utils/numberToWords";
 import { lineAmountRupees } from "./money-preview";
 import type { BillLetterhead } from "@/lib/services/bills";
+import { SummarySheet } from "./summary-sheet";
+import type { BillTemplate, SummaryRow } from "./summary-rows";
 
 export type BillPreviewItem = {
   excavatorName: string;
@@ -58,6 +60,9 @@ export type BillPreviewData = {
   dieselLiters?: number | null;
   dieselPricePerLiter?: number | null;
   dieselAdvance?: number | null;
+  /** Layout: STANDARD (machine-wise lines) or DAILY_SUMMARY (day rows — needs summaryRows). */
+  template?: BillTemplate;
+  summaryRows?: SummaryRow[] | null;
 };
 
 const cell = "px-2 py-1.5 border border-slate-200";
@@ -146,6 +151,10 @@ export function BillPreview({ bill }: { bill: BillPreviewData }) {
           </table>
         </div>
 
+        {bill.template === "DAILY_SUMMARY" && bill.summaryRows && bill.summaryRows.length > 0 ? (
+          <SummarySheet bill={bill} rows={bill.summaryRows} accent={accent} />
+        ) : (
+          <>
         {/* Items table */}
         {/* Keyboard users can scroll this region on narrow screens (WCAG 2.1.1) —
             a scrollable area must itself be focusable. */}
@@ -302,6 +311,8 @@ export function BillPreview({ bill }: { bill: BillPreviewData }) {
             </tbody>
           </table>
         </div>
+          </>
+        )}
 
         {/* Amount in words */}
         <div className="mb-4 rounded border border-dashed border-slate-300 bg-slate-50 p-2 text-[12px] text-slate-600">

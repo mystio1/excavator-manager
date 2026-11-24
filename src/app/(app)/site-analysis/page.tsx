@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SITE_STATUSES, SITE_STATUS_LABEL } from "@/lib/validation/site";
 import Link from "next/link";
 import useSWR from "swr";
 import { Banknote, Clock, IndianRupee, MapPin, Search, Wallet } from "lucide-react";
@@ -18,6 +19,7 @@ import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/currency";
 import { formatHours } from "@/lib/utils/hours";
 import { Breadcrumbs, DateRangeFilter, KeyValue, Pager, SITE_TYPE_LABEL, SiteStatusBadge, fmtDay, qs } from "./shared";
 import { CreateSiteDialog } from "./create-site-dialog";
+import { FleetBySite } from "./fleet-by-site";
 import Loading from "../loading";
 
 type SiteList = Plain<Awaited<ReturnType<typeof listSites>>>;
@@ -81,9 +83,11 @@ export default function SiteAnalysisPage() {
               </NativeSelect>
               <NativeSelect aria-label="Site status" value={status} onChange={(e) => reset(() => setStatus(e.target.value))} className="h-11">
                 <option value="">All Statuses</option>
-                <option value="ACTIVE">Active</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="ON_HOLD">On Hold</option>
+              {SITE_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {SITE_STATUS_LABEL[s]}
+                </option>
+              ))}
               </NativeSelect>
               <NativeSelect aria-label="Machine" value={excavatorId} onChange={(e) => reset(() => setExcavatorId(e.target.value))} className="h-11">
                 <option value="">All Machines</option>
@@ -117,6 +121,8 @@ export default function SiteAnalysisPage() {
             )}
           </CardContent>
         </Card>
+
+        <FleetBySite />
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <SummaryCard icon={MapPin} label="Sites" value={summary.sites} />

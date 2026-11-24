@@ -1,6 +1,9 @@
 import { requireBusinessApi } from "@/lib/api-auth";
 import { errorResponse, failureResponse } from "@/lib/api-error";
 import { deleteBill, getBillDetail, toBillPreviewData, updateBill } from "@/lib/services/bills";
+import { getBillSummaryRows } from "@/lib/services/billSummary";
+import { db } from "@/lib/db";
+import type { BillTemplate } from "@/components/bill/summary-rows";
 import { parseExpectedVersion, updateBillSchema } from "@/lib/validation/bill";
 import { json, parseBody, withApi } from "@/lib/with-api";
 
@@ -14,7 +17,14 @@ export const GET = withApi("bills.get", async (_req, { params }: Ctx) => {
   const bill = await getBillDetail(auth.session.businessId, id);
   if (!bill) return errorResponse("NOT_FOUND", "Bill not found");
 
-  return json({ bill, previewData: toBillPreviewData(bill) });
+  // The layout chosen in the Bills tab; the day rows are only built when it is the daily sheet.
+  const { billTemplate } = await db.business.findUniqueOrThrow({
+    where: { id: auth.session.businessId },
+    select: { billTemplate: true },
+  });
+  const template = (billTemplate === "DAILY_SUMMARY" ? "DAILY_SUMMARY" : "STANDARD") as BillTemplate;
+  const summaryRows = template === "DAILY_SUMMARY" ? await getBillSummaryRows(auth.session.businessId, bill) : null;
+  return json({ bill, previewData: { ...toBillPreviewData(bill), template, summaryRows } });
 });
 
 export const PATCH = withApi("bills.update", async (req, { params }: Ctx) => {

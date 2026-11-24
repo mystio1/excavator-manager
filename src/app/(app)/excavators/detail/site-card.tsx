@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/native-select";
+import { SITE_STATUSES, SITE_STATUS_LABEL, type SiteStatus } from "@/lib/validation/site";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -33,13 +35,23 @@ export function SiteCard({
   // creates the site by name either way.
   const [addingNew, setAddingNew] = useState(false);
   const currentSite = siteOptions.find((s) => s.name === currentSiteName);
+  // The site being chosen (dropdown value or typed name), and — when it is a different site —
+  // what the owner says about the site the machine is leaving.
+  const [picked, setPicked] = useState("");
+  const [prevStatus, setPrevStatus] = useState<SiteStatus>("ACTIVE");
+  const leaving =
+    !!currentSiteName && !!picked.trim() && picked.trim().toLowerCase() !== currentSiteName.trim().toLowerCase();
   const groups = SITE_GROUPS.map((g) => ({
     ...g,
     sites: siteOptions.filter((s) => g.statuses.includes(s.status ?? "ACTIVE")),
   })).filter((g) => g.sites.length > 0);
   const { error, pending, run } = useApiForm(async (siteName: string) => {
-    await apiFetch(`/api/excavators/${excavatorId}/site`, { method: "PATCH", body: JSON.stringify({ siteName }) });
-    await mutate(`/api/excavators/${excavatorId}`);
+    await apiFetch(`/api/excavators/${excavatorId}/site`, {
+      method: "PATCH",
+      body: JSON.stringify({ siteName, ...(leaving ? { previousSiteStatus: prevStatus } : {}) }),
+    });
+    // Site lists and Site Analysis show the status that may just have changed.
+    await mutate((k) => typeof k === "string" && (k.startsWith(`/api/excavators/${excavatorId}`) || k.startsWith("/api/sites")));
   });
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -54,7 +66,11 @@ export function SiteCard({
       open={open}
       onOpenChange={(next) => {
         // No saved sites yet → go straight to typing a new one.
-        if (next) setAddingNew(siteOptions.length === 0);
+        if (next) {
+          setAddingNew(siteOptions.length === 0);
+          setPicked("");
+          setPrevStatus(((currentSite?.status as SiteStatus | undefined) ?? "ACTIVE"));
+        }
         setOpen(next);
       }}
     >
@@ -95,7 +111,10 @@ export function SiteCard({
                   required
                   className="h-12 text-base"
                   onChange={(e) => {
-                    if (e.target.value === ADD_NEW) setAddingNew(true);
+                    if (e.target.value === ADD_NEW) {
+                      setAddingNew(true);
+                      setPicked("");
+                    } else setPicked(e.target.value);
                   }}
                 >
                   <option value="" disabled>
@@ -114,7 +133,10 @@ export function SiteCard({
                 </NativeSelect>
                 <button
                   type="button"
-                  onClick={() => setAddingNew(true)}
+                  onClick={() => {
+                    setAddingNew(true);
+                    setPicked("");
+                  }}
                   className="self-start text-sm font-semibold text-primary-text"
                 >
                   + Add New Site
@@ -125,6 +147,7 @@ export function SiteCard({
                 <Input
                   id="newSiteName"
                   name="newSiteName"
+                  onChange={(e) => setPicked(e.target.value)}
                   placeholder="e.g. Wagholi"
                   required
                   className="h-12 text-base"
@@ -133,7 +156,10 @@ export function SiteCard({
                 {siteOptions.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setAddingNew(false)}
+                    onClick={() => {
+                      setAddingNew(false);
+                      setPicked("");
+                    }}
                     className="self-start text-sm font-semibold text-muted-foreground"
                   >
                     Pick an existing site instead
@@ -142,6 +168,33 @@ export function SiteCard({
               </>
             )}
           </div>
+
+          {leaving && (
+            <fieldset className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <legend className="px-1 text-sm font-semibold">
+                What is the status of &ldquo;{currentSiteName}&rdquo; now?
+              </legend>
+              <p className="text-xs text-muted-foreground">
+                The machine is leaving this site. Its status in Site Analysis is updated to match.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {SITE_STATUSES.map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    aria-pressed={prevStatus === st}
+                    onClick={() => setPrevStatus(st)}
+                    className={cn(
+                      "min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold transition-colors",
+                      prevStatus === st ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted",
+                    )}
+                  >
+                    {SITE_STATUS_LABEL[st]}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          )}
 
           {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
@@ -161,6 +214,7 @@ const ADD_NEW = "__add_new_site__";
 /** Dropdown sections, in order: sites still running first, then finished ones. */
 const SITE_GROUPS: { label: string; statuses: string[] }[] = [
   { label: "Ongoing sites", statuses: ["ACTIVE"] },
-  { label: "On hold", statuses: ["ON_HOLD"] },
+  { label: "Partially completed", statuses: ["PARTIAL"] },
+  { label: "Deactive", statuses: ["ON_HOLD"] },
   { label: "Completed sites", statuses: ["COMPLETED"] },
 ];

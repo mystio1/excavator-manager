@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { FormAlert } from "@/components/bill/editor/form-parts";
 import { BillPreview } from "@/components/bill/bill-preview";
+import { BillTemplatePicker } from "@/components/bill/bill-template-picker";
 import { fromPaise, toPaise } from "@/components/bill/money-preview";
 import { formatCurrency } from "@/lib/utils/currency";
 import { formatDate } from "@/lib/utils/dates";
@@ -115,6 +116,8 @@ export default function BillDetailPage() {
             </div>
           </dl>
         </div>
+
+        <BillTemplatePicker />
 
         <Card className="overflow-hidden p-0">
           <CardContent className="p-0" id={BILL_PDF_AREA_ID}>

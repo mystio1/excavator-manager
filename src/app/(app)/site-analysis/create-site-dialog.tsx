@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SITE_STATUSES, SITE_STATUS_LABEL } from "@/lib/validation/site";
 import useSWR, { useSWRConfig } from "swr";
 import { Plus } from "lucide-react";
 import { apiFetch, swrFetcher } from "@/lib/api-client";
@@ -89,9 +90,11 @@ export function CreateSiteDialog({ onCreated }: { onCreated?: (siteId: string) =
           <div className="flex flex-col gap-2">
             <Label htmlFor="site-status">Status</Label>
             <NativeSelect id="site-status" name="status" defaultValue="ACTIVE" className="h-11">
-              <option value="ACTIVE">Active</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="ON_HOLD">On Hold</option>
+              {SITE_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {SITE_STATUS_LABEL[s]}
+                </option>
+              ))}
             </NativeSelect>
           </div>
           <div className="grid grid-cols-2 gap-3">

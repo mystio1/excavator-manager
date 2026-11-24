@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SITE_STATUSES, SITE_STATUS_LABEL } from "@/lib/validation/site";
 import useSWR, { useSWRConfig } from "swr";
 import { Pencil } from "lucide-react";
 import { ApiError, apiFetch, swrFetcher } from "@/lib/api-client";
@@ -202,9 +203,11 @@ export function EditSiteDialog({
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit-site-status">Status</Label>
             <NativeSelect id="edit-site-status" name="status" defaultValue={site.status} className="h-11">
-              <option value="ACTIVE">Active</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="ON_HOLD">On Hold</option>
+              {SITE_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {SITE_STATUS_LABEL[s]}
+                </option>
+              ))}
             </NativeSelect>
           </div>
           {error && (
