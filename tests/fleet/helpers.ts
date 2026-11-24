@@ -39,7 +39,7 @@ export function newMachine(
 export function newActiveSession(
   t: TestTenant,
   excavatorId: string,
-  over: { totalHours?: number; dieselLiters?: number | null } = {},
+  over: { totalHours?: number; dieselLiters?: number | null; startDate?: Date } = {},
 ) {
   return db.workSession.create({
     data: {
@@ -48,7 +48,7 @@ export function newActiveSession(
       customerId: t.customerId,
       siteId: t.siteId,
       operatorId: t.operatorId,
-      startDate: new Date("2026-10-01"),
+      startDate: over.startDate ?? new Date("2026-10-01"),
       startHourMeter: 100,
       totalHours: over.totalHours ?? 0,
       dieselLiters: over.dieselLiters ?? null,

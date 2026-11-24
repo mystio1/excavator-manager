@@ -353,7 +353,9 @@ describe("what the operator portal sees", () => {
     const own = await createTenant("portal-admin-work");
     try {
       const m = await newMachine(own);
-      await newActiveSession(own, m.id);
+      // Dated today: the history only reaches a month back, so a fixed date
+      // (it used to be 1 Oct 2026) silently fell out of the window as time passed.
+      await newActiveSession(own, m.id, { startDate: new Date() });
 
       const since = operatorHistorySince();
       const adminWork = await listRecentAdminWork(own.operatorId, m.id, since, own.businessId);
