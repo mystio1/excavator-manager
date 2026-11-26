@@ -106,7 +106,7 @@ export function SubmitBar({
             // size, so the reserved space above does not jump while typing.
             className={cn(
               "fixed inset-x-0 z-30 border-t bg-card px-4 pt-2 pb-2 shadow-[0_-6px_16px_-10px_rgba(15,23,42,0.35)]",
-              "bottom-[calc(3.85rem+env(safe-area-inset-bottom))]",
+              "bottom-[calc(5.6rem+env(safe-area-inset-bottom))]",
               keyboardOpen && "invisible",
             )}
           >

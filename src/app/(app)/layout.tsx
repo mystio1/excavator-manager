@@ -114,7 +114,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <MobileTopBar businessName={data.businessName} alerts={data.alerts} />
         <DesktopTopHeader ownerName={data.ownerName} alerts={data.alerts} />
-        <main id="main-content" tabIndex={-1} className="flex-1 overflow-x-hidden outline-none bg-background pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0">
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-x-hidden outline-none bg-background pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-0">
           {children}
         </main>
         <BottomNav />
