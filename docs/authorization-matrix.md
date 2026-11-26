@@ -35,11 +35,13 @@ fails if this file is stale. Do not edit by hand.
 | `/api/bills/[id]` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/bills/[id]` | PATCH | business owner | session.businessId |  |  | yes |  |
 | `/api/bills/[id]` | DELETE | business owner | session.businessId |  |  | yes |  |
+| `/api/bills/direct/hours` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/bills/direct` | POST | business owner | session.businessId |  | yes |  |  |
 | `/api/bills/export` | GET | business owner | session.businessId | yes |  |  |  |
 | `/api/bills/new/direct` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/bills/new` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/bills/new/summary` | GET | business owner | session.businessId |  |  |  |  |
+| `/api/bills/preview-context` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/bills` | POST | business owner | session.businessId |  | yes |  |  |
 | `/api/bills` | GET | business owner | session.businessId |  |  |  | yes |
 | `/api/bills/summary` | POST | business owner | session.businessId |  | yes | yes |  |
@@ -48,7 +50,7 @@ fails if this file is stale. Do not edit by hand.
 | `/api/customers/detail` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/customers/options` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/customers` | GET | business owner | session.businessId |  |  |  | yes |
-| `/api/customers` | POST | business owner | session.businessId |  |  | yes |  |
+| `/api/customers` | POST | business owner | session.businessId |  | yes | yes |  |
 | `/api/daily-logs/[logId]/approve` | POST | business owner | session.businessId |  |  | yes |  |
 | `/api/daily-logs/[logId]/reject` | POST | business owner | session.businessId |  |  | yes |  |
 | `/api/daily-logs/[logId]` | PATCH | business owner | session.businessId |  |  | yes |  |
@@ -67,9 +69,13 @@ fails if this file is stale. Do not edit by hand.
 | `/api/excavators/[id]/start-work` | POST | business owner | session.businessId |  |  |  |  |
 | `/api/excavators/[id]/stop-work` | POST | business owner | session.businessId |  |  | yes |  |
 | `/api/excavators/[id]/work-history` | GET | business owner | session.businessId |  |  |  | yes |
+| `/api/excavators/performance` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/excavators/reorder` | PUT | business owner | session.businessId |  |  |  |  |
 | `/api/excavators` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/excavators` | POST | business owner | session.businessId |  |  |  |  |
+| `/api/expenses/[id]` | DELETE | business owner | session.businessId |  |  |  |  |
+| `/api/expenses` | GET | business owner | session.businessId |  |  |  |  |
+| `/api/expenses` | POST | business owner | session.businessId |  |  |  |  |
 | `/api/health/ready` | GET | public — Readiness probe, reports ok/failed only, no secrets. | - |  |  |  |  |
 | `/api/health` | GET | public — Liveness probe, no data, no database. | - |  |  |  |  |
 | `/api/layout` | GET | business owner | session.businessId |  |  |  |  |
@@ -111,7 +117,10 @@ fails if this file is stale. Do not edit by hand.
 | `/api/settings/bank-accounts/[id]` | PATCH | business owner | session.businessId |  |  |  |  |
 | `/api/settings/bank-accounts/[id]` | DELETE | business owner | session.businessId |  |  |  |  |
 | `/api/settings/bank-accounts` | POST | business owner | session.businessId |  |  |  |  |
+| `/api/settings/bill-template` | GET | business owner | session.businessId |  |  |  |  |
+| `/api/settings/bill-template` | PATCH | business owner | session.businessId |  |  |  |  |
 | `/api/settings/business-code/regenerate` | POST | business owner | session.businessId |  |  |  |  |
+| `/api/settings/diesel-price` | PATCH | business owner | session.businessId |  |  |  |  |
 | `/api/settings/letterhead` | PATCH | business owner | session.businessId |  |  |  |  |
 | `/api/settings/operator-language` | PATCH | business owner | session.businessId |  |  |  |  |
 | `/api/settings/profile` | PATCH | business owner | session.businessId |  |  |  |  |
@@ -124,6 +133,7 @@ fails if this file is stale. Do not edit by hand.
 | `/api/sites/[id]/rates` | PATCH | business owner | session.businessId |  |  | yes |  |
 | `/api/sites/[id]` | GET | business owner | session.businessId |  |  | yes |  |
 | `/api/sites/[id]` | PATCH | business owner | session.businessId |  |  | yes |  |
+| `/api/sites/fleet` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/sites/options` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/sites` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/sites` | POST | business owner | session.businessId |  |  |  |  |
@@ -139,4 +149,4 @@ fails if this file is stale. Do not edit by hand.
 | `/api/work-sessions/[id]` | PATCH | business owner | session.businessId |  |  | yes |  |
 | `/api/work-sessions/[id]` | DELETE | business owner | session.businessId |  |  | yes |  |
 
-**124** route/method pairs: **110** authenticated, **14** public (each justified above).
+**134** route/method pairs: **120** authenticated, **14** public (each justified above).
